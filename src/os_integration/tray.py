@@ -39,7 +39,9 @@ class TrayApp:
         self._settings = settings
         self._on_reauthenticate = on_reauthenticate
         self._on_exit = on_exit
-        self._on_setup = on_setup
+        # Deliberately not named _on_setup: that name belongs to the pystray
+        # setup hook below, and an instance attribute would shadow it.
+        self._launch_wizard = on_setup
         self._icon = pystray.Icon(
             "spotify_wallpaper_engine",
             _build_icon_image(_ICON_COLORS[AppStatus.RUNNING]),
@@ -82,7 +84,7 @@ class TrayApp:
     def _setup(self, icon, item) -> None:
         # Off the tray thread: the wizard owns its own Tk mainloop and would
         # otherwise block the tray's message pump for as long as it's open.
-        threading.Thread(target=self._on_setup, daemon=True).start()
+        threading.Thread(target=self._launch_wizard, daemon=True).start()
 
     def _toggle_lock_sync(self, icon, item) -> None:
         threading.Thread(target=self._apply_lock_sync_toggle, daemon=True).start()
