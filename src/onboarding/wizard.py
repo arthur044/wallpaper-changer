@@ -81,6 +81,7 @@ class _TkWizard:
         self._completed = False
         self._client = None
         self._busy = False
+        self._closed = False
 
         self._root = tk.Tk()
         self._root.title(_WINDOW_TITLE)
@@ -261,6 +262,7 @@ class _TkWizard:
             return
 
         self._completed = True
+        self._closed = True
         self._root.destroy()
 
     # ---- navigation ---------------------------------------------------
@@ -293,7 +295,11 @@ class _TkWizard:
         self._render()
 
     def _on_cancel(self) -> None:
+        # Cancelling is allowed even mid-OAuth: the browser wait can be long
+        # and trapping the user behind a disabled button is worse than
+        # dropping the worker's result, which _post() handles.
         self._completed = False
+        self._closed = True
         self._root.destroy()
 
     # ---- helpers ------------------------------------------------------
@@ -323,17 +329,32 @@ class _TkWizard:
         def worker() -> None:
             try:
                 result = action()
-            except steps.OnboardingError as exc:
-                message = str(exc)
-                self._root.after(0, lambda: self._finish_background(button, error=message))
             except Exception as exc:  # noqa: BLE001 - the wizard must never die on an unexpected error
-                logger.exception("Onboarding step failed: %s", exc)
+                # Expected failures (bad redirect URI, busy port, rate limit)
+                # get logged too: app.log is the only diagnostic surface, since
+                # logger.py installs no console handler and the app normally
+                # runs under pythonw with no stderr at all.
+                if isinstance(exc, steps.OnboardingError):
+                    logger.warning("Onboarding step failed: %s", exc)
+                else:
+                    logger.exception("Onboarding step failed unexpectedly: %s", exc)
                 message = str(exc)
-                self._root.after(0, lambda: self._finish_background(button, error=message))
+                self._post(lambda: self._finish_background(button, error=message))
             else:
-                self._root.after(0, lambda: self._finish_background(button, result=result, on_success=on_success))
+                self._post(lambda: self._finish_background(button, result=result, on_success=on_success))
 
         threading.Thread(target=worker, daemon=True, name="onboarding").start()
+
+    def _post(self, callback: Callable[[], None]) -> None:
+        """Hand a worker result back to the Tk thread, tolerating a window the
+        user closed in the meantime. after() on a destroyed root raises inside
+        the worker thread, where nothing would ever surface it."""
+        if self._closed:
+            return
+        try:
+            self._root.after(0, callback)
+        except (RuntimeError, self._tk.TclError) as exc:
+            logger.info("Dropped onboarding callback, window already closed: %s", exc)
 
     def _finish_background(
         self,
@@ -342,6 +363,9 @@ class _TkWizard:
         on_success: Optional[Callable[[object], None]] = None,
         error: Optional[str] = None,
     ) -> None:
+        if self._closed:
+            return
+
         self._busy = False
         button.state(["!disabled"])
         self._next_button.state(["!disabled"])
