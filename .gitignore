@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Logs
+*.log
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+
+# OS
+Thumbs.db
+.DS_Store
+Desktop.ini
+
+# Local runtime state and secrets - this app normally writes config,
+# cache, and logs under %APPDATA%/%LOCALAPPDATA%, never inside the repo.
+# These are listed defensively in case that ever changes, and to block
+# accidental commits of the Spotify OAuth token cache or client config.
+config.json
+*.token
+*.secret
+.env
+.env.*
+*.pem
+*.key
