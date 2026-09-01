@@ -38,17 +38,6 @@ def test_stable_key_handles_missing_fields():
     assert _stable_key(None, None) == "unknown"
 
 
-def test_album_key_matches_artist_and_album_title():
-    snapshot = _snapshot(album_artist="Avenged Sevenfold", album_title="Life Is But a Dream")
-    assert snapshot.album_key == _stable_key("Avenged Sevenfold", "Life Is But a Dream")
-
-
 def test_track_key_matches_artist_and_title():
     snapshot = _snapshot(artist="Avenged Sevenfold", title="Mattel")
     assert snapshot.track_key == _stable_key("Avenged Sevenfold", "Mattel")
-
-
-def test_different_albums_get_different_keys():
-    a = _snapshot(album_title="Album A")
-    b = _snapshot(album_title="Album B")
-    assert a.album_key != b.album_key

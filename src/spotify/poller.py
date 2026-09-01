@@ -11,6 +11,7 @@ from src.spotify.client import (
     NowPlaying,
     RateLimitedError,
     TransientNetworkError,
+    fetch_album_tracks,
     fetch_now_playing,
 )
 from src.spotify.state_machine import PollDecision, decide, next_backoff
@@ -20,6 +21,10 @@ logger = logging.getLogger(__name__)
 
 RenderFn = Callable[[NowPlaying], None]
 ReauthFn = Callable[[], Spotify]
+
+
+def _track_key(artist: Optional[str], title: Optional[str]) -> str:
+    return f"{(artist or '').strip().lower()}::{(title or '').strip().lower()}"
 
 
 def _smtc_to_now_playing(snapshot: SmtcNowPlaying, album_id: str, art_url: Optional[str]) -> NowPlaying:
@@ -57,12 +62,15 @@ class Poller:
         self._last_rendered_track_id: Optional[str] = None
         self._backoff_seconds = 0.0
         self._last_web_api_at = float("-inf")
-        # Maps a SMTC-derived album key (hash of artist+title strings, see
-        # os_integration/smtc.py) to the real (album_id, art_url) resolved
-        # via one Web API call. Only Spotify-sourced art is ever rendered -
-        # until an album is resolved, its entry is simply absent here and
-        # nothing gets rendered for it. In-memory only, cleared on restart.
-        self._smtc_album_resolution: Dict[str, Tuple[str, Optional[str]]] = {}
+        # Maps a normalized "artist::title" track key to the real (album_id,
+        # art_url) it belongs to. Populated for every track of an album the
+        # moment that album is first resolved (see _resolve_and_cache_album),
+        # not just the one track that triggered the resolution - so jumping
+        # straight to track 7 of an already-seen album is recognized without
+        # any further API call. Only Spotify-sourced art is ever rendered:
+        # until a track's entry appears here, nothing gets rendered for it.
+        # In-memory only, cleared on restart.
+        self._track_to_album: Dict[str, Tuple[str, Optional[str]]] = {}
 
     def set_client(self, client: Spotify) -> None:
         self._client = client
@@ -119,13 +127,10 @@ class Poller:
         return self._handle_now_playing(now_playing, success_interval=self._settings.fallback_poll_interval_seconds)
 
     def _handle_smtc_snapshot(self, snapshot: SmtcNowPlaying) -> float:
-        resolved = self._smtc_album_resolution.get(snapshot.album_key)
+        resolved = self._track_to_album.get(_track_key(snapshot.artist, snapshot.title))
 
         if resolved is None and snapshot.is_playing and self._should_call_web_api():
-            fetched = self._resolve_high_res_art()
-            if fetched is not None and fetched.album_id:
-                resolved = (fetched.album_id, fetched.art_url)
-                self._smtc_album_resolution[snapshot.album_key] = resolved
+            resolved = self._resolve_and_cache_album()
 
         if resolved is None:
             # No verified Spotify art for this album yet (throttled, failed,
@@ -140,6 +145,27 @@ class Poller:
         album_id, art_url = resolved
         now_playing = _smtc_to_now_playing(snapshot, album_id=album_id, art_url=art_url)
         return self._handle_now_playing(now_playing)
+
+    def _resolve_and_cache_album(self) -> Optional[Tuple[str, Optional[str]]]:
+        """Throttled: one Web API call to resolve the real album_id + art_url
+        for the currently SMTC-detected track, plus one more to fetch every
+        other track name on that album so later tracks on it never need to
+        hit the API again. The second call is best-effort - if it fails, the
+        current track still renders fine, just without the pre-warmed cache."""
+        fetched = self._resolve_high_res_art()
+        if fetched is None or not fetched.album_id:
+            return None
+
+        resolved = (fetched.album_id, fetched.art_url)
+        self._track_to_album[_track_key(fetched.artist_name, fetched.track_name)] = resolved
+
+        try:
+            for name, artist in fetch_album_tracks(self._client, fetched.album_id):
+                self._track_to_album[_track_key(artist, name)] = resolved
+        except Exception as exc:  # noqa: BLE001 - a best-effort prefetch must never crash the render pipeline
+            logger.warning("Failed to prefetch tracklist for album %s: %s", fetched.album_id, exc)
+
+        return resolved
 
     def _resolve_high_res_art(self) -> Optional[NowPlaying]:
         """One throttled Web API call to get the real album_id + art_url for

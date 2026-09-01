@@ -27,12 +27,15 @@ class Settings:
     # só enxerga reprodução local no desktop, não celular/Connect/outros
     # dispositivos. A arte renderizada NUNCA vem da thumbnail local do SMTC
     # (ela é baixa resolução, 300x300) - é sempre a imagem oficial do
-    # Spotify: ao ver um álbum novo, o Poller faz UMA chamada throttled à
-    # API Web para pegar o album_id real e a arte em alta resolução (ver
-    # Poller._smtc_album_resolution); enquanto isso não resolve, o wallpaper
-    # atual é mantido em vez de mostrar uma imagem que não seja do Spotify.
-    # Trocas de faixa dentro do mesmo álbum já resolvido continuam 100% via
-    # SMTC, sem nova chamada. Defina False para forçar polling puro via API
+    # Spotify: ao ver uma faixa nova, o Poller faz uma chamada throttled à
+    # API Web pra pegar o album_id real + arte em alta resolução, e mais uma
+    # pra buscar a tracklist inteira do álbum, indexando cada faixa por
+    # "artista::nome" (ver Poller._track_to_album/_resolve_and_cache_album).
+    # Assim, pular direto pra qualquer outra faixa desse álbum - mesmo sem
+    # ter passado pelas anteriores - é reconhecido na hora, sem nova chamada.
+    # Enquanto uma faixa não resolve, o wallpaper atual é mantido em vez de
+    # mostrar imagem que não seja do Spotify. Defina False para forçar polling
+    # puro via API
     # Web (ex.: se o SMTC se mostrar instável numa máquina).
     use_smtc: bool = True
     # Com que frequência chamar a API Web do Spotify quando o SMTC não tem

@@ -21,10 +21,6 @@ class SmtcNowPlaying:
     is_playing: bool
 
     @property
-    def album_key(self) -> str:
-        return _stable_key(self.album_artist, self.album_title)
-
-    @property
     def track_key(self) -> str:
         return _stable_key(self.artist, self.title)
 
