@@ -1,6 +1,6 @@
 import logging
 import threading
-from typing import Callable, Tuple
+from typing import Callable, Optional, Tuple
 
 import pystray
 from PIL import Image, ImageDraw
@@ -42,6 +42,7 @@ class TrayApp:
         # Deliberately not named _on_setup: that name belongs to the pystray
         # setup hook below, and an instance attribute would shadow it.
         self._launch_wizard = on_setup
+        self._wizard_thread: Optional[threading.Thread] = None
         self._icon = pystray.Icon(
             "spotify_wallpaper_engine",
             _build_icon_image(_ICON_COLORS[AppStatus.RUNNING]),
@@ -84,7 +85,14 @@ class TrayApp:
     def _setup(self, icon, item) -> None:
         # Off the tray thread: the wizard owns its own Tk mainloop and would
         # otherwise block the tray's message pump for as long as it's open.
-        threading.Thread(target=self._launch_wizard, daemon=True).start()
+        # One at a time, though - two concurrent Tk() roots on two threads is
+        # not a supported tkinter configuration and can take the process down.
+        if self._wizard_thread is not None and self._wizard_thread.is_alive():
+            logger.info("Setup wizard is already open, ignoring the second request")
+            return
+
+        self._wizard_thread = threading.Thread(target=self._launch_wizard, daemon=True, name="wizard")
+        self._wizard_thread.start()
 
     def _toggle_lock_sync(self, icon, item) -> None:
         threading.Thread(target=self._apply_lock_sync_toggle, daemon=True).start()

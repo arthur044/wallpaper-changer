@@ -134,6 +134,10 @@ def main() -> int:
                 app_state.clear_error()
         except Exception as exc:  # noqa: BLE001 - the wizard must never crash the tray
             logger.exception("Setup wizard failed: %s", exc)
+            # Surface it on the tray icon too, the way auth expiry already is:
+            # a silent failure here leaves the poller on a stale client and the
+            # wallpaper just quietly stops updating.
+            app_state.set_error(f"Setup failed: {exc}")
 
     def on_exit() -> None:
         logger.info("Exiting Spotify Wallpaper Engine")
