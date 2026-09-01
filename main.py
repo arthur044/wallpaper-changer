@@ -8,7 +8,7 @@ from src.config.settings import load_settings
 from src.graphics.renderer import render_for_now_playing
 from src.os_integration import lockscreen
 from src.os_integration.autostart import install_autostart, uninstall_autostart
-from src.onboarding.state import needs_onboarding
+from src.onboarding.state import needs_onboarding, should_abort_after_wizard
 from src.onboarding.wizard import run_wizard
 from src.os_integration.session_lock import is_workstation_locked
 from src.os_integration.smtc import SmtcWatcher
@@ -72,9 +72,11 @@ def main() -> int:
 
     if args.setup or needs_onboarding(settings.client_id):
         # First run (or an explicit --setup) walks the user through registering
-        # a Spotify app, the redirect URI, the client id, and the OAuth login.
-        if not run_wizard(settings):
-            logger.info("Setup wizard cancelled; nothing to run without a client_id")
+        # a Spotify app, the redirect URI, the client id, the OAuth login, a
+        # connection check, and the optional autostart/lock screen toggles.
+        completed = run_wizard(settings)
+        if should_abort_after_wizard(completed, settings.client_id):
+            logger.info("Setup cancelled and no client_id configured; nothing to run")
             return 1
 
     app_state = AppState()

@@ -7,6 +7,7 @@ from src.onboarding.state import (
     normalize_client_id,
     previous_step,
     resume_step,
+    should_abort_after_wizard,
 )
 
 _VALID = "0123456789abcdef0123456789abcdef"
@@ -62,3 +63,20 @@ def test_previous_step_stops_at_the_first_step():
 
 def test_every_step_appears_in_the_order():
     assert set(STEP_ORDER) == set(OnboardingStep)
+
+
+def test_completing_the_wizard_never_aborts():
+    assert should_abort_after_wizard(True, _VALID) is False
+    assert should_abort_after_wizard(True, "") is False
+
+
+def test_cancelling_aborts_only_without_a_usable_client_id():
+    # Fresh install: cancelling leaves nothing to run with.
+    assert should_abort_after_wizard(False, None) is True
+    assert should_abort_after_wizard(False, "not-a-client-id") is True
+
+
+def test_cancelling_a_setup_rerun_keeps_a_working_install_running():
+    # `--setup` on an already-configured app: closing the window must not
+    # take the app down, since the existing client_id is still usable.
+    assert should_abort_after_wizard(False, _VALID) is False

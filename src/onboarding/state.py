@@ -58,6 +58,15 @@ def needs_onboarding(client_id: Optional[str]) -> bool:
     return not is_valid_client_id(client_id)
 
 
+def should_abort_after_wizard(wizard_completed: bool, client_id: Optional[str]) -> bool:
+    """Cancelling the wizard is only fatal when it leaves the app with no
+    usable client_id. Re-running `--setup` on a working install and closing
+    the window should just start the app normally, not exit."""
+    if wizard_completed:
+        return False
+    return needs_onboarding(client_id)
+
+
 def resume_step(client_id: Optional[str]) -> OnboardingStep:
     """Where to drop the user in when the wizard opens. A config that already
     carries a usable client_id skips straight to re-authenticating, since the
