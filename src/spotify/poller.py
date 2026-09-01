@@ -71,6 +71,11 @@ class Poller:
         # until a track's entry appears here, nothing gets rendered for it.
         # In-memory only, cleared on restart.
         self._track_to_album: Dict[str, Tuple[str, Optional[str]]] = {}
+        # Track key whose "still unresolved" state has already been logged.
+        # Without it the message below would repeat every poll_interval_seconds
+        # for as long as the track plays; with it, a frozen wallpaper leaves
+        # exactly one line per track in the log.
+        self._unresolved_logged_key: Optional[str] = None
 
     def set_client(self, client: Spotify) -> None:
         self._client = client
@@ -127,7 +132,8 @@ class Poller:
         return self._handle_now_playing(now_playing, success_interval=self._settings.fallback_poll_interval_seconds)
 
     def _handle_smtc_snapshot(self, snapshot: SmtcNowPlaying) -> float:
-        resolved = self._track_to_album.get(_track_key(snapshot.artist, snapshot.title))
+        track_key = _track_key(snapshot.artist, snapshot.title)
+        resolved = self._track_to_album.get(track_key)
 
         if resolved is None and snapshot.is_playing and self._should_call_web_api():
             resolved = self._resolve_and_cache_album()
@@ -140,11 +146,28 @@ class Poller:
             # unset for this track, so once resolution does succeed it's
             # treated as a fresh RENDER (not a NOOP) and the good image
             # replaces whatever is currently showing.
+            #
+            # This is the only path that leaves the wallpaper stale, so it
+            # says so: silently skipping here makes a frozen wallpaper
+            # indistinguishable from an idle one in the log.
+            self._log_unresolved(track_key, snapshot)
             return self._settings.poll_interval_seconds
 
+        self._unresolved_logged_key = None
         album_id, art_url = resolved
         now_playing = _smtc_to_now_playing(snapshot, album_id=album_id, art_url=art_url)
         return self._handle_now_playing(now_playing)
+
+    def _log_unresolved(self, track_key: str, snapshot: SmtcNowPlaying) -> None:
+        if self._unresolved_logged_key == track_key:
+            return
+        self._unresolved_logged_key = track_key
+        logger.info(
+            "Wallpaper left unchanged: no Spotify art resolved yet for %s - %s (playing=%s)",
+            snapshot.artist or "?",
+            snapshot.title or "?",
+            snapshot.is_playing,
+        )
 
     def _resolve_and_cache_album(self) -> Optional[Tuple[str, Optional[str]]]:
         """Throttled: one Web API call to resolve the real album_id + art_url
