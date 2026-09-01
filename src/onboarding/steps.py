@@ -22,6 +22,12 @@ logger = logging.getLogger(__name__)
 
 DASHBOARD_URL = "https://developer.spotify.com/dashboard"
 
+# Spotify reports an unregistered callback as "INVALID_CLIENT: Invalid
+# redirect URI". Match that phrase rather than a bare "redirect", so an
+# unrelated failure (requests' "Exceeded 30 redirects", a proxy loop) isn't
+# misreported as a dashboard problem the user then wastes time "fixing".
+_REDIRECT_MISMATCH_MARKERS = ("redirect uri", "redirect_uri")
+
 
 class OnboardingError(Exception):
     """Base for failures the wizard knows how to explain to the user."""
@@ -66,6 +72,11 @@ class ApplyOptionsResult:
 
 def open_dashboard() -> None:
     webbrowser.open(DASHBOARD_URL)
+
+
+def looks_like_redirect_mismatch(message: str) -> bool:
+    lowered = (message or "").lower()
+    return any(marker in lowered for marker in _REDIRECT_MISMATCH_MARKERS)
 
 
 def redirect_port(redirect_uri: str) -> Optional[int]:
@@ -144,10 +155,12 @@ def authenticate(settings: Settings):
         auth_manager.get_access_token()
     except Exception as exc:  # noqa: BLE001 - spotipy raises a wide range here; all of it is user-facing
         message = str(exc)
-        if "redirect" in message.lower():
+        if looks_like_redirect_mismatch(message):
+            # Keep the original text: the heuristic can still be wrong, and
+            # nothing else ever prints the underlying error.
             raise RedirectUriMismatchError(
                 f"Spotify rejected the redirect URI {settings.redirect_uri}. "
-                "Add it to your app's settings in the dashboard."
+                f"Add it to your app's settings in the dashboard. ({message})"
             ) from exc
         raise AuthenticationFailedError(message) from exc
 

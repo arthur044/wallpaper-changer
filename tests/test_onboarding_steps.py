@@ -227,3 +227,59 @@ def test_authenticate_refuses_when_the_redirect_port_is_busy(monkeypatch):
 
     with pytest.raises(steps.PortBusyError):
         steps.authenticate(Settings(client_id=_VALID))
+
+
+def test_spotify_redirect_rejection_is_recognized():
+    assert steps.looks_like_redirect_mismatch("INVALID_CLIENT: Invalid redirect URI") is True
+    assert steps.looks_like_redirect_mismatch("error: invalid_client, redirect_uri mismatch") is True
+
+
+def test_unrelated_redirect_wording_is_not_mistaken_for_a_dashboard_problem():
+    # requests raises this for a redirect loop; telling the user to go fix
+    # their dashboard would send them chasing the wrong thing entirely.
+    assert steps.looks_like_redirect_mismatch("Exceeded 30 redirects.") is False
+    assert steps.looks_like_redirect_mismatch("") is False
+
+
+class _FakeAuthManager:
+    def __init__(self, error=None):
+        self._error = error
+
+    def get_access_token(self):
+        if self._error is not None:
+            raise self._error
+        return {"access_token": "token"}
+
+
+def _patch_auth(monkeypatch, error=None):
+    monkeypatch.setattr(steps, "is_redirect_port_free", lambda uri: True)
+    monkeypatch.setattr(
+        steps, "build_auth_manager", lambda client_id, redirect_uri, scope: _FakeAuthManager(error)
+    )
+
+
+def test_authenticate_maps_a_redirect_rejection(monkeypatch):
+    _patch_auth(monkeypatch, error=Exception("INVALID_CLIENT: Invalid redirect URI"))
+
+    with pytest.raises(steps.RedirectUriMismatchError) as excinfo:
+        steps.authenticate(Settings(client_id=_VALID))
+
+    # The original text must survive; it's the only record of the real cause.
+    assert "INVALID_CLIENT: Invalid redirect URI" in str(excinfo.value)
+
+
+def test_authenticate_maps_other_failures_generically(monkeypatch):
+    _patch_auth(monkeypatch, error=Exception("Exceeded 30 redirects."))
+
+    with pytest.raises(steps.AuthenticationFailedError) as excinfo:
+        steps.authenticate(Settings(client_id=_VALID))
+
+    assert "Exceeded 30 redirects." in str(excinfo.value)
+
+
+def test_authenticate_returns_a_client_on_success(monkeypatch):
+    _patch_auth(monkeypatch)
+
+    client = steps.authenticate(Settings(client_id=_VALID))
+
+    assert client is not None
