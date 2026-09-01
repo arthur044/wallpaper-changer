@@ -2,6 +2,8 @@ import logging
 import threading
 from typing import Callable, Optional
 
+from spotipy import Spotify
+
 from src.config.settings import Settings
 from src.onboarding import steps
 from src.onboarding.state import (
@@ -79,7 +81,7 @@ class _TkWizard:
         self._settings = settings
         self._step = resume_step(settings.client_id)
         self._completed = False
-        self._client = None
+        self._client: Optional[Spotify] = None
         self._busy = False
         self._closed = False
 
@@ -210,7 +212,7 @@ class _TkWizard:
             on_success=self._authenticated,
         )
 
-    def _authenticated(self, client) -> None:
+    def _authenticated(self, client: Spotify) -> None:
         self._client = client
         self._info("Conectado. Avance para verificar.", error=False)
 

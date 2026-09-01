@@ -6,6 +6,8 @@ from enum import Enum, auto
 from typing import Optional
 from urllib.parse import urlparse
 
+from spotipy import Spotify
+
 from src.config.settings import Settings, save_settings
 from src.onboarding.state import normalize_client_id
 from src.os_integration import lockscreen
@@ -138,12 +140,10 @@ def save_client_id(settings: Settings, raw_client_id: str) -> None:
     logger.info("Client ID saved to config")
 
 
-def authenticate(settings: Settings):
+def authenticate(settings: Settings) -> Spotify:
     """Runs the interactive PKCE login (opens a browser) and returns a ready
     Spotify client. Raises the typed errors above so the wizard can explain
     exactly what went wrong instead of dumping a traceback."""
-    from spotipy import Spotify
-
     if not is_redirect_port_free(settings.redirect_uri):
         raise PortBusyError(
             f"Port {redirect_port(settings.redirect_uri)} is already in use, "
@@ -167,7 +167,7 @@ def authenticate(settings: Settings):
     return Spotify(auth_manager=auth_manager)
 
 
-def verify_connection(client) -> VerifyOutcome:
+def verify_connection(client: Spotify) -> VerifyOutcome:
     """One call to prove the token actually works. Nothing playing is a
     success too - it just means Spotify is idle right now."""
     try:
