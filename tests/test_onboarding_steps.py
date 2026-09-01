@@ -93,14 +93,38 @@ def test_verify_connection_maps_auth_failure(monkeypatch):
         steps.verify_connection(object())
 
 
-def test_verify_connection_maps_rate_limit(monkeypatch):
+def test_verify_connection_maps_rate_limit_and_keeps_the_retry_window(monkeypatch):
     def raise_rate_limit(client):
         raise RateLimitedError(retry_after=42.0)
 
     monkeypatch.setattr(steps, "fetch_now_playing", raise_rate_limit)
 
-    with pytest.raises(steps.OnboardingError):
+    with pytest.raises(steps.RateLimitedOnboardingError) as excinfo:
         steps.verify_connection(object())
+
+    # Available as a number, not buried in the message text.
+    assert excinfo.value.retry_after == 42.0
+
+
+def test_nothing_playing_cannot_carry_track_details():
+    with pytest.raises(ValueError):
+        steps.VerifyOutcome(result=steps.VerifyResult.NOTHING_PLAYING, track_name="Afterlife")
+
+
+def test_description_joins_the_names_it_has():
+    outcome = steps.VerifyOutcome(
+        result=steps.VerifyResult.PLAYING, track_name="Afterlife", artist_name="Avenged Sevenfold"
+    )
+
+    assert outcome.description == "Afterlife - Avenged Sevenfold"
+
+
+def test_description_skips_a_name_the_api_left_empty():
+    # NowPlaying.track_name/artist_name are Optional all the way from the API,
+    # so this used to render a literal "None" in the wizard.
+    outcome = steps.VerifyOutcome(result=steps.VerifyResult.PLAYING, track_name="Afterlife")
+
+    assert outcome.description == "Afterlife"
 
 
 def test_verify_connection_maps_network_failure(monkeypatch):

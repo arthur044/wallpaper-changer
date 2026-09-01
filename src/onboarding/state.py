@@ -16,17 +16,11 @@ class OnboardingStep(Enum):
     DONE = auto()
 
 
-# Order the wizard walks through. Kept explicit rather than relying on enum
-# ordering so reordering a step is a deliberate edit, not an accident.
-STEP_ORDER = (
-    OnboardingStep.CREATE_APP,
-    OnboardingStep.REDIRECT_URI,
-    OnboardingStep.CLIENT_ID,
-    OnboardingStep.AUTHENTICATE,
-    OnboardingStep.VERIFY,
-    OnboardingStep.OPTIONS,
-    OnboardingStep.DONE,
-)
+# Order the wizard walks through. Derived from the enum's declaration order
+# rather than hand-maintained: a separate tuple is a second source of truth,
+# and a member missing from it makes next_step()/previous_step() raise a bare
+# ValueError from .index() instead of anything the wizard can explain.
+STEP_ORDER = tuple(OnboardingStep)
 
 
 def normalize_client_id(raw: Optional[str]) -> str:

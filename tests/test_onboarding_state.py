@@ -61,8 +61,18 @@ def test_previous_step_stops_at_the_first_step():
     assert previous_step(OnboardingStep.CREATE_APP) is OnboardingStep.CREATE_APP
 
 
-def test_every_step_appears_in_the_order():
-    assert set(STEP_ORDER) == set(OnboardingStep)
+def test_step_order_matches_the_intended_wizard_flow():
+    # STEP_ORDER is derived from the enum, so this pins the declaration order
+    # itself - reordering the enum reorders the wizard.
+    assert STEP_ORDER == (
+        OnboardingStep.CREATE_APP,
+        OnboardingStep.REDIRECT_URI,
+        OnboardingStep.CLIENT_ID,
+        OnboardingStep.AUTHENTICATE,
+        OnboardingStep.VERIFY,
+        OnboardingStep.OPTIONS,
+        OnboardingStep.DONE,
+    )
 
 
 def test_completing_the_wizard_never_aborts():

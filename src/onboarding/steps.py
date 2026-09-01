@@ -48,6 +48,15 @@ class AuthenticationFailedError(OnboardingError):
     pass
 
 
+class RateLimitedOnboardingError(OnboardingError):
+    """Keeps the retry window as a number instead of burying it in prose, so
+    a caller can act on it rather than re-parse the message."""
+
+    def __init__(self, retry_after: float):
+        super().__init__(f"Spotify is rate limiting this account right now (retry in {retry_after:.0f}s).")
+        self.retry_after = retry_after
+
+
 class VerifyResult(Enum):
     PLAYING = auto()
     NOTHING_PLAYING = auto()
@@ -58,6 +67,18 @@ class VerifyOutcome:
     result: VerifyResult
     track_name: Optional[str] = None
     artist_name: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        if self.result is VerifyResult.NOTHING_PLAYING and (self.track_name or self.artist_name):
+            raise ValueError("NOTHING_PLAYING carries no track details")
+
+    @property
+    def description(self) -> str:
+        """What to show for a playing track. Both names are Optional all the
+        way from the Spotify API, so a track that comes back without one
+        renders as the half we have instead of a literal "None"."""
+        parts = [part for part in (self.track_name, self.artist_name) if part]
+        return " - ".join(parts)
 
 
 @dataclass(frozen=True)
@@ -175,9 +196,7 @@ def verify_connection(client: Spotify) -> VerifyOutcome:
     except AuthExpiredError as exc:
         raise AuthenticationFailedError(str(exc)) from exc
     except RateLimitedError as exc:
-        raise OnboardingError(
-            f"Spotify is rate limiting this account right now (retry in {exc.retry_after:.0f}s)."
-        ) from exc
+        raise RateLimitedOnboardingError(exc.retry_after) from exc
     except TransientNetworkError as exc:
         raise OnboardingError(f"Couldn't reach Spotify: {exc}") from exc
 

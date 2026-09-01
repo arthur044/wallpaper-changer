@@ -230,7 +230,7 @@ class _TkWizard:
 
     def _verified(self, outcome: steps.VerifyOutcome) -> None:
         if outcome.result is steps.VerifyResult.PLAYING:
-            self._info(f"Funcionando. Tocando agora: {outcome.track_name} - {outcome.artist_name}", error=False)
+            self._info(f"Funcionando. Tocando agora: {outcome.description}", error=False)
         else:
             self._info("Conexão OK. Nada tocando no momento.", error=False)
 
@@ -417,7 +417,7 @@ def run_console_wizard(settings: Settings) -> bool:
         return False
 
     if outcome.result is steps.VerifyResult.PLAYING:
-        print(f"   Funcionando. Tocando agora: {outcome.track_name} - {outcome.artist_name}")
+        print(f"   Funcionando. Tocando agora: {outcome.description}")
     else:
         print("   Conexão OK. Nada tocando no momento.")
 
