@@ -33,11 +33,13 @@ class TrayApp:
         settings: Settings,
         on_reauthenticate: Callable[[], None],
         on_exit: Callable[[], None],
+        on_setup: Callable[[], None],
     ):
         self._app_state = app_state
         self._settings = settings
         self._on_reauthenticate = on_reauthenticate
         self._on_exit = on_exit
+        self._on_setup = on_setup
         self._icon = pystray.Icon(
             "spotify_wallpaper_engine",
             _build_icon_image(_ICON_COLORS[AppStatus.RUNNING]),
@@ -59,6 +61,7 @@ class TrayApp:
                 self._reauthenticate,
                 visible=lambda item: self._app_state.snapshot().status == AppStatus.ERROR,
             ),
+            pystray.MenuItem("Setup...", self._setup),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Exit", self._exit),
         )
@@ -75,6 +78,11 @@ class TrayApp:
 
     def _reauthenticate(self, icon, item) -> None:
         threading.Thread(target=self._on_reauthenticate, daemon=True).start()
+
+    def _setup(self, icon, item) -> None:
+        # Off the tray thread: the wizard owns its own Tk mainloop and would
+        # otherwise block the tray's message pump for as long as it's open.
+        threading.Thread(target=self._on_setup, daemon=True).start()
 
     def _toggle_lock_sync(self, icon, item) -> None:
         threading.Thread(target=self._apply_lock_sync_toggle, daemon=True).start()
