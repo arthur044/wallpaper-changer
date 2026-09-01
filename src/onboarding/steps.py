@@ -8,6 +8,8 @@ from urllib.parse import urlparse
 
 from src.config.settings import Settings, save_settings
 from src.onboarding.state import normalize_client_id
+from src.os_integration import lockscreen
+from src.os_integration.autostart import install_autostart
 from src.spotify.auth import build_auth_manager
 from src.spotify.client import (
     AuthExpiredError,
@@ -50,6 +52,18 @@ class VerifyOutcome:
     artist_name: Optional[str] = None
 
 
+@dataclass(frozen=True)
+class ApplyOptionsResult:
+    # str(exc) of a failed autostart install; the caller owns the wording.
+    autostart_error: Optional[str] = None
+    # The elevated scheduled task wasn't authorized. Everything else applied.
+    lockscreen_declined: bool = False
+
+    @property
+    def finished(self) -> bool:
+        return self.autostart_error is None and not self.lockscreen_declined
+
+
 def open_dashboard() -> None:
     webbrowser.open(DASHBOARD_URL)
 
@@ -75,6 +89,36 @@ def is_redirect_port_free(redirect_uri: str) -> bool:
         except OSError:
             return False
     return True
+
+
+def apply_options(settings: Settings, autostart: bool, sync_lock_screen: bool) -> ApplyOptionsResult:
+    """Applies the wizard's final toggles.
+
+    Mirrors the tray's own toggle (os_integration/tray.py) on purpose,
+    including uninstalling the scheduled task when lock screen sync is
+    switched off: leaving it registered would keep it firing at every logon
+    while the config claims the feature is disabled.
+
+    Blocks while the UAC prompt for the scheduled task is up, so callers must
+    keep it off any UI thread.
+    """
+    if autostart:
+        try:
+            install_autostart()
+        except OSError as exc:
+            logger.error("Autostart install failed: %s", exc)
+            return ApplyOptionsResult(autostart_error=str(exc))
+
+    if sync_lock_screen and not settings.sync_lock_screen:
+        if not (lockscreen.is_task_installed() or lockscreen.install_task()):
+            logger.warning("Lock screen sync not enabled: task installation was declined or failed")
+            return ApplyOptionsResult(lockscreen_declined=True)
+    elif settings.sync_lock_screen and not sync_lock_screen:
+        lockscreen.uninstall_task()
+
+    settings.sync_lock_screen = sync_lock_screen
+    save_settings(settings)
+    return ApplyOptionsResult()
 
 
 def save_client_id(settings: Settings, raw_client_id: str) -> None:

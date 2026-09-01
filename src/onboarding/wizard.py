@@ -2,7 +2,7 @@ import logging
 import threading
 from typing import Callable, Optional
 
-from src.config.settings import Settings, save_settings
+from src.config.settings import Settings
 from src.onboarding import steps
 from src.onboarding.state import (
     OnboardingStep,
@@ -231,27 +231,37 @@ class _TkWizard:
         else:
             self._info("Conexão OK. Nada tocando no momento.", error=False)
 
-    def _apply_options(self) -> bool:
-        from src.os_integration import lockscreen
-        from src.os_integration.autostart import install_autostart
+    def _on_apply_options(self) -> None:
+        # Off the Tk thread: installing the lock screen task blocks on a UAC
+        # prompt, which would freeze the window like any other blocking call.
+        self._run_in_background(
+            action=lambda: steps.apply_options(
+                self._settings,
+                autostart=self._autostart_var.get(),
+                sync_lock_screen=self._lockscreen_var.get(),
+            ),
+            button=self._next_button,
+            busy_text="Aplicando as opções...",
+            on_success=self._options_applied,
+        )
 
-        if self._autostart_var.get():
-            try:
-                install_autostart()
-            except OSError as exc:
-                logger.error("Autostart install failed: %s", exc)
-                self._info(f"Não consegui configurar o início automático: {exc}")
-                return False
+    def _options_applied(self, result: steps.ApplyOptionsResult) -> None:
+        if result.autostart_error is not None:
+            self._info(f"Não consegui configurar o início automático: {result.autostart_error}")
+            return
 
-        wants_lockscreen = self._lockscreen_var.get()
-        if wants_lockscreen and not self._settings.sync_lock_screen:
-            if not (lockscreen.is_task_installed() or lockscreen.install_task()):
-                self._info("Sincronização da tela de bloqueio não foi autorizada. O resto está configurado.")
-                return True
+        if result.lockscreen_declined:
+            # Stay on this step instead of closing, or the message would be
+            # destroyed along with the window before it could be read.
+            self._lockscreen_var.set(False)
+            self._info(
+                "Sincronização da tela de bloqueio não foi autorizada; desmarquei a opção. "
+                "Clique em Concluir para finalizar."
+            )
+            return
 
-        self._settings.sync_lock_screen = wants_lockscreen
-        save_settings(self._settings)
-        return True
+        self._completed = True
+        self._root.destroy()
 
     # ---- navigation ---------------------------------------------------
 
@@ -270,9 +280,7 @@ class _TkWizard:
             return
 
         if self._step is OnboardingStep.OPTIONS:
-            if self._apply_options():
-                self._completed = True
-                self._root.destroy()
+            self._on_apply_options()
             return
 
         self._step = next_step(self._step)
