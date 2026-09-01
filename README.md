@@ -1,0 +1,77 @@
+# Spotify Dynamic Wallpaper Engine
+
+App de bandeja pro Windows. Define o wallpaper da área de trabalho (e opcionalmente a tela de bloqueio) como a capa do álbum que está tocando no Spotify.
+
+## Como funciona
+
+**Duas fontes, híbrido:**
+
+- **SMTC (Windows Media Session)** — com o app desktop do Spotify aberto, lê identidade de faixa/álbum direto da sessão de mídia do Windows (`Windows.Media.Control`), zero chamada de rede, quase instantâneo. Só enxerga reprodução local no desktop, não celular/Connect/outros dispositivos.
+- **API Web do Spotify** — fallback quando o Spotify desktop está fechado (cobre celular/Connect), e usada uma vez por álbum novo (detectado via SMTC) pra buscar o `album_id` real + arte em alta resolução. A arte é **sempre** a imagem oficial do Spotify — a thumbnail do próprio SMTC (300x300, baixa resolução) nunca é renderizada.
+
+**Pré-busca da tracklist:** resolver um álbum também busca a lista completa de faixas dele numa chamada extra, indexada por artista+nome. Pular pra qualquer outra faixa desse álbum — mesmo uma nunca tocada antes — é reconhecido na hora, sem nova chamada.
+
+**Ciente da tela bloqueada:** estação bloqueada + Spotify desktop fechado → polling para por completo, zero requisição desperdiçada. Bloqueada + Spotify ainda tocando → SMTC continua funcionando (é grátis de qualquer forma).
+
+**Cache:** o fundo composto de cada álbum (arte + sombra + cantos arredondados) é renderizado uma vez e cacheado sob o `album_id` real do Spotify em `%LOCALAPPDATA%\SpotifyWallpaperEngine\cache\album_bases\`. Trocas de faixa dentro de um álbum já cacheado só redesenham o texto sobreposto.
+
+## Requisitos
+
+- Windows 10/11
+- Python 3.11+
+- Um app Spotify registrado em [developer.spotify.com](https://developer.spotify.com/dashboard) (fluxo PKCE, sem client secret) com redirect URI `http://127.0.0.1:8888/callback`
+
+## Instalação
+
+```
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+python main.py
+```
+
+O primeiro run cria `%APPDATA%\SpotifyWallpaperEngine\config.json` e imprime uma mensagem pedindo o `client_id` do seu app Spotify. Edite esse arquivo e rode de novo — vai abrir o navegador pro login OAuth. O token fica cacheado no Windows Credential Manager, não em disco.
+
+## Configuração (`config.json`)
+
+| Campo | Padrão | Significado |
+|---|---|---|
+| `client_id` | `""` | Client ID do app Spotify (obrigatório) |
+| `redirect_uri` | `http://127.0.0.1:8888/callback` | Precisa bater com o redirect URI registrado no app Spotify |
+| `poll_interval_seconds` | `4.0` | Tick local barato: com que frequência o poller reavalia estado de bloqueio / cache do SMTC. Sem custo de rede. |
+| `use_smtc` | `true` | Detecta tocando agora via SMTC do Windows em vez de polling puro na API. Defina `false` pra forçar polling puro via API Web. |
+| `fallback_poll_interval_seconds` | `25.0` | Com que frequência chamar a API Web quando o SMTC não tem sessão (reprodução via Connect/celular, ou Spotify desktop fechado). Mantenha bem acima de alguns segundos — valor baixo demais arrisca o rate limit (429) do Spotify. |
+| `art_size_pct` | `0.68` | Tamanho da arte como fração da altura da tela |
+| `corner_radius` | `16` | Arredondamento dos cantos da arte, px |
+| `shadow_blur_radius` | `24` | Blur da sombra, px |
+| `show_track_info` | `true` | Desenha texto de faixa/artista embaixo da arte |
+| `sync_lock_screen` | `false` | Também aplica o wallpaper na tela de bloqueio real do Windows (exige uma Scheduled Task elevada via UAC, uma vez só) |
+| `log_level` | `"INFO"` | Nível de log |
+
+## Flags de CLI
+
+```
+python main.py --install-autostart      # registra no HKCU Run
+python main.py --uninstall-autostart
+python main.py --apply-lockscreen       # interno: chamado pela scheduled task, não usar manualmente
+```
+
+## Menu da bandeja
+
+Pause/Resume, Force Sync, alternar Sync Lock Screen, Re-authenticate (aparece em erro de auth), Exit.
+
+## Testes
+
+```
+.venv\Scripts\pytest
+```
+
+## Estrutura do projeto
+
+```
+main.py                    entrypoint, wiring
+src/config/                dataclass Settings, paths (%APPDATA%/%LOCALAPPDATA%)
+src/spotify/                client da API Web, poller (gate híbrido SMTC/API), auth
+src/os_integration/        watcher SMTC, detecção de bloqueio, wallpaper/lockscreen/autostart, tray
+src/graphics/               renderização da arte pro wallpaper (Pillow)
+tests/
+```
