@@ -29,7 +29,16 @@ python -m venv .venv
 python main.py
 ```
 
-O primeiro run cria `%APPDATA%\SpotifyWallpaperEngine\config.json` e imprime uma mensagem pedindo o `client_id` do seu app Spotify. Edite esse arquivo e rode de novo — vai abrir o navegador pro login OAuth. O token fica cacheado no Windows Credential Manager, não em disco.
+Na primeira execução abre um assistente de configuração que conduz os 6 passos:
+
+1. **Criar o app no Spotify** — abre o painel de desenvolvedor no navegador
+2. **Cadastrar o Redirect URI** — mostra `http://127.0.0.1:8888/callback` com botão de copiar (sem esse passo o login falha; é o erro mais comum)
+3. **Informar o Client ID** — cole os 32 caracteres do painel; é validado e gravado no `config.json`
+4. **Entrar na conta** — abre o login OAuth (PKCE) no navegador; o token vai pro Windows Credential Manager, não pra disco
+5. **Verificar** — uma consulta ao Spotify confirmando que está tudo funcionando
+6. **Opções finais** — iniciar com o Windows e/ou sincronizar a tela de bloqueio
+
+Pra rodar de novo depois (trocar de conta, token revogado): `python main.py --setup`, ou o item **Setup...** no menu da bandeja.
 
 ## Configuração (`config.json`)
 
@@ -50,6 +59,7 @@ O primeiro run cria `%APPDATA%\SpotifyWallpaperEngine\config.json` e imprime uma
 ## Flags de CLI
 
 ```
+python main.py --setup                  # reabre o assistente de configuração
 python main.py --install-autostart      # registra no HKCU Run
 python main.py --uninstall-autostart
 python main.py --apply-lockscreen       # interno: chamado pela scheduled task, não usar manualmente
@@ -57,7 +67,7 @@ python main.py --apply-lockscreen       # interno: chamado pela scheduled task, 
 
 ## Menu da bandeja
 
-Pause/Resume, Force Sync, alternar Sync Lock Screen, Re-authenticate (aparece em erro de auth), Exit.
+Pause/Resume, Force Sync, alternar Sync Lock Screen, Re-authenticate (aparece em erro de auth), Setup..., Exit.
 
 ## Testes
 
@@ -70,8 +80,9 @@ Pause/Resume, Force Sync, alternar Sync Lock Screen, Re-authenticate (aparece em
 ```
 main.py                    entrypoint, wiring
 src/config/                dataclass Settings, paths (%APPDATA%/%LOCALAPPDATA%)
-src/spotify/                client da API Web, poller (gate híbrido SMTC/API), auth
+src/onboarding/            assistente de configuração (estado puro, ações, UI Tkinter)
+src/spotify/               client da API Web, poller (gate híbrido SMTC/API), auth
 src/os_integration/        watcher SMTC, detecção de bloqueio, wallpaper/lockscreen/autostart, tray
-src/graphics/               renderização da arte pro wallpaper (Pillow)
+src/graphics/              renderização da arte pro wallpaper (Pillow)
 tests/
 ```

@@ -1,3 +1,5 @@
+import logging
+
 from src.config.settings import Settings
 from src.os_integration.smtc import SmtcNowPlaying
 from src.spotify import poller as poller_module
@@ -127,3 +129,49 @@ def test_unresolved_track_upgrades_to_good_image_once_resolution_succeeds(monkey
 
     assert len(rendered) == 1
     assert rendered[0].album_id == "real_album_1"
+
+
+def test_unresolved_track_is_logged_once_per_track(monkeypatch, caplog):
+    # The skip-without-render path used to be completely silent, so a frozen
+    # wallpaper left no trace at all in the log. It must say so - but only
+    # once per track, since this cycle repeats every poll_interval_seconds.
+    monkeypatch.setattr(poller_module, "fetch_now_playing", lambda client: None)
+
+    poller, rendered = _make_poller(monkeypatch, fallback_interval=9999.0)
+    poller._last_web_api_at = 0.0  # still throttled -> nothing can resolve
+
+    with caplog.at_level(logging.INFO, logger="src.spotify.poller"):
+        poller._run_one_cycle()
+        poller._run_one_cycle()
+
+    assert rendered == []
+    unresolved = [r for r in caplog.records if "no Spotify art resolved yet" in r.message]
+    assert len(unresolved) == 1
+    assert "Mattel" in unresolved[0].getMessage()
+
+
+def test_each_unresolved_track_gets_its_own_log_line(monkeypatch, caplog):
+    monkeypatch.setattr(poller_module, "fetch_now_playing", lambda client: None)
+
+    poller, _ = _make_poller(monkeypatch, fallback_interval=9999.0)
+    poller._last_web_api_at = 0.0
+
+    with caplog.at_level(logging.INFO, logger="src.spotify.poller"):
+        poller._run_one_cycle()
+        poller._smtc._snapshot = _smtc_snapshot(title="Nobody")
+        poller._run_one_cycle()
+
+    unresolved = [r.getMessage() for r in caplog.records if "no Spotify art resolved yet" in r.message]
+    assert len(unresolved) == 2
+    assert "Mattel" in unresolved[0]
+    assert "Nobody" in unresolved[1]
+
+
+def test_successful_resolution_logs_nothing_about_being_unresolved(monkeypatch, caplog):
+    poller, rendered = _make_poller(monkeypatch, fetch_result_or_exc=_web_api_now_playing())
+
+    with caplog.at_level(logging.INFO, logger="src.spotify.poller"):
+        poller._run_one_cycle()
+
+    assert len(rendered) == 1
+    assert [r for r in caplog.records if "no Spotify art resolved yet" in r.message] == []

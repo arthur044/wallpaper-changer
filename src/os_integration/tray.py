@@ -1,6 +1,6 @@
 import logging
 import threading
-from typing import Callable, Tuple
+from typing import Callable, Optional, Tuple
 
 import pystray
 from PIL import Image, ImageDraw
@@ -33,11 +33,16 @@ class TrayApp:
         settings: Settings,
         on_reauthenticate: Callable[[], None],
         on_exit: Callable[[], None],
+        on_setup: Callable[[], None],
     ):
         self._app_state = app_state
         self._settings = settings
         self._on_reauthenticate = on_reauthenticate
         self._on_exit = on_exit
+        # Deliberately not named _on_setup: that name belongs to the pystray
+        # setup hook below, and an instance attribute would shadow it.
+        self._launch_wizard = on_setup
+        self._wizard_thread: Optional[threading.Thread] = None
         self._icon = pystray.Icon(
             "spotify_wallpaper_engine",
             _build_icon_image(_ICON_COLORS[AppStatus.RUNNING]),
@@ -59,6 +64,7 @@ class TrayApp:
                 self._reauthenticate,
                 visible=lambda item: self._app_state.snapshot().status == AppStatus.ERROR,
             ),
+            pystray.MenuItem("Setup...", self._setup),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Exit", self._exit),
         )
@@ -75,6 +81,18 @@ class TrayApp:
 
     def _reauthenticate(self, icon, item) -> None:
         threading.Thread(target=self._on_reauthenticate, daemon=True).start()
+
+    def _setup(self, icon, item) -> None:
+        # Off the tray thread: the wizard owns its own Tk mainloop and would
+        # otherwise block the tray's message pump for as long as it's open.
+        # One at a time, though - two concurrent Tk() roots on two threads is
+        # not a supported tkinter configuration and can take the process down.
+        if self._wizard_thread is not None and self._wizard_thread.is_alive():
+            logger.info("Setup wizard is already open, ignoring the second request")
+            return
+
+        self._wizard_thread = threading.Thread(target=self._launch_wizard, daemon=True, name="wizard")
+        self._wizard_thread.start()
 
     def _toggle_lock_sync(self, icon, item) -> None:
         threading.Thread(target=self._apply_lock_sync_toggle, daemon=True).start()

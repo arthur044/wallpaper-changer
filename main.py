@@ -8,6 +8,8 @@ from src.config.settings import load_settings
 from src.graphics.renderer import render_for_now_playing
 from src.os_integration import lockscreen
 from src.os_integration.autostart import install_autostart, uninstall_autostart
+from src.onboarding.state import needs_onboarding, should_abort_after_wizard
+from src.onboarding.wizard import run_wizard
 from src.os_integration.session_lock import is_workstation_locked
 from src.os_integration.smtc import SmtcWatcher
 from src.os_integration.tray import TrayApp
@@ -49,6 +51,7 @@ def main() -> int:
     parser.add_argument("--install-autostart", action="store_true")
     parser.add_argument("--uninstall-autostart", action="store_true")
     parser.add_argument("--apply-lockscreen", action="store_true")
+    parser.add_argument("--setup", action="store_true", help="Re-run the guided setup wizard")
     args = parser.parse_args()
 
     settings = load_settings()
@@ -67,13 +70,14 @@ def main() -> int:
         print("Autostart removed.")
         return 0
 
-    if not settings.client_id:
-        print(
-            "No Spotify client_id configured. Edit config.json "
-            "(%APPDATA%\\SpotifyWallpaperEngine\\config.json) with your Spotify app's "
-            "Client ID, then run again."
-        )
-        return 1
+    if args.setup or needs_onboarding(settings.client_id):
+        # First run (or an explicit --setup) walks the user through registering
+        # a Spotify app, the redirect URI, the client id, the OAuth login, a
+        # connection check, and the optional autostart/lock screen toggles.
+        completed = run_wizard(settings)
+        if should_abort_after_wizard(completed, settings.client_id):
+            logger.info("Setup cancelled and no client_id configured; nothing to run")
+            return 1
 
     app_state = AppState()
 
@@ -123,12 +127,30 @@ def main() -> int:
         except Exception as exc:  # noqa: BLE001 - manual re-auth failures must not crash the tray
             logger.exception("Manual re-authentication failed: %s", exc)
 
+    def on_setup() -> None:
+        try:
+            if run_wizard(settings):
+                poller.set_client(_build_client(settings))
+                app_state.clear_error()
+        except Exception as exc:  # noqa: BLE001 - the wizard must never crash the tray
+            logger.exception("Setup wizard failed: %s", exc)
+            # Surface it on the tray icon too, the way auth expiry already is:
+            # a silent failure here leaves the poller on a stale client and the
+            # wallpaper just quietly stops updating.
+            app_state.set_error(f"Setup failed: {exc}")
+
     def on_exit() -> None:
         logger.info("Exiting Spotify Wallpaper Engine")
         if smtc_watcher is not None:
             smtc_watcher.stop()
 
-    tray = TrayApp(app_state, settings, on_reauthenticate=on_reauthenticate, on_exit=on_exit)
+    tray = TrayApp(
+        app_state,
+        settings,
+        on_reauthenticate=on_reauthenticate,
+        on_exit=on_exit,
+        on_setup=on_setup,
+    )
     tray.run()  # blocks until Exit is clicked
 
     return 0
