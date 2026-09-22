@@ -15,13 +15,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import io.github.arthur044.wallpaperchanger.debug.AuthDebugScreen
+import io.github.arthur044.wallpaperchanger.debug.MediaSpikeScreen
 import io.github.arthur044.wallpaperchanger.onboarding.OnboardingScreen
 import io.github.arthur044.wallpaperchanger.ui.AppTheme
 import io.github.arthur044.wallpaperchanger.ui.MainScreen
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-private enum class Screen { ONBOARDING, MAIN, DEBUG }
+private enum class Screen { ONBOARDING, MAIN, DEBUG, SPIKE }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,7 +58,11 @@ class MainActivity : ComponentActivity() {
                         )
                         Screen.DEBUG -> {
                             BackHandler { screen = Screen.MAIN }
-                            AuthDebugScreen(container, modifier)
+                            AuthDebugScreen(container, onOpenSpike = { screen = Screen.SPIKE }, modifier = modifier)
+                        }
+                        Screen.SPIKE -> {
+                            BackHandler { screen = Screen.DEBUG }
+                            MediaSpikeScreen(container, modifier)
                         }
                     }
                 }
