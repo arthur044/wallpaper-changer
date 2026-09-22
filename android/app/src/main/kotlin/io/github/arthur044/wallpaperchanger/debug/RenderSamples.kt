@@ -44,6 +44,28 @@ suspend fun renderSamples(context: Context, container: AppContainer): List<File>
     }
 }
 
+/**
+ * TEMPORARY (M6): composes the current track for this device through the
+ * album cache and reports whether the base was reused.
+ */
+suspend fun composeCurrent(context: Context, container: AppContainer): String {
+    val playing = checkNotNull(container.spotifyApi.currentlyPlaying()) { "Nothing is playing" }
+    val spec = canvasSpec(context.screenMetrics())
+    val settings = container.settings.settings.first()
+
+    val started = System.nanoTime()
+    val result = container.composer.compose(playing, spec, settings)
+    val elapsedMs = (System.nanoTime() - started) / 1_000_000
+
+    withContext(Dispatchers.IO) {
+        val dir = File(context.cacheDir, "render_samples").apply { mkdirs() }
+        save(result.bitmap, File(dir, "composto.png"))
+    }
+    result.bitmap.recycle()
+    val outcome = if (result.reusedBase) "ACERTO (base reaproveitada, 0 downloads)" else "FALHA (baixou a capa e desenhou a base)"
+    return "$outcome · $elapsedMs ms · ${playing.trackName}"
+}
+
 // Phones show the bitmap as-is; a square canvas is center-cropped to the real
 // screen in each orientation, which is what the system displays.
 private fun viewsOf(bitmap: Bitmap, screen: ScreenMetrics): List<Pair<String, Bitmap>> {

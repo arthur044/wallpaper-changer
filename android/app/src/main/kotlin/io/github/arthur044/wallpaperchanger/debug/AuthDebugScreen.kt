@@ -117,6 +117,9 @@ fun AuthDebugScreen(container: AppContainer, modifier: Modifier = Modifier) {
                     "${files.size} PNGs em ${files.firstOrNull()?.parent}"
                 }
             }) { Text("Amostras de render") }
+            Button(onClick = { act("Compor (cache)") { composeCurrent(context, container) } }) {
+                Text("Compor (cache)")
+            }
         }
 
         log.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }

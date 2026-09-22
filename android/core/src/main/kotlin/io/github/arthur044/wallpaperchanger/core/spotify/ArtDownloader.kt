@@ -16,8 +16,8 @@ import java.io.IOException
 class ArtDownloader(
     private val http: OkHttpClient = SpotifyApi.defaultHttpClient(),
     private val maxBytes: Long = DEFAULT_MAX_BYTES,
-) {
-    suspend fun download(url: String): ByteArray {
+) : ArtSource {
+    override suspend fun download(url: String): ByteArray {
         val httpUrl = url.toHttpUrlOrNull() ?: throw TransientNetworkException("Invalid art URL: $url")
         val response = try {
             http.newCall(Request.Builder().url(httpUrl).build()).executeAsync()
