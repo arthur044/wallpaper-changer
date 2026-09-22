@@ -49,6 +49,7 @@ class SyncEngine(
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private val mutableStatus = MutableStateFlow<SyncStatus>(SyncStatus.Starting)
     private var lastRenderedTrackId: String? = null
+    private var undrawableTrackId: String? = null
     private var memoryLoaded = false
     private val redrawPending = AtomicBoolean(false)
     private val latestLocal = AtomicReference<LocalTrack?>(null)
@@ -93,8 +94,25 @@ class SyncEngine(
         if (status.value is SyncStatus.Retrying) syncNow()
     }
 
-    /** One poll. @return how long to wait before the next, or null to stop. */
-    internal suspend fun runOnce(): Duration? {
+    /**
+     * One poll, with a net under it. @return how long to wait before the next,
+     * or null to stop.
+     *
+     * Anything the cycle doesn't model (a disk error from the settings store, a
+     * bug) would otherwise escape [run] and take the whole service down with it,
+     * silently: the "why it stopped" notification only fires on a clean stop.
+     */
+    internal suspend fun runOnce(): Duration? = try {
+        pollOnce()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        backoff = nextBackoff(backoff)
+        mutableStatus.value = SyncStatus.Failing(backoff, e)
+        backoff
+    }
+
+    private suspend fun pollOnce(): Duration? {
         if (!memoryLoaded) {
             lastRenderedTrackId = memory.lastRenderedTrackId()
             memoryLoaded = true
@@ -229,6 +247,7 @@ class SyncEngine(
 
     /** @return false when the wallpaper can never be changed, so polling should stop. */
     private suspend fun render(nowPlaying: NowPlaying): Boolean {
+        if (nowPlaying.trackId == undrawableTrackId) return true // already tried; the status says why
         try {
             sink.show(nowPlaying)
         } catch (e: CancellationException) {
@@ -236,6 +255,14 @@ class SyncEngine(
         } catch (e: WallpaperBlockedException) {
             mutableStatus.value = SyncStatus.Blocked(e.message.orEmpty())
             return false
+        } catch (e: TrackNotDrawableException) {
+            // Nothing to draw for this one, ever. Remembered as undrawable rather
+            // than as rendered: the next polls skip it instead of failing on it
+            // again, and the status keeps saying it couldn't be drawn instead of
+            // claiming it is on the wallpaper.
+            undrawableTrackId = nowPlaying.trackId
+            mutableStatus.value = SyncStatus.RenderFailed(nowPlaying, e)
+            return true
         } catch (e: Exception) {
             // Left unmarked, so the next poll sees a new track and tries again.
             mutableStatus.value = SyncStatus.RenderFailed(nowPlaying, e)

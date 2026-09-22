@@ -154,6 +154,34 @@ class SyncEngineTest {
     }
 
     @Test
+    fun `an unexpected failure keeps the loop alive instead of killing it`() = runTest {
+        val engine = engine()
+        // Not one of the three Spotify errors: a disk error from the settings
+        // store, or a bug. Escaping run() would take the service down with it.
+        source.playing = { throw IllegalStateException("unexpected") }
+        backgroundScope.launch { engine.run() }
+        runCurrent()
+
+        assertTrue(engine.status.value is SyncStatus.Failing, "got ${engine.status.value}")
+
+        source.playing = { airbag }
+        advanceTimeBy(6.seconds) // backed off 5s, then tried again and recovered
+        assertEquals(listOf("t1"), sink.shown)
+    }
+
+    @Test
+    fun `a track that can never be drawn is skipped, not retried forever`() = runTest {
+        val engine = engine()
+        source.playing = { airbag }
+        sink.undrawable = true
+
+        repeat(3) { cycle(engine) }
+
+        assertEquals(1, sink.attempts) // tried once, then moved on
+        assertTrue(engine.status.value is SyncStatus.RenderFailed)
+    }
+
+    @Test
     fun `cancellation inside the render is not swallowed`() = runTest {
         val engine = engine()
         source.playing = { airbag }
@@ -344,10 +372,15 @@ class SyncEngineTest {
         var failures = 0
         var cancel = false
         var blocked = false
+        var undrawable = false
+        var attempts = 0
+            private set
 
         override suspend fun show(nowPlaying: NowPlaying) {
+            attempts++
             if (cancel) throw CancellationException("service stopped")
             if (blocked) throw WallpaperBlockedException("device policy")
+            if (undrawable) throw TrackNotDrawableException("no art for this album")
             if (failures > 0) {
                 failures--
                 throw IllegalStateException("art download failed")

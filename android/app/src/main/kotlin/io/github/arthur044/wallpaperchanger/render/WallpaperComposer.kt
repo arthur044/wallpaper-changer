@@ -7,6 +7,7 @@ import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.render.CanvasSpec
 import io.github.arthur044.wallpaperchanger.core.render.computeLayout
 import io.github.arthur044.wallpaperchanger.core.spotify.ArtSource
+import io.github.arthur044.wallpaperchanger.core.sync.TrackNotDrawableException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -26,7 +27,8 @@ class WallpaperComposer(
     private val cpu: CoroutineDispatcher = Dispatchers.Default,
 ) {
     /**
-     * @throws IllegalArgumentException if [nowPlaying] has no album, or no art on a cache miss.
+     * @throws IllegalArgumentException if [nowPlaying] has no album.
+     * @throws TrackNotDrawableException if it has no art and no base is cached.
      * @throws io.github.arthur044.wallpaperchanger.core.spotify.TransientNetworkException if the art download fails.
      */
     suspend fun compose(nowPlaying: NowPlaying, canvas: CanvasSpec, settings: Settings): ComposedWallpaper {
@@ -53,7 +55,11 @@ class WallpaperComposer(
         canvas: CanvasSpec,
         settings: Settings,
     ): CachedBase {
-        val url = requireNotNull(nowPlaying.artUrl) { "No album art for album ${nowPlaying.albumId}" }
+        // Spotify does return albums with no images at all. Nothing to draw now
+        // and nothing to retry, so say which it is instead of failing like a
+        // download would: the engine skips the track rather than looping on it.
+        val url = nowPlaying.artUrl
+            ?: throw TrackNotDrawableException("Album ${nowPlaying.albumId} has no art")
         val bytes = art.download(url)
         val base = withContext(cpu) {
             val image = renderer.decodeArt(bytes)

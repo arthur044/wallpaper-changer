@@ -17,6 +17,7 @@ fun SyncStatus.describe(context: Context): String = when (this) {
     is SyncStatus.RenderFailed ->
         context.getString(R.string.sync_status_render_failed, nowPlaying.trackName.orEmpty())
     is SyncStatus.Retrying -> context.getString(R.string.sync_status_retrying, retryIn.inWholeSeconds.toInt())
+    is SyncStatus.Failing -> context.getString(R.string.sync_status_failing, retryIn.inWholeSeconds.toInt())
     SyncStatus.SignedOut -> context.getString(R.string.sync_status_signed_out)
     is SyncStatus.Blocked -> context.getString(R.string.sync_status_blocked)
 }

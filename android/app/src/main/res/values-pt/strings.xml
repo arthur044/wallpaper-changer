@@ -11,6 +11,7 @@
     <string name="sync_status_retrying">Spotify inacessível, tentando de novo em %1$d s</string>
     <string name="sync_status_signed_out">Sessão do Spotify expirou, entre de novo</string>
     <string name="sync_status_blocked">Este aparelho não permite trocar o wallpaper</string>
+    <string name="sync_status_failing">Algo deu errado aqui, tentando de novo em %1$d s</string>
     <string name="sync_status_off">Sincronização desligada</string>
 
     <string name="main_sync_switch">Acompanhar o Spotify</string>

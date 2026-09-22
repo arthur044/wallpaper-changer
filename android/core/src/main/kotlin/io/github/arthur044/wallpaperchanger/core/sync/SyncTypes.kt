@@ -37,6 +37,12 @@ fun interface AlbumTracksSource {
 /** The wallpaper can't be changed on this device (unsupported, or a policy forbids it). */
 class WallpaperBlockedException(message: String) : Exception(message)
 
+/**
+ * This track can never be drawn (no album art at all), unlike a download that
+ * merely failed. The engine skips it instead of retrying it on every poll.
+ */
+class TrackNotDrawableException(message: String) : Exception(message)
+
 /** Which track is on the wallpaper, kept across process restarts. */
 interface RenderMemory {
     suspend fun lastRenderedTrackId(): String?
@@ -68,6 +74,13 @@ sealed interface SyncStatus {
 
     /** Spotify was unreachable or rate limited us; the next poll is in [retryIn]. */
     data class Retrying(val retryIn: Duration, val cause: Exception) : SyncStatus
+
+    /**
+     * Something the loop doesn't model went wrong (a disk error reading the
+     * settings, a bug). Syncing keeps going with backoff instead of dying
+     * silently, and the status says so rather than blaming the network.
+     */
+    data class Failing(val retryIn: Duration, val cause: Throwable) : SyncStatus
 
     /** The session was revoked: syncing stopped until the user logs in again. */
     data object SignedOut : SyncStatus
