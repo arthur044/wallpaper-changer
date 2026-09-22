@@ -1,6 +1,7 @@
 package io.github.arthur044.wallpaperchanger.core.sync
 
 import io.github.arthur044.wallpaperchanger.core.NowPlaying
+import io.github.arthur044.wallpaperchanger.core.spotify.AlbumTrack
 import kotlin.time.Duration
 
 /** Where the engine learns what is playing (the Web API, in the base path). */
@@ -20,6 +21,17 @@ fun interface NowPlayingSource {
  */
 fun interface WallpaperSink {
     suspend fun show(nowPlaying: NowPlaying)
+}
+
+/**
+ * What Spotify's own session on this phone reports. It is free and instant, but
+ * it only knows about playback on this device, so it is never the only source.
+ */
+data class LocalTrack(val title: String?, val artist: String?, val isPlaying: Boolean)
+
+/** The tracks of an album, used to pre-warm the index after resolving one track. */
+fun interface AlbumTracksSource {
+    suspend fun albumTracks(albumId: String): List<AlbumTrack>
 }
 
 /** The wallpaper can't be changed on this device (unsupported, or a policy forbids it). */

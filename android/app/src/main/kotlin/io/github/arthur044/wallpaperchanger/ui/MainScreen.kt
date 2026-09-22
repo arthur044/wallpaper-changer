@@ -1,6 +1,7 @@
 package io.github.arthur044.wallpaperchanger.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.os.Build
@@ -19,9 +20,11 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.github.arthur044.wallpaperchanger.AppContainer
 import io.github.arthur044.wallpaperchanger.core.spotify.ArtSource
 import io.github.arthur044.wallpaperchanger.core.sync.SyncStatus
+import io.github.arthur044.wallpaperchanger.media.notificationAccessGranted
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -63,6 +66,13 @@ fun MainScreen(
         }
     }
 
+    // Granted outside the app, so re-read it every time the screen comes back.
+    var notificationAccess by remember { mutableStateOf(context.notificationAccessGranted()) }
+    LifecycleResumeEffect(Unit) {
+        notificationAccess = context.notificationAccessGranted()
+        onPauseOrDispose { }
+    }
+
     val current = settings ?: return // first read of the settings file
     MainContent(
         state = MainUiState(
@@ -71,6 +81,7 @@ fun MainScreen(
             signedIn = signedIn,
             settings = current,
             art = art,
+            notificationAccess = notificationAccess,
         ),
         callbacks = MainCallbacks(
             onSyncEnabledChange = { on ->
@@ -84,6 +95,14 @@ fun MainScreen(
                 }
             },
             onSettingsChange = { change -> scope.launch { container.settings.update(change) } },
+            onInstantChange = { on -> scope.launch { container.settings.update { it.copy(useMediaSession = on) } } },
+            onGrantNotificationAccess = {
+                scope.launch { container.settings.update { it.copy(useMediaSession = true) } }
+                context.startActivity(
+                    Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            },
             onConnect = onConnect,
             onOpenDebug = onOpenDebug,
         ),

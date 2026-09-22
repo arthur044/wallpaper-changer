@@ -28,6 +28,9 @@
     <string name="main_section_advanced">Avançado</string>
     <string name="main_poll_interval">Consultar o Spotify a cada</string>
     <string name="main_poll_interval_hint">Menor reage mais rápido, mas abaixo de 20 s o Spotify pode limitar.</string>
+    <string name="main_media_session">Reagir na hora</string>
+    <string name="main_media_session_hint">Usa a sessão do próprio Spotify neste celular, então o wallpaper muda junto com a música em vez de esperar a próxima consulta, e consulta o Spotify bem menos. Precisa de acesso a notificações e só enxerga o que toca neste celular: em outro aparelho, volta a consultar o Spotify.</string>
+    <string name="main_media_session_grant">Dar acesso a notificações</string>
     <string name="main_debug_tools">Ferramentas de debug</string>
 
     <string name="onb_step_progress">Passo %1$d de %2$d</string>

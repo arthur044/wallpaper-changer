@@ -75,6 +75,7 @@ class AppContainer(app: Application) {
         sink = wallpaperUpdater,
         settings = settings.settings,
         memory = renderMemory,
+        albumTracks = { albumId -> spotifyApi.albumTracks(albumId) },
     )
 
     val syncController = SyncController(app, settings, spotifyAuth, appScope)

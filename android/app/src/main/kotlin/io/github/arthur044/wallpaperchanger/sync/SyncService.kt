@@ -10,6 +10,9 @@ import android.util.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import io.github.arthur044.wallpaperchanger.WallpaperApp
+import io.github.arthur044.wallpaperchanger.core.sync.LocalTrack
+import io.github.arthur044.wallpaperchanger.media.MediaSessionProbe
+import io.github.arthur044.wallpaperchanger.media.notificationAccessGranted
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -17,6 +20,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -64,6 +69,7 @@ class SyncService : Service() {
     private suspend fun syncWhileScreenOn() = coroutineScope {
         launch { engine.status.collect(notifications::update) }
         launch { internetAvailableFlow().collect { online -> if (online) engine.onNetworkAvailable() } }
+        launch { followLocalSession() }
         screenOnFlow().collectLatest { on ->
             if (!on) return@collectLatest
             engine.run()
@@ -72,6 +78,26 @@ class SyncService : Service() {
             notifications.showStopped(engine.status.value)
             stopSelf()
         }
+    }
+
+    /**
+     * Feeds the engine Spotify's own session while the option is on and the
+     * user granted notification access. Turning either off tells the engine to
+     * forget it, so it goes back to polling.
+     */
+    private suspend fun followLocalSession() {
+        container.settings.settings
+            .map { it.useMediaSession }
+            .distinctUntilChanged()
+            .collectLatest { wanted ->
+                if (!wanted || !notificationAccessGranted()) {
+                    engine.onLocalTrack(null)
+                    return@collectLatest
+                }
+                MediaSessionProbe(this).snapshots().collect { snapshot ->
+                    engine.onLocalTrack(LocalTrack(snapshot.title, snapshot.artist, snapshot.isPlaying))
+                }
+            }
     }
 
     override fun onDestroy() {

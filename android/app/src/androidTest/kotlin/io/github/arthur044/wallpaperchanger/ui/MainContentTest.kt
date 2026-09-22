@@ -32,7 +32,8 @@ class MainContentTest {
         syncEnabled: Boolean = true,
         status: SyncStatus = SyncStatus.Showing(airbag),
         signedIn: Boolean = true,
-    ) = MainUiState(syncEnabled, status, signedIn, Settings())
+        settings: Settings = Settings(),
+    ) = MainUiState(syncEnabled, status, signedIn, settings)
 
     private fun show(state: MainUiState, callbacks: MainCallbacks = MainCallbacks()) {
         rule.setContent { AppTheme { MainContent(state, callbacks) } }
@@ -92,6 +93,44 @@ class MainContentTest {
 
         assertEquals(60.0, plain?.webApiPollIntervalSeconds)
         assertNull(look)
+    }
+
+    @Test
+    fun turningOnInstantWithoutAccessAsksForItInstead() {
+        var granted = false
+        var changed: Boolean? = null
+        show(
+            state().copy(notificationAccess = false),
+            MainCallbacks(onGrantNotificationAccess = { granted = true }, onInstantChange = { changed = it }),
+        )
+
+        rule.onNodeWithTag(TAG_MEDIA_SESSION).performScrollTo().performClick()
+
+        assertEquals(true, granted)
+        assertNull(changed) // the option isn't claimed to be on without the permission
+    }
+
+    @Test
+    fun withAccessTheInstantSwitchJustSetsTheOption() {
+        var changed: Boolean? = null
+        show(state().copy(notificationAccess = true), MainCallbacks(onInstantChange = { changed = it }))
+
+        rule.onNodeWithTag(TAG_MEDIA_SESSION).performScrollTo().performClick()
+
+        assertEquals(true, changed)
+    }
+
+    @Test
+    fun anOptionLeftOnWithoutAccessOffersTheWayBack() {
+        var granted = false
+        show(
+            state(settings = Settings(useMediaSession = true)).copy(notificationAccess = false),
+            MainCallbacks(onGrantNotificationAccess = { granted = true }),
+        )
+
+        rule.onNodeWithTag(TAG_GRANT_ACCESS).performScrollTo().performClick()
+
+        assertEquals(true, granted)
     }
 
     @Test

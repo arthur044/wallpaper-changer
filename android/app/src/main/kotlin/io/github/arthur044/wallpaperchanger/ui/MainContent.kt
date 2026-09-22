@@ -47,6 +47,8 @@ data class MainUiState(
     val signedIn: Boolean,
     val settings: Settings,
     val art: ImageBitmap? = null,
+    /** Whether the user granted notification access, which "react instantly" needs. */
+    val notificationAccess: Boolean = false,
 )
 
 class MainCallbacks(
@@ -56,6 +58,8 @@ class MainCallbacks(
     val onLookChange: ((Settings) -> Settings) -> Unit = {},
     /** A change that doesn't alter the picture: just saved. */
     val onSettingsChange: ((Settings) -> Settings) -> Unit = {},
+    val onInstantChange: (Boolean) -> Unit = {},
+    val onGrantNotificationAccess: () -> Unit = {},
     val onConnect: () -> Unit = {},
     val onOpenDebug: () -> Unit = {},
 )
@@ -77,6 +81,7 @@ fun MainContent(state: MainUiState, callbacks: MainCallbacks, modifier: Modifier
             if (!state.signedIn) SignedOutCard(callbacks.onConnect)
             StatusCard(state, callbacks)
             LookSection(state.settings, callbacks.onLookChange)
+            InstantSection(state, callbacks)
             AdvancedSection(state.settings, callbacks.onSettingsChange)
             TextButton(onClick = callbacks.onOpenDebug, modifier = Modifier.align(Alignment.CenterHorizontally)) {
                 Text(stringResource(R.string.main_debug_tools))
@@ -213,6 +218,30 @@ private fun AdvancedSection(settings: Settings, onSettingsChange: ((Settings) ->
 }
 
 @Composable
+private fun InstantSection(state: MainUiState, callbacks: MainCallbacks) {
+    Section(stringResource(R.string.main_media_session)) {
+        SwitchRow(
+            label = stringResource(R.string.main_media_session),
+            checked = state.settings.useMediaSession && state.notificationAccess,
+            onCheckedChange = { on ->
+                if (on && !state.notificationAccess) callbacks.onGrantNotificationAccess() else callbacks.onInstantChange(on)
+            },
+            modifier = Modifier.testTag(TAG_MEDIA_SESSION),
+        )
+        Text(
+            stringResource(R.string.main_media_session_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (state.settings.useMediaSession && !state.notificationAccess) {
+            TextButton(onClick = callbacks.onGrantNotificationAccess, modifier = Modifier.testTag(TAG_GRANT_ACCESS)) {
+                Text(stringResource(R.string.main_media_session_grant))
+            }
+        }
+    }
+}
+
+@Composable
 private fun Section(title: String, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         HorizontalDivider()
@@ -238,3 +267,5 @@ internal const val TAG_OFFSET = "offset"
 internal const val TAG_TRACK_INFO = "trackInfo"
 internal const val TAG_LOCK_SCREEN = "lockScreen"
 internal const val TAG_POLL = "pollInterval"
+internal const val TAG_MEDIA_SESSION = "mediaSession"
+internal const val TAG_GRANT_ACCESS = "grantAccess"

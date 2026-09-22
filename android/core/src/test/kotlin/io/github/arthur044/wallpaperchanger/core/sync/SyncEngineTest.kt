@@ -30,7 +30,7 @@ class SyncEngineTest {
     private val airbag = NowPlaying(true, "t1", "a1", "https://i.scdn.co/image/a1", "Airbag", "Radiohead")
     private val lucky = airbag.copy(trackId = "t2", trackName = "Lucky")
 
-    private fun TestScope.engine() = SyncEngine(source, sink, settings, memory, testScheduler.timeSource)
+    private fun TestScope.engine() = SyncEngine(source, sink, settings, memory, timeSource = testScheduler.timeSource)
 
     // One cycle, then let the wait the engine asked for pass.
     private suspend fun TestScope.cycle(engine: SyncEngine): Duration? =

@@ -30,6 +30,9 @@
     <string name="main_section_advanced">Advanced</string>
     <string name="main_poll_interval">Check Spotify every</string>
     <string name="main_poll_interval_hint">Shorter reacts faster, but Spotify may rate-limit below 20 s.</string>
+    <string name="main_media_session">React instantly</string>
+    <string name="main_media_session_hint">Uses Spotify\'s own session on this phone, so the wallpaper changes as the song does instead of up to a poll later, and asks Spotify far less often. Needs notification access, and only sees what plays on this phone: on another device it falls back to checking Spotify.</string>
+    <string name="main_media_session_grant">Grant notification access</string>
     <string name="main_debug_tools">Debug tools</string>
     <string name="value_percent" translatable="false">%1$d%%</string>
     <string name="value_signed_percent" translatable="false">%1$+d%%</string>
