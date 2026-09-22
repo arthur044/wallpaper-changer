@@ -14,8 +14,11 @@ dependencies {
     // testable here with temp files.
     implementation(libs.androidx.datastore.core)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.coroutines)
 
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.mockwebserver3.junit5)
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)

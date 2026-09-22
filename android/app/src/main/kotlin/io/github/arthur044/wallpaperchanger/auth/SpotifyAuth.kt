@@ -84,17 +84,16 @@ class SpotifyAuth(
         return LoginResult.Success
     }
 
-    override suspend fun accessToken(): String = mutex.withLock {
+    override suspend fun accessToken(forceRefresh: Boolean): String = mutex.withLock {
         val current = loadState() ?: throw AuthExpiredException("Not signed in to Spotify")
+        if (forceRefresh) current.needsTokenRefresh = true
         freshToken(current)
     }
 
-    /** Debug aid: forces the next token read to go through a refresh. */
-    suspend fun forceRefresh(): Long? = mutex.withLock {
-        val current = loadState() ?: throw AuthExpiredException("Not signed in to Spotify")
-        current.needsTokenRefresh = true
-        freshToken(current)
-        current.accessTokenExpirationTime
+    /** Debug aid: refreshes now and returns the new expiry. */
+    suspend fun forceRefresh(): Long? {
+        accessToken(forceRefresh = true)
+        return status().accessTokenExpiresAtMillis
     }
 
     suspend fun status(): AuthStatus = mutex.withLock {
