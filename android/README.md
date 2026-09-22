@@ -53,6 +53,32 @@ cd android
 `local.properties` precisa de `sdk.dir`, com o dois-pontos escapado no Windows:
 `sdk.dir=C\:/Users/<voce>/AppData/Local/Android/Sdk`.
 
+### Assinatura do APK
+
+O release é assinado com uma chave própria, descrita em `android/keystore.properties`.
+Esse arquivo e a chave **não estão no repositório** (veja o `.gitignore`); sem eles o
+projeto compila normalmente, e só o APK sai sem assinatura.
+
+```properties
+storeFile=C:/caminho/para/wallpaper-changer.jks
+keyAlias=wallpaper-changer
+storePassword=...
+keyPassword=...
+```
+
+Para criar uma chave nova:
+
+```
+keytool -genkeypair -v -keystore wallpaper-changer.jks -alias wallpaper-changer \
+  -keyalg RSA -keysize 4096 -validity 10000
+```
+
+**Guarde a chave e a senha.** O Android só aceita atualizar um app instalado se a
+assinatura for a mesma; com a chave perdida, a única saída é desinstalar e instalar de
+novo, perdendo login e configurações. Assinatura v2 e v3; o v3 permite trocar de chave no
+futuro sem quebrar atualizações. R8 continua desligado, porque AppAuth, Tink e a
+serialização precisariam de regras próprias e a build testada no aparelho é esta.
+
 ## Testes
 
 ```
