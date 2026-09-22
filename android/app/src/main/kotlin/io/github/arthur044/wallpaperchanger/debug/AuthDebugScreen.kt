@@ -24,6 +24,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import io.github.arthur044.wallpaperchanger.AppContainer
 import io.github.arthur044.wallpaperchanger.auth.AuthStatus
@@ -42,6 +43,7 @@ import java.time.ZoneId
 @Composable
 fun AuthDebugScreen(container: AppContainer, modifier: Modifier = Modifier) {
     val auth = container.spotifyAuth
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val settings by container.settings.settings.collectAsState(initial = null)
     var clientIdInput by rememberSaveable { mutableStateOf("") }
@@ -97,9 +99,10 @@ fun AuthDebugScreen(container: AppContainer, modifier: Modifier = Modifier) {
                     container.settings.update { it.copy(clientId = clientIdInput) }.clientId.let { "salvo ($it)" }
                 }
             }) { Text("Salvar Client ID") }
+            val savedClientId = settings?.clientId?.takeIf { it.isNotBlank() }
             Button(
-                enabled = !settings?.clientId.isNullOrBlank(),
-                onClick = { loginLauncher.launch(auth.authorizationIntent(settings!!.clientId)) },
+                enabled = savedClientId != null,
+                onClick = { savedClientId?.let { loginLauncher.launch(auth.authorizationIntent(it)) } },
             ) { Text("Login") }
             Button(onClick = { act("Tocando agora") { describePlayback(container.spotifyApi) } }) {
                 Text("Tocando agora")
@@ -108,6 +111,12 @@ fun AuthDebugScreen(container: AppContainer, modifier: Modifier = Modifier) {
                 act("Forçar refresh") { "nova validade ${formatTime(auth.forceRefresh())}" }
             }) { Text("Forçar refresh") }
             OutlinedButton(onClick = { act("Sair") { auth.signOut(); "sessão apagada" } }) { Text("Sair") }
+            Button(onClick = {
+                act("Amostras de render") {
+                    val files = renderSamples(context, container)
+                    "${files.size} PNGs em ${files.firstOrNull()?.parent}"
+                }
+            }) { Text("Amostras de render") }
         }
 
         log.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
