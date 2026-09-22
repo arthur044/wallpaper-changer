@@ -113,6 +113,11 @@ class SyncEngine(
         // Playing on this phone and the option is on: no poll needed at all.
         val local = latestLocal.get().takeIf { current.useMediaSession && it?.isPlaying == true }
         if (local != null) return fromLocalSession(local, interval)
+        if (current.useMediaSession && current.localOnly) {
+            // Local-only: nothing plays here, so there is nothing to ask about.
+            mutableStatus.value = SyncStatus.Idle
+            return interval
+        }
 
         if (!throttle.tryAcquire()) return interval
 

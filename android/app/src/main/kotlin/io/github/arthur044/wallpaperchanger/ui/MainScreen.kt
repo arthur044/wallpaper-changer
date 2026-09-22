@@ -95,7 +95,18 @@ fun MainScreen(
                 }
             },
             onSettingsChange = { change -> scope.launch { container.settings.update(change) } },
-            onInstantChange = { on -> scope.launch { container.settings.update { it.copy(useMediaSession = on) } } },
+            onInstantChange = { on ->
+                scope.launch {
+                    container.settings.update { it.copy(useMediaSession = on, localOnly = it.localOnly && on) }
+                    container.syncController.applyRunMode()
+                }
+            },
+            onLocalOnlyChange = { on ->
+                scope.launch {
+                    container.settings.update { it.copy(localOnly = on) }
+                    container.syncController.applyRunMode()
+                }
+            },
             onGrantNotificationAccess = {
                 scope.launch { container.settings.update { it.copy(useMediaSession = true) } }
                 context.startActivity(

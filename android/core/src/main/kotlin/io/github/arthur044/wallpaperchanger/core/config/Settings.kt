@@ -36,6 +36,10 @@ data class Settings(
     // Android only: the first-run guide was finished (optional steps may have
     // been skipped), so it isn't shown again on every launch.
     @SerialName("onboarding_done") val onboardingDone: Boolean = false,
+    // Android only: with useMediaSession on, run from the notification listener
+    // alone - no foreground service, no ongoing notification, and no polling
+    // when nothing plays on this phone.
+    @SerialName("local_only") val localOnly: Boolean = false,
 ) {
     val webApiPollInterval: Duration get() = webApiPollIntervalSeconds.seconds
 

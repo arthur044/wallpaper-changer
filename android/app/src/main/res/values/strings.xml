@@ -33,6 +33,8 @@
     <string name="main_media_session">React instantly</string>
     <string name="main_media_session_hint">Uses Spotify\'s own session on this phone, so the wallpaper changes as the song does instead of up to a poll later, and asks Spotify far less often. Needs notification access, and only sees what plays on this phone: on another device it falls back to checking Spotify.</string>
     <string name="main_media_session_grant">Grant notification access</string>
+    <string name="main_local_only">No ongoing notification</string>
+    <string name="main_local_only_hint">Drops the permanent notification and the background service: the wallpaper then follows only what plays on this phone, and stops following music played on other devices.</string>
     <string name="main_debug_tools">Debug tools</string>
     <string name="value_percent" translatable="false">%1$d%%</string>
     <string name="value_signed_percent" translatable="false">%1$+d%%</string>

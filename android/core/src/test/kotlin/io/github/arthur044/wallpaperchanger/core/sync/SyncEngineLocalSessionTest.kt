@@ -122,6 +122,33 @@ class SyncEngineLocalSessionTest {
     }
 
     @Test
+    fun `local-only never asks Spotify about other devices`() = runTest {
+        settings.value = Settings(useMediaSession = true, localOnly = true)
+        val engine = engine()
+        source.playing = { apiSaysAirbag }
+
+        engine.onLocalTrack(LocalTrack("In Excelsis", "ANGRA", isPlaying = false))
+        engine.runOnce()
+
+        assertEquals(0, source.calls)
+        assertTrue(sink.shown.isEmpty())
+        assertEquals(SyncStatus.Idle, engine.status.value)
+    }
+
+    @Test
+    fun `local-only still resolves albums for what plays here`() = runTest {
+        settings.value = Settings(useMediaSession = true, localOnly = true)
+        val engine = engine()
+        source.playing = { apiSaysAirbag }
+
+        engine.onLocalTrack(airbagLocally)
+        engine.runOnce()
+
+        assertEquals(listOf("radiohead::airbag"), sink.shown)
+        assertEquals(1, source.calls)
+    }
+
+    @Test
     fun `with the option off the local session is ignored`() = runTest {
         settings.value = Settings(useMediaSession = false)
         val engine = engine()

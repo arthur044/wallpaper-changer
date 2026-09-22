@@ -59,6 +59,7 @@ class MainCallbacks(
     /** A change that doesn't alter the picture: just saved. */
     val onSettingsChange: ((Settings) -> Settings) -> Unit = {},
     val onInstantChange: (Boolean) -> Unit = {},
+    val onLocalOnlyChange: (Boolean) -> Unit = {},
     val onGrantNotificationAccess: () -> Unit = {},
     val onConnect: () -> Unit = {},
     val onOpenDebug: () -> Unit = {},
@@ -238,6 +239,20 @@ private fun InstantSection(state: MainUiState, callbacks: MainCallbacks) {
                 Text(stringResource(R.string.main_media_session_grant))
             }
         }
+        // Only offered once the instant path is actually working: it is what carries the sync.
+        if (state.settings.useMediaSession && state.notificationAccess) {
+            SwitchRow(
+                label = stringResource(R.string.main_local_only),
+                checked = state.settings.localOnly,
+                onCheckedChange = callbacks.onLocalOnlyChange,
+                modifier = Modifier.testTag(TAG_LOCAL_ONLY),
+            )
+            Text(
+                stringResource(R.string.main_local_only_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -269,3 +284,4 @@ internal const val TAG_LOCK_SCREEN = "lockScreen"
 internal const val TAG_POLL = "pollInterval"
 internal const val TAG_MEDIA_SESSION = "mediaSession"
 internal const val TAG_GRANT_ACCESS = "grantAccess"
+internal const val TAG_LOCAL_ONLY = "localOnly"

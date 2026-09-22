@@ -134,6 +134,26 @@ class MainContentTest {
     }
 
     @Test
+    fun theNoNotificationModeIsOnlyOfferedOnceInstantWorks() {
+        show(state(settings = Settings(useMediaSession = true)).copy(notificationAccess = false))
+        rule.onNodeWithTag(TAG_MEDIA_SESSION).assertExists() // the section rendered
+        rule.onNodeWithTag(TAG_LOCAL_ONLY).assertDoesNotExist()
+    }
+
+    @Test
+    fun withInstantWorkingTheNoNotificationModeCanBeTurnedOn() {
+        var localOnly: Boolean? = null
+        show(
+            state(settings = Settings(useMediaSession = true)).copy(notificationAccess = true),
+            MainCallbacks(onLocalOnlyChange = { localOnly = it }),
+        )
+
+        rule.onNodeWithTag(TAG_LOCAL_ONLY).performScrollTo().performClick()
+
+        assertEquals(true, localOnly)
+    }
+
+    @Test
     fun signedOutOffersToConnect() {
         var connect = false
         show(state(signedIn = false), MainCallbacks(onConnect = { connect = true }))
