@@ -1,0 +1,5 @@
+# core.autocrlf would otherwise check gradlew out with CRLF on Windows,
+# which breaks it under Git Bash/WSL ("\r: command not found").
+gradlew text eol=lf
+*.bat text eol=crlf
+*.jar binary
