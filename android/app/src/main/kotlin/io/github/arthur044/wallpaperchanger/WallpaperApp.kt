@@ -6,7 +6,12 @@ import io.github.arthur044.wallpaperchanger.auth.EncryptedTokenStore
 import io.github.arthur044.wallpaperchanger.auth.SpotifyAuth
 import io.github.arthur044.wallpaperchanger.core.config.SettingsRepository
 import io.github.arthur044.wallpaperchanger.core.spotify.ArtDownloader
+import io.github.arthur044.wallpaperchanger.core.render.canvasSpec
 import io.github.arthur044.wallpaperchanger.core.spotify.SpotifyApi
+import io.github.arthur044.wallpaperchanger.core.sync.SyncEngine
+import io.github.arthur044.wallpaperchanger.render.defaultDisplayWindowContext
+import io.github.arthur044.wallpaperchanger.render.screenMetrics
+import io.github.arthur044.wallpaperchanger.wallpaper.WallpaperUpdater
 import io.github.arthur044.wallpaperchanger.render.AlbumBaseCache
 import io.github.arthur044.wallpaperchanger.render.WallpaperComposer
 import io.github.arthur044.wallpaperchanger.render.WallpaperRenderer
@@ -48,6 +53,19 @@ class AppContainer(app: Application) {
     val composer = WallpaperComposer(artDownloader, renderer, AlbumBaseCache(File(app.cacheDir, "album_bases")))
 
     val applier = WallpaperApplier(SystemWallpaperPort(app))
+
+    // Screen size is read from a window context: the service has no Activity.
+    private val screen by lazy { app.defaultDisplayWindowContext() }
+
+    val wallpaperUpdater = WallpaperUpdater(composer, applier, settings.settings) {
+        canvasSpec(screen.screenMetrics())
+    }
+
+    val syncEngine = SyncEngine(
+        source = { spotifyApi.currentlyPlaying() },
+        sink = wallpaperUpdater,
+        settings = settings.settings,
+    )
 
     private companion object {
         const val TAG = "WallpaperApp"

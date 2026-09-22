@@ -1,4 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Wallpaper Changer</string>
+    <string name="app_name" translatable="false">Wallpaper Changer</string>
+
+    <string name="sync_channel_name">Sync status</string>
+    <string name="sync_channel_description">Shown while the wallpaper follows what Spotify is playing</string>
+    <string name="sync_action_stop">Stop</string>
+    <string name="sync_status_starting">Starting…</string>
+    <string name="sync_status_paused">Paused</string>
+    <string name="sync_status_idle">Nothing playing</string>
+    <string name="sync_status_showing">%1$s — %2$s</string>
+    <string name="sync_status_render_failed">Couldn\'t update the wallpaper for %1$s</string>
+    <string name="sync_status_retrying">Spotify unreachable, retrying in %1$d s</string>
+    <string name="sync_status_signed_out">Spotify session expired, sign in again</string>
 </resources>

@@ -1,8 +1,10 @@
 package io.github.arthur044.wallpaperchanger.render
 
 import android.content.Context
+import android.hardware.display.DisplayManager
 import android.os.Build
 import android.util.DisplayMetrics
+import android.view.Display
 import android.view.WindowInsets
 import android.view.WindowManager
 import io.github.arthur044.wallpaperchanger.core.render.Insets
@@ -45,6 +47,18 @@ fun Context.screenMetrics(): ScreenMetrics {
             insets = Insets(0, (STATUS_BAR_DP * density).roundToInt(), 0, (NAV_BAR_DP * density).roundToInt()),
         )
     }
+}
+
+/**
+ * A visual context on the main display for [screenMetrics] outside an
+ * Activity (the sync service). Create once and keep: each one is a window token.
+ */
+fun Context.defaultDisplayWindowContext(): Context {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return this
+    val display = getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)
+    // Only used to read metrics: no view is ever added, so no overlay permission is needed.
+    return createDisplayContext(display)
+        .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
 }
 
 private const val STATUS_BAR_DP = 24

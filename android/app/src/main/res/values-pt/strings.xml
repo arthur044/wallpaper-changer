@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sync_channel_name">Status da sincronização</string>
+    <string name="sync_channel_description">Aparece enquanto o wallpaper acompanha o que toca no Spotify</string>
+    <string name="sync_action_stop">Parar</string>
+    <string name="sync_status_starting">Iniciando…</string>
+    <string name="sync_status_paused">Pausado</string>
+    <string name="sync_status_idle">Nada tocando</string>
+    <string name="sync_status_showing">%1$s — %2$s</string>
+    <string name="sync_status_render_failed">Não foi possível atualizar o wallpaper de %1$s</string>
+    <string name="sync_status_retrying">Spotify inacessível, tentando de novo em %1$d s</string>
+    <string name="sync_status_signed_out">Sessão do Spotify expirou, entre de novo</string>
+</resources>

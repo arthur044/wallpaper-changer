@@ -1,5 +1,8 @@
 package io.github.arthur044.wallpaperchanger.debug
 
+import android.Manifest
+import android.os.Build
+import io.github.arthur044.wallpaperchanger.sync.SyncService
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -80,6 +83,12 @@ fun AuthDebugScreen(container: AppContainer, modifier: Modifier = Modifier) {
     val loginLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         act("Login") { auth.completeAuthorization(result.data).toString() }
     }
+    val syncStatus by container.syncEngine.status.collectAsState()
+    // The service runs either way; without this the notification is just hidden.
+    val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        say("Notificações ${if (granted) "permitidas" else "negadas"}")
+        SyncService.start(context)
+    }
 
     Column(
         modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -136,6 +145,19 @@ fun AuthDebugScreen(container: AppContainer, modifier: Modifier = Modifier) {
                 onCheckedChange = { on -> act("Lock screen") { container.settings.update { it.copy(syncLockScreen = on) }; "sync=$on" } },
             )
             Text("Sincronizar lock screen")
+        }
+
+        Text("Sync: $syncStatus", style = MaterialTheme.typography.bodyMedium)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    SyncService.start(context)
+                }
+            }) { Text("Iniciar sync") }
+            OutlinedButton(onClick = { SyncService.stop(context); say("Sync parado") }) { Text("Parar sync") }
+            OutlinedButton(onClick = { container.syncEngine.syncNow() }) { Text("Sincronizar agora") }
         }
 
         log.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
