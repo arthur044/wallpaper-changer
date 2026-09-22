@@ -278,6 +278,46 @@ class SyncEngineTest {
         assertEquals(1, source.calls)
     }
 
+    @Test
+    fun `redraw repaints the track on screen without asking Spotify`() = runTest {
+        val engine = engine()
+        source.playing = { airbag }
+        backgroundScope.launch { engine.run() }
+        runCurrent()
+
+        advanceTimeBy(2.seconds)
+        settings.value = Settings(cornerRadius = 40)
+        engine.redraw()
+        runCurrent()
+
+        assertEquals(listOf("t1", "t1"), sink.shown)
+        assertEquals(1, source.calls)
+    }
+
+    @Test
+    fun `redraw with nothing on screen draws nothing`() = runTest {
+        val engine = engine()
+        source.playing = { null }
+        backgroundScope.launch { engine.run() }
+        runCurrent()
+
+        engine.redraw()
+        runCurrent()
+        assertTrue(sink.shown.isEmpty())
+    }
+
+    @Test
+    fun `a redraw requested while stopped still polls first thing on start`() = runTest {
+        val engine = engine()
+        source.playing = { airbag }
+        engine.redraw() // e.g. a setting changed while the screen was off
+
+        engine.runOnce()
+
+        assertEquals(1, source.calls)
+        assertEquals(listOf("t1"), sink.shown)
+    }
+
     private class FakeMemory : RenderMemory {
         var saved: String? = null
 

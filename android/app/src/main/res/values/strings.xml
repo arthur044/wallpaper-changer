@@ -13,4 +13,30 @@
     <string name="sync_status_retrying">Spotify unreachable, retrying in %1$d s</string>
     <string name="sync_status_signed_out">Spotify session expired, sign in again</string>
     <string name="sync_status_blocked">This device doesn\'t allow changing the wallpaper</string>
+    <string name="sync_status_off">Sync is off</string>
+
+    <string name="main_sync_switch">Follow Spotify</string>
+    <string name="main_sync_now">Sync now</string>
+    <string name="main_art_description">Album art on the wallpaper</string>
+    <string name="main_signed_out_title">Not connected to Spotify</string>
+    <string name="main_signed_out_action">Connect</string>
+    <string name="main_section_look">Look</string>
+    <string name="main_art_size">Art size</string>
+    <string name="main_corner_radius">Rounded corners</string>
+    <string name="main_shadow">Shadow</string>
+    <string name="main_offset">Vertical position</string>
+    <string name="main_show_track_info">Show song and artist</string>
+    <string name="main_sync_lock_screen">Also on the lock screen</string>
+    <string name="main_section_advanced">Advanced</string>
+    <string name="main_poll_interval">Check Spotify every</string>
+    <string name="main_poll_interval_hint">Shorter reacts faster, but Spotify may rate-limit below 20 s.</string>
+    <string name="main_debug_tools">Debug tools</string>
+    <string name="value_percent" translatable="false">%1$d%%</string>
+    <string name="value_signed_percent" translatable="false">%1$+d%%</string>
+    <string name="value_number" translatable="false">%1$d</string>
+    <string name="value_seconds" translatable="false">%1$d s</string>
+
+    <string name="tile_label">Album wallpaper</string>
+    <string name="tile_on">On</string>
+    <string name="tile_off">Off</string>
 </resources>

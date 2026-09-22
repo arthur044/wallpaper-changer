@@ -2,15 +2,21 @@ package io.github.arthur044.wallpaperchanger
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.launch
 import io.github.arthur044.wallpaperchanger.debug.AuthDebugScreen
+import io.github.arthur044.wallpaperchanger.ui.AppTheme
+import io.github.arthur044.wallpaperchanger.ui.MainScreen
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -23,9 +29,17 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch { container.syncController.resumeIfEnabled() }
         }
         setContent {
-            MaterialTheme {
+            AppTheme {
+                // Two screens don't need a navigation library.
+                var showDebug by rememberSaveable { mutableStateOf(false) }
                 Scaffold { innerPadding ->
-                    AuthDebugScreen(container, Modifier.padding(innerPadding))
+                    val modifier = Modifier.padding(innerPadding)
+                    if (showDebug) {
+                        BackHandler { showDebug = false }
+                        AuthDebugScreen(container, modifier)
+                    } else {
+                        MainScreen(container, onOpenDebug = { showDebug = true }, modifier = modifier)
+                    }
                 }
             }
         }

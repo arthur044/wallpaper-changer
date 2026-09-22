@@ -1,6 +1,7 @@
 package io.github.arthur044.wallpaperchanger.sync
 
 import android.content.Context
+import android.util.Log
 import io.github.arthur044.wallpaperchanger.auth.SpotifyAuth
 import io.github.arthur044.wallpaperchanger.core.config.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
@@ -18,9 +19,14 @@ class SyncController(
     private val auth: SpotifyAuth,
     private val scope: CoroutineScope,
 ) {
-    suspend fun enable() {
+    /**
+     * @return false if the system refused to start the service from where we are
+     * (Android 12+ background limits); the choice is saved anyway, so opening
+     * the app starts it.
+     */
+    suspend fun enable(): Boolean {
         settings.update { it.copy(syncEnabled = true) }
-        SyncService.start(context)
+        return startService()
     }
 
     suspend fun disable() {
@@ -39,7 +45,18 @@ class SyncController(
      */
     suspend fun resumeIfEnabled(): Boolean {
         if (!settings.settings.first().syncEnabled || !auth.status().signedIn) return false
+        return startService()
+    }
+
+    private fun startService(): Boolean = try {
         SyncService.start(context)
-        return true
+        true
+    } catch (e: IllegalStateException) { // ForegroundServiceStartNotAllowedException
+        Log.w(TAG, "Not allowed to start syncing from here", e)
+        false
+    }
+
+    private companion object {
+        const val TAG = "SyncController"
     }
 }

@@ -32,7 +32,7 @@ internal class SyncNotifications(private val context: Context) {
         val stop = PendingIntent.getService(
             context, REQUEST_STOP, SyncService.stopIntent(context), PendingIntent.FLAG_IMMUTABLE,
         )
-        return base(describe(status))
+        return base(status.describe(context))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .addAction(0, context.getString(R.string.sync_action_stop), stop)
@@ -43,24 +43,7 @@ internal class SyncNotifications(private val context: Context) {
     fun update(status: SyncStatus) = post(ONGOING_ID, ongoing(status))
 
     /** Outlives the service, so the user learns why syncing stopped. */
-    fun showStopped(status: SyncStatus) = post(STOPPED_ID, base(describe(status)).setAutoCancel(true).build())
-
-    fun describe(status: SyncStatus): String = when (status) {
-        SyncStatus.Starting -> context.getString(R.string.sync_status_starting)
-        SyncStatus.Paused -> context.getString(R.string.sync_status_paused)
-        SyncStatus.Idle -> context.getString(R.string.sync_status_idle)
-        is SyncStatus.Showing -> context.getString(
-            R.string.sync_status_showing,
-            status.nowPlaying.trackName.orEmpty(),
-            status.nowPlaying.artistName.orEmpty(),
-        )
-        is SyncStatus.RenderFailed ->
-            context.getString(R.string.sync_status_render_failed, status.nowPlaying.trackName.orEmpty())
-        is SyncStatus.Retrying ->
-            context.getString(R.string.sync_status_retrying, status.retryIn.inWholeSeconds.toInt())
-        SyncStatus.SignedOut -> context.getString(R.string.sync_status_signed_out)
-        is SyncStatus.Blocked -> context.getString(R.string.sync_status_blocked)
-    }
+    fun showStopped(status: SyncStatus) = post(STOPPED_ID, base(status.describe(context)).setAutoCancel(true).build())
 
     private fun base(text: String): NotificationCompat.Builder {
         val open = PendingIntent.getActivity(

@@ -11,4 +11,26 @@
     <string name="sync_status_retrying">Spotify inacessível, tentando de novo em %1$d s</string>
     <string name="sync_status_signed_out">Sessão do Spotify expirou, entre de novo</string>
     <string name="sync_status_blocked">Este aparelho não permite trocar o wallpaper</string>
+    <string name="sync_status_off">Sincronização desligada</string>
+
+    <string name="main_sync_switch">Acompanhar o Spotify</string>
+    <string name="main_sync_now">Sincronizar agora</string>
+    <string name="main_art_description">Capa no wallpaper</string>
+    <string name="main_signed_out_title">Não conectado ao Spotify</string>
+    <string name="main_signed_out_action">Conectar</string>
+    <string name="main_section_look">Aparência</string>
+    <string name="main_art_size">Tamanho da capa</string>
+    <string name="main_corner_radius">Cantos arredondados</string>
+    <string name="main_shadow">Sombra</string>
+    <string name="main_offset">Posição vertical</string>
+    <string name="main_show_track_info">Mostrar música e artista</string>
+    <string name="main_sync_lock_screen">Também na tela de bloqueio</string>
+    <string name="main_section_advanced">Avançado</string>
+    <string name="main_poll_interval">Consultar o Spotify a cada</string>
+    <string name="main_poll_interval_hint">Menor reage mais rápido, mas abaixo de 20 s o Spotify pode limitar.</string>
+    <string name="main_debug_tools">Ferramentas de debug</string>
+
+    <string name="tile_label">Capa no wallpaper</string>
+    <string name="tile_on">Ligado</string>
+    <string name="tile_off">Desligado</string>
 </resources>

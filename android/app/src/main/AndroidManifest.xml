@@ -35,6 +35,18 @@
                 android:value="Changes the wallpaper to the album art of the song playing on Spotify, while the screen is on" />
         </service>
 
+        <!-- Exported for SystemUI; the permission keeps every other app out. -->
+        <service
+            android:name=".sync.SyncTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_stat_sync"
+            android:label="@string/tile_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <!-- Only the system sends these, and it reaches non-exported receivers. -->
         <receiver
             android:name=".sync.SyncResumeReceiver"

@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.time.Duration
 import kotlin.time.TimeSource
 
@@ -42,6 +43,7 @@ class SyncEngine(
     private val mutableStatus = MutableStateFlow<SyncStatus>(SyncStatus.Starting)
     private var lastRenderedTrackId: String? = null
     private var memoryLoaded = false
+    private val redrawPending = AtomicBoolean(false)
     private var backoff = Duration.ZERO
 
     val status: StateFlow<SyncStatus> = mutableStatus.asStateFlow()
@@ -56,6 +58,15 @@ class SyncEngine(
 
     /** Ends the current wait early (subject to the API throttle). */
     fun syncNow() {
+        wake.trySend(Unit)
+    }
+
+    /**
+     * A look setting changed: repaint the track on screen now. Uses what is
+     * already known, so it costs no Web API call and isn't held by the throttle.
+     */
+    fun redraw() {
+        redrawPending.set(true)
         wake.trySend(Unit)
     }
 
@@ -75,6 +86,11 @@ class SyncEngine(
         if (current.paused) {
             mutableStatus.value = SyncStatus.Paused
             return interval
+        }
+        if (redrawPending.getAndSet(false)) {
+            val onScreen = (status.value as? SyncStatus.Showing)?.nowPlaying
+            if (onScreen != null && !render(onScreen)) return null
+            // Then poll as usual (if the throttle allows): the track may have changed.
         }
         if (!throttle.tryAcquire()) return interval
 
