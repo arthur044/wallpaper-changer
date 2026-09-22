@@ -29,6 +29,10 @@ data class Settings(
     // polling. Off by default because it needs notification access (opt-in).
     @SerialName("use_media_session") val useMediaSession: Boolean = false,
     @SerialName("paused") val paused: Boolean = false,
+    // Android only: the user turned syncing on, so it is brought back after a
+    // reboot or an app update. Stays on when the session expires, so a new
+    // login resumes it.
+    @SerialName("sync_enabled") val syncEnabled: Boolean = false,
 ) {
     val webApiPollInterval: Duration get() = webApiPollIntervalSeconds.seconds
 

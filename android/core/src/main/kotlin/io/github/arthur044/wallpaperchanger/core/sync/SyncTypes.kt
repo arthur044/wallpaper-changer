@@ -14,9 +14,29 @@ fun interface NowPlayingSource {
     suspend fun currentlyPlaying(): NowPlaying?
 }
 
-/** Draws [NowPlaying] and puts it on screen; throws if it didn't make it there. */
+/**
+ * Draws [NowPlaying] and puts it on screen; throws if it didn't make it there,
+ * [WallpaperBlockedException] when no retry can ever succeed.
+ */
 fun interface WallpaperSink {
     suspend fun show(nowPlaying: NowPlaying)
+}
+
+/** The wallpaper can't be changed on this device (unsupported, or a policy forbids it). */
+class WallpaperBlockedException(message: String) : Exception(message)
+
+/** Which track is on the wallpaper, kept across process restarts. */
+interface RenderMemory {
+    suspend fun lastRenderedTrackId(): String?
+
+    suspend fun remember(trackId: String?)
+
+    /** Forgets nothing and remembers nothing: every start redraws. */
+    object None : RenderMemory {
+        override suspend fun lastRenderedTrackId(): String? = null
+
+        override suspend fun remember(trackId: String?) = Unit
+    }
 }
 
 sealed interface SyncStatus {
@@ -39,4 +59,7 @@ sealed interface SyncStatus {
 
     /** The session was revoked: syncing stopped until the user logs in again. */
     data object SignedOut : SyncStatus
+
+    /** This device won't let the wallpaper change: syncing stopped for good. */
+    data class Blocked(val reason: String) : SyncStatus
 }

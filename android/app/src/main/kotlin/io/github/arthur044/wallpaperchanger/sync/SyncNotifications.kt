@@ -43,7 +43,7 @@ internal class SyncNotifications(private val context: Context) {
     fun update(status: SyncStatus) = post(ONGOING_ID, ongoing(status))
 
     /** Outlives the service, so the user learns why syncing stopped. */
-    fun showSignedOut() = post(SIGNED_OUT_ID, base(describe(SyncStatus.SignedOut)).setAutoCancel(true).build())
+    fun showStopped(status: SyncStatus) = post(STOPPED_ID, base(describe(status)).setAutoCancel(true).build())
 
     fun describe(status: SyncStatus): String = when (status) {
         SyncStatus.Starting -> context.getString(R.string.sync_status_starting)
@@ -59,6 +59,7 @@ internal class SyncNotifications(private val context: Context) {
         is SyncStatus.Retrying ->
             context.getString(R.string.sync_status_retrying, status.retryIn.inWholeSeconds.toInt())
         SyncStatus.SignedOut -> context.getString(R.string.sync_status_signed_out)
+        is SyncStatus.Blocked -> context.getString(R.string.sync_status_blocked)
     }
 
     private fun base(text: String): NotificationCompat.Builder {
@@ -83,7 +84,7 @@ internal class SyncNotifications(private val context: Context) {
 
     companion object {
         const val ONGOING_ID = 1
-        private const val SIGNED_OUT_ID = 2
+        private const val STOPPED_ID = 2
         private const val CHANNEL_ID = "sync"
         private const val REQUEST_OPEN = 0
         private const val REQUEST_STOP = 1

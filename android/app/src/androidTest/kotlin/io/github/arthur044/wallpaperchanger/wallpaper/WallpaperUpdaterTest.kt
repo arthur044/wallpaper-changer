@@ -10,6 +10,7 @@ import io.github.arthur044.wallpaperchanger.core.NowPlaying
 import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.render.CanvasSpec
 import io.github.arthur044.wallpaperchanger.core.render.PixelRect
+import io.github.arthur044.wallpaperchanger.core.sync.WallpaperBlockedException
 import io.github.arthur044.wallpaperchanger.render.AlbumBaseCache
 import io.github.arthur044.wallpaperchanger.render.WallpaperComposer
 import io.github.arthur044.wallpaperchanger.render.WallpaperRenderer
@@ -68,17 +69,26 @@ class WallpaperUpdaterTest {
     }
 
     @Test
-    fun aWallpaperThatWasNotAppliedIsAnError() = runTest {
+    fun aPolicyBlockIsPermanent() = runTest {
         port.allowed = false
 
         val thrown = runCatching { updater.show(airbag) }.exceptionOrNull()
 
-        assertTrue(thrown is WallpaperNotAppliedException)
-        assertEquals(ApplyResult.NotAllowed, (thrown as WallpaperNotAppliedException).result)
+        assertTrue("got $thrown", thrown is WallpaperBlockedException)
+    }
+
+    @Test
+    fun aRejectedImageIsRetryable() = runTest {
+        port.refuse = true
+
+        val thrown = runCatching { updater.show(airbag) }.exceptionOrNull()
+
+        assertTrue("got $thrown", thrown is WallpaperNotAppliedException)
     }
 
     private class RecordingPort : WallpaperPort {
         var allowed = true
+        var refuse = false
         val flags = mutableListOf<Int>()
         val hints = mutableListOf<Rect>()
 
@@ -88,7 +98,7 @@ class WallpaperUpdaterTest {
         override fun setBitmap(bitmap: Bitmap, visibleCropHint: Rect, which: Int): Int {
             flags += which
             hints += Rect(visibleCropHint)
-            return 1
+            return if (refuse) 0 else 1
         }
     }
 }

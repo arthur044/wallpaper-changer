@@ -12,4 +12,5 @@
     <string name="sync_status_render_failed">Couldn\'t update the wallpaper for %1$s</string>
     <string name="sync_status_retrying">Spotify unreachable, retrying in %1$d s</string>
     <string name="sync_status_signed_out">Spotify session expired, sign in again</string>
+    <string name="sync_status_blocked">This device doesn\'t allow changing the wallpaper</string>
 </resources>

@@ -33,6 +33,7 @@ class SyncEngine(
     private val source: NowPlayingSource,
     private val sink: WallpaperSink,
     private val settings: Flow<Settings>,
+    private val memory: RenderMemory = RenderMemory.None,
     timeSource: TimeSource = TimeSource.Monotonic,
 ) {
     // Guards the API against "sync now" spam; the regular cadence is the wait.
@@ -40,11 +41,12 @@ class SyncEngine(
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private val mutableStatus = MutableStateFlow<SyncStatus>(SyncStatus.Starting)
     private var lastRenderedTrackId: String? = null
+    private var memoryLoaded = false
     private var backoff = Duration.ZERO
 
     val status: StateFlow<SyncStatus> = mutableStatus.asStateFlow()
 
-    /** Polls until cancelled, or until the session expires. */
+    /** Polls until cancelled, or until the session expires or the wallpaper is blocked. */
     suspend fun run() {
         while (true) {
             val wait = runOnce() ?: return
@@ -57,8 +59,17 @@ class SyncEngine(
         wake.trySend(Unit)
     }
 
+    /** Connectivity is back: a backoff wait for the network ends now. */
+    fun onNetworkAvailable() {
+        if (status.value is SyncStatus.Retrying) syncNow()
+    }
+
     /** One poll. @return how long to wait before the next, or null to stop. */
     internal suspend fun runOnce(): Duration? {
+        if (!memoryLoaded) {
+            lastRenderedTrackId = memory.lastRenderedTrackId()
+            memoryLoaded = true
+        }
         val current = settings.first()
         val interval = current.webApiPollInterval
         if (current.paused) {
@@ -84,22 +95,29 @@ class SyncEngine(
         when (decide(nowPlaying, lastRenderedTrackId)) {
             PollDecision.IDLE -> mutableStatus.value = SyncStatus.Idle
             PollDecision.NOOP -> mutableStatus.value = SyncStatus.Showing(checkNotNull(nowPlaying))
-            PollDecision.RENDER -> render(checkNotNull(nowPlaying))
+            PollDecision.RENDER -> if (!render(checkNotNull(nowPlaying))) return null
         }
         return interval
     }
 
-    private suspend fun render(nowPlaying: NowPlaying) {
-        mutableStatus.value = try {
+    /** @return false when the wallpaper can never be changed, so polling should stop. */
+    private suspend fun render(nowPlaying: NowPlaying): Boolean {
+        try {
             sink.show(nowPlaying)
-            lastRenderedTrackId = nowPlaying.trackId
-            SyncStatus.Showing(nowPlaying)
         } catch (e: CancellationException) {
             throw e
+        } catch (e: WallpaperBlockedException) {
+            mutableStatus.value = SyncStatus.Blocked(e.message.orEmpty())
+            return false
         } catch (e: Exception) {
             // Left unmarked, so the next poll sees a new track and tries again.
-            SyncStatus.RenderFailed(nowPlaying, e)
+            mutableStatus.value = SyncStatus.RenderFailed(nowPlaying, e)
+            return true
         }
+        lastRenderedTrackId = nowPlaying.trackId
+        memory.remember(nowPlaying.trackId)
+        mutableStatus.value = SyncStatus.Showing(nowPlaying)
+        return true
     }
 
     private fun retryIn(wait: Duration, cause: Exception): Duration {

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import io.github.arthur044.wallpaperchanger.WallpaperApp
@@ -25,7 +26,8 @@ import kotlinx.coroutines.launch
  */
 class SyncService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private val engine get() = (application as WallpaperApp).container.syncEngine
+    private val container get() = (application as WallpaperApp).container
+    private val engine get() = container.syncEngine
     private lateinit var notifications: SyncNotifications
     private var loop: Job? = null
 
@@ -38,23 +40,36 @@ class SyncService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            // The user's "off", same as in the app: don't come back after a reboot.
+            container.syncController.disableInBackground()
             stopSelf()
             return START_NOT_STICKY
         }
-        ServiceCompat.startForeground(
-            this, SyncNotifications.ONGOING_ID, notifications.ongoing(engine.status.value), foregroundType(),
-        )
+        try {
+            ServiceCompat.startForeground(
+                this, SyncNotifications.ONGOING_ID, notifications.ongoing(engine.status.value), foregroundType(),
+            )
+        } catch (e: IllegalStateException) {
+            // Android 12+ may refuse a restart from the background (e.g. a sticky
+            // restart after the process was killed). Give up quietly; the next
+            // boot, update or app launch brings it back.
+            Log.w(TAG, "Not allowed to run in the foreground now", e)
+            stopSelf()
+            return START_NOT_STICKY
+        }
         if (loop == null) loop = scope.launch { syncWhileScreenOn() }
         return START_STICKY
     }
 
     private suspend fun syncWhileScreenOn() = coroutineScope {
         launch { engine.status.collect(notifications::update) }
+        launch { internetAvailableFlow().collect { online -> if (online) engine.onNetworkAvailable() } }
         screenOnFlow().collectLatest { on ->
             if (!on) return@collectLatest
             engine.run()
-            // run() only returns when the session was revoked: nothing to do until a new login.
-            notifications.showSignedOut()
+            // run() only returns when retrying can't help (session revoked, wallpaper
+            // blocked): say why, then stop. The user's "on" stays saved.
+            notifications.showStopped(engine.status.value)
             stopSelf()
         }
     }
@@ -65,6 +80,7 @@ class SyncService : Service() {
     }
 
     companion object {
+        private const val TAG = "SyncService"
         private const val ACTION_STOP = "io.github.arthur044.wallpaperchanger.action.STOP_SYNC"
 
         fun start(context: Context) {

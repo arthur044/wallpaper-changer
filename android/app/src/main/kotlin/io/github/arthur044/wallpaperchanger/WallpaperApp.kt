@@ -8,7 +8,9 @@ import io.github.arthur044.wallpaperchanger.core.config.SettingsRepository
 import io.github.arthur044.wallpaperchanger.core.spotify.ArtDownloader
 import io.github.arthur044.wallpaperchanger.core.render.canvasSpec
 import io.github.arthur044.wallpaperchanger.core.spotify.SpotifyApi
+import io.github.arthur044.wallpaperchanger.core.sync.FileRenderMemory
 import io.github.arthur044.wallpaperchanger.core.sync.SyncEngine
+import io.github.arthur044.wallpaperchanger.sync.SyncController
 import io.github.arthur044.wallpaperchanger.render.defaultDisplayWindowContext
 import io.github.arthur044.wallpaperchanger.render.screenMetrics
 import io.github.arthur044.wallpaperchanger.wallpaper.WallpaperUpdater
@@ -34,7 +36,8 @@ class WallpaperApp : Application() {
 
 /** Manual DI: one instance of each long-lived dependency for the whole process. */
 class AppContainer(app: Application) {
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    /** Lives as long as the process: work that must outlive a screen or a receiver. */
+    val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val settings: SettingsRepository = SettingsRepository.create(
         file = File(app.filesDir, "datastore/settings.json"),
@@ -61,11 +64,20 @@ class AppContainer(app: Application) {
         canvasSpec(screen.screenMetrics())
     }
 
+    private val renderMemory = FileRenderMemory.create(
+        file = File(app.filesDir, "sync_state/last_track.txt"),
+        scope = appScope,
+        onError = { Log.w(TAG, "Could not read or save the last drawn track", it) },
+    )
+
     val syncEngine = SyncEngine(
         source = { spotifyApi.currentlyPlaying() },
         sink = wallpaperUpdater,
         settings = settings.settings,
+        memory = renderMemory,
     )
+
+    val syncController = SyncController(app, settings, spotifyAuth, appScope)
 
     private companion object {
         const val TAG = "WallpaperApp"

@@ -2,7 +2,6 @@ package io.github.arthur044.wallpaperchanger.debug
 
 import android.Manifest
 import android.os.Build
-import io.github.arthur044.wallpaperchanger.sync.SyncService
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import io.github.arthur044.wallpaperchanger.AppContainer
 import io.github.arthur044.wallpaperchanger.auth.AuthStatus
+import io.github.arthur044.wallpaperchanger.auth.LoginResult
 import io.github.arthur044.wallpaperchanger.auth.SpotifyAuth
 import io.github.arthur044.wallpaperchanger.core.spotify.SpotifyApi
 import kotlinx.coroutines.CancellationException
@@ -81,13 +81,18 @@ fun AuthDebugScreen(container: AppContainer, modifier: Modifier = Modifier) {
     LaunchedEffect(Unit) { status = auth.status() }
 
     val loginLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        act("Login") { auth.completeAuthorization(result.data).toString() }
+        act("Login") {
+            val login = auth.completeAuthorization(result.data)
+            // A new session picks syncing back up if the user had left it on.
+            val resumed = login is LoginResult.Success && container.syncController.resumeIfEnabled()
+            if (resumed) "$login · sync retomado" else login.toString()
+        }
     }
     val syncStatus by container.syncEngine.status.collectAsState()
     // The service runs either way; without this the notification is just hidden.
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         say("Notificações ${if (granted) "permitidas" else "negadas"}")
-        SyncService.start(context)
+        act("Iniciar sync") { container.syncController.enable(); "ligado (volta após reiniciar)" }
     }
 
     Column(
@@ -153,10 +158,12 @@ fun AuthDebugScreen(container: AppContainer, modifier: Modifier = Modifier) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                 } else {
-                    SyncService.start(context)
+                    act("Iniciar sync") { container.syncController.enable(); "ligado (volta após reiniciar)" }
                 }
             }) { Text("Iniciar sync") }
-            OutlinedButton(onClick = { SyncService.stop(context); say("Sync parado") }) { Text("Parar sync") }
+            OutlinedButton(onClick = { act("Parar sync") { container.syncController.disable(); "desligado" } }) {
+                Text("Parar sync")
+            }
             OutlinedButton(onClick = { container.syncEngine.syncNow() }) { Text("Sincronizar agora") }
         }
 

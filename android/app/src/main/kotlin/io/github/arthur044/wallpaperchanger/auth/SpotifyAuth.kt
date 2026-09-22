@@ -87,7 +87,14 @@ class SpotifyAuth(
     override suspend fun accessToken(forceRefresh: Boolean): String = mutex.withLock {
         val current = loadState() ?: throw AuthExpiredException("Not signed in to Spotify")
         if (forceRefresh) current.needsTokenRefresh = true
-        freshToken(current)
+        try {
+            freshToken(current)
+        } catch (e: AuthExpiredException) {
+            // The refresh token was rejected and will never work again: drop it,
+            // so the app reads as signed out instead of retrying a dead session.
+            forget()
+            throw e
+        }
     }
 
     /** Debug aid: refreshes now and returns the new expiry. */
@@ -101,7 +108,10 @@ class SpotifyAuth(
         AuthStatus(signedIn = current?.isAuthorized == true, accessTokenExpiresAtMillis = current?.accessTokenExpirationTime)
     }
 
-    suspend fun signOut() = mutex.withLock {
+    suspend fun signOut() = mutex.withLock { forget() }
+
+    // Caller holds the mutex.
+    private suspend fun forget() {
         state = null
         withContext(io) { tokenStore.clear() }
     }

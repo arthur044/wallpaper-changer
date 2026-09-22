@@ -3,13 +3,14 @@ package io.github.arthur044.wallpaperchanger.wallpaper
 import io.github.arthur044.wallpaperchanger.core.NowPlaying
 import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.render.CanvasSpec
+import io.github.arthur044.wallpaperchanger.core.sync.WallpaperBlockedException
 import io.github.arthur044.wallpaperchanger.core.sync.WallpaperSink
 import io.github.arthur044.wallpaperchanger.render.WallpaperComposer
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 
-class WallpaperNotAppliedException(val result: ApplyResult) :
-    Exception("Wallpaper not applied: $result", (result as? ApplyResult.Failed)?.cause)
+/** The system rejected this image; the next track may succeed. */
+class WallpaperNotAppliedException(cause: Exception) : Exception("Wallpaper not applied", cause)
 
 /**
  * The app's [WallpaperSink]: draws the track for the current screen (measured
@@ -29,6 +30,11 @@ class WallpaperUpdater(
         } finally {
             composed.bitmap.recycle()
         }
-        if (result != ApplyResult.Applied) throw WallpaperNotAppliedException(result)
+        when (result) {
+            ApplyResult.Applied -> Unit
+            ApplyResult.Unsupported -> throw WallpaperBlockedException("This device has no wallpaper")
+            ApplyResult.NotAllowed -> throw WallpaperBlockedException("A device policy forbids changing the wallpaper")
+            is ApplyResult.Failed -> throw WallpaperNotAppliedException(result.cause)
+        }
     }
 }

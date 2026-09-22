@@ -10,4 +10,5 @@
     <string name="sync_status_render_failed">Não foi possível atualizar o wallpaper de %1$s</string>
     <string name="sync_status_retrying">Spotify inacessível, tentando de novo em %1$d s</string>
     <string name="sync_status_signed_out">Sessão do Spotify expirou, entre de novo</string>
+    <string name="sync_status_blocked">Este aparelho não permite trocar o wallpaper</string>
 </resources>

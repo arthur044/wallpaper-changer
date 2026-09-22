@@ -25,11 +25,12 @@ class SyncEngineTest {
     private val source = FakeSource()
     private val sink = FakeSink()
     private val settings = MutableStateFlow(Settings())
+    private val memory = FakeMemory()
 
     private val airbag = NowPlaying(true, "t1", "a1", "https://i.scdn.co/image/a1", "Airbag", "Radiohead")
     private val lucky = airbag.copy(trackId = "t2", trackName = "Lucky")
 
-    private fun TestScope.engine() = SyncEngine(source, sink, settings, testScheduler.timeSource)
+    private fun TestScope.engine() = SyncEngine(source, sink, settings, memory, testScheduler.timeSource)
 
     // One cycle, then let the wait the engine asked for pass.
     private suspend fun TestScope.cycle(engine: SyncEngine): Duration? =
@@ -212,6 +213,81 @@ class SyncEngineTest {
         assertEquals(1, source.calls)
     }
 
+    @Test
+    fun `a track remembered from before a restart is not redrawn`() = runTest {
+        memory.saved = "t1"
+        val engine = engine()
+        source.playing = { airbag }
+
+        cycle(engine)
+
+        assertTrue(sink.shown.isEmpty())
+        assertEquals(SyncStatus.Showing(airbag), engine.status.value)
+    }
+
+    @Test
+    fun `a drawn track is remembered, a failed one is not`() = runTest {
+        val engine = engine()
+        source.playing = { airbag }
+        sink.failures = 1
+        cycle(engine)
+        assertEquals(null, memory.saved)
+
+        cycle(engine)
+        assertEquals("t1", memory.saved)
+    }
+
+    @Test
+    fun `a blocked wallpaper stops the loop`() = runTest {
+        val engine = engine()
+        source.playing = { airbag }
+        sink.blocked = true
+
+        engine.run() // returns: retrying can't help
+
+        assertEquals(1, source.calls)
+        assertTrue(engine.status.value is SyncStatus.Blocked)
+    }
+
+    @Test
+    fun `the network coming back ends a backoff wait`() = runTest {
+        val engine = engine()
+        source.playing = { throw TransientNetworkException("offline") }
+        backgroundScope.launch { engine.run() }
+
+        advanceTimeBy(45.seconds) // polls at 0, 5, 15, 35; the next would be at 75
+        assertEquals(4, source.calls)
+
+        source.playing = { airbag }
+        engine.onNetworkAvailable()
+        runCurrent()
+        assertEquals(5, source.calls)
+        assertEquals(SyncStatus.Showing(airbag), engine.status.value)
+    }
+
+    @Test
+    fun `the network coming back is ignored when nothing failed`() = runTest {
+        val engine = engine()
+        source.playing = { airbag }
+        backgroundScope.launch { engine.run() }
+        runCurrent()
+
+        advanceTimeBy(10.seconds)
+        engine.onNetworkAvailable()
+        runCurrent()
+        assertEquals(1, source.calls)
+    }
+
+    private class FakeMemory : RenderMemory {
+        var saved: String? = null
+
+        override suspend fun lastRenderedTrackId(): String? = saved
+
+        override suspend fun remember(trackId: String?) {
+            saved = trackId
+        }
+    }
+
     private class FakeSource : NowPlayingSource {
         var playing: () -> NowPlaying? = { null }
         var calls = 0
@@ -227,9 +303,11 @@ class SyncEngineTest {
         val shown = mutableListOf<String?>()
         var failures = 0
         var cancel = false
+        var blocked = false
 
         override suspend fun show(nowPlaying: NowPlaying) {
             if (cancel) throw CancellationException("service stopped")
+            if (blocked) throw WallpaperBlockedException("device policy")
             if (failures > 0) {
                 failures--
                 throw IllegalStateException("art download failed")
