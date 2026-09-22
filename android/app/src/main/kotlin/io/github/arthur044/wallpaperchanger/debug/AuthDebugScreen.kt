@@ -1,0 +1,145 @@
+package io.github.arthur044.wallpaperchanger.debug
+
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import io.github.arthur044.wallpaperchanger.AppContainer
+import io.github.arthur044.wallpaperchanger.auth.AuthStatus
+import io.github.arthur044.wallpaperchanger.auth.SpotifyAuth
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import java.time.Instant
+import java.time.LocalTime
+import java.time.ZoneId
+
+/**
+ * TEMPORARY (M3): exercises the auth layer by hand on a real device. Replaced by
+ * the onboarding wizard (M12) and the main screen (M11). Never shows the token.
+ */
+@Composable
+fun AuthDebugScreen(container: AppContainer, modifier: Modifier = Modifier) {
+    val auth = container.spotifyAuth
+    val scope = rememberCoroutineScope()
+    val settings by container.settings.settings.collectAsState(initial = null)
+    var clientIdInput by rememberSaveable { mutableStateOf("") }
+    var status by remember { mutableStateOf<AuthStatus?>(null) }
+    var log by remember { mutableStateOf(listOf<String>()) }
+
+    fun say(message: String) {
+        log = (listOf("${LocalTime.now().withNano(0)}  $message") + log).take(30)
+    }
+
+    // Runs an action, reporting any failure instead of crashing the screen.
+    fun act(label: String, block: suspend () -> String) {
+        scope.launch {
+            val outcome = try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                "${e::class.simpleName}: ${e.message}"
+            }
+            say("$label → $outcome")
+            status = auth.status()
+        }
+    }
+
+    LaunchedEffect(settings?.clientId) {
+        if (clientIdInput.isEmpty()) clientIdInput = settings?.clientId.orEmpty()
+    }
+    LaunchedEffect(Unit) { status = auth.status() }
+
+    val loginLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        act("Login") { auth.completeAuthorization(result.data).toString() }
+    }
+
+    Column(
+        modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("Debug · Auth (M3)", style = MaterialTheme.typography.titleLarge)
+        OutlinedTextField(
+            value = clientIdInput,
+            onValueChange = { clientIdInput = it },
+            label = { Text("Spotify Client ID") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text("Redirect URI: ${SpotifyAuth.REDIRECT_URI}", style = MaterialTheme.typography.bodySmall)
+        Text(describe(status), style = MaterialTheme.typography.bodyLarge)
+
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = {
+                act("Salvar Client ID") {
+                    container.settings.update { it.copy(clientId = clientIdInput) }.clientId.let { "salvo ($it)" }
+                }
+            }) { Text("Salvar Client ID") }
+            Button(
+                enabled = !settings?.clientId.isNullOrBlank(),
+                onClick = { loginLauncher.launch(auth.authorizationIntent(settings!!.clientId)) },
+            ) { Text("Login") }
+            Button(onClick = { act("GET /me") { fetchMe(auth) } }) { Text("GET /me") }
+            OutlinedButton(onClick = {
+                act("Forçar refresh") { "nova validade ${formatTime(auth.forceRefresh())}" }
+            }) { Text("Forçar refresh") }
+            OutlinedButton(onClick = { act("Sair") { auth.signOut(); "sessão apagada" } }) { Text("Sair") }
+        }
+
+        log.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+    }
+}
+
+private fun describe(status: AuthStatus?): String = when {
+    status == null -> "Carregando…"
+    !status.signedIn -> "Desconectado"
+    else -> "Conectado · token válido até ${formatTime(status.accessTokenExpiresAtMillis)}"
+}
+
+private fun formatTime(epochMillis: Long?): String =
+    epochMillis?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalTime().withNano(0).toString() } ?: "?"
+
+// Throwaway HTTP call just to prove the token works; the real client is M4.
+private suspend fun fetchMe(auth: SpotifyAuth): String {
+    val token = auth.accessToken()
+    return withContext(Dispatchers.IO) {
+        val conn = URL("https://api.spotify.com/v1/me").openConnection() as HttpURLConnection
+        try {
+            conn.setRequestProperty("Authorization", "Bearer $token")
+            conn.connectTimeout = 10_000
+            conn.readTimeout = 10_000
+            val code = conn.responseCode
+            if (code != 200) return@withContext "HTTP $code"
+            val body = conn.inputStream.bufferedReader().use { it.readText() }
+            "HTTP 200 · display_name=${JSONObject(body).optString("display_name", "?")}"
+        } finally {
+            conn.disconnect()
+        }
+    }
+}

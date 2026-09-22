@@ -16,6 +16,11 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // AppAuth's RedirectUriReceiverActivity claims this scheme; the full
+        // redirect URI registered in the Spotify dashboard is "<scheme>://callback".
+        manifestPlaceholders["appAuthRedirectScheme"] = "io.github.arthur044.wallpaperchanger"
     }
 
     compileOptions {
@@ -37,4 +42,13 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.tooling)
+
+    implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.appauth)
+    implementation(libs.tink.android)
+
+    testImplementation(libs.junit4)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.kotlinx.coroutines.test)
 }
