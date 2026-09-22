@@ -12,6 +12,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import net.openid.appauth.AuthState
+import androidx.core.net.toUri
 import net.openid.appauth.AuthorizationException
 import net.openid.appauth.AuthorizationRequest
 import net.openid.appauth.AuthorizationResponse
@@ -163,13 +164,13 @@ class SpotifyAuth(
     companion object {
         // Must match manifestPlaceholders["appAuthRedirectScheme"] in app/build.gradle.kts,
         // and be registered verbatim under Redirect URIs in the Spotify dashboard.
-        val REDIRECT_URI: Uri = Uri.parse("io.github.arthur044.wallpaperchanger://callback")
+        val REDIRECT_URI: Uri = "io.github.arthur044.wallpaperchanger://callback".toUri()
 
         private val SCOPES = listOf("user-read-currently-playing", "user-read-playback-state")
 
         private val SERVICE_CONFIG = AuthorizationServiceConfiguration(
-            Uri.parse("https://accounts.spotify.com/authorize"),
-            Uri.parse("https://accounts.spotify.com/api/token"),
+            "https://accounts.spotify.com/authorize".toUri(),
+            "https://accounts.spotify.com/api/token".toUri(),
         )
     }
 }

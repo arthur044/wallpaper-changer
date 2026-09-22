@@ -3,6 +3,8 @@ package io.github.arthur044.wallpaperchanger.core.sync
 import io.github.arthur044.wallpaperchanger.core.NowPlaying
 import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.spotify.AlbumTrack
+import io.github.arthur044.wallpaperchanger.core.spotify.AuthExpiredException
+import io.github.arthur044.wallpaperchanger.core.spotify.RateLimitedException
 import io.github.arthur044.wallpaperchanger.core.spotify.TransientNetworkException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -106,6 +108,37 @@ class SyncEngineLocalSessionTest {
         source.playing = { apiSaysAirbag }
         engine.runOnce()
         assertEquals(listOf("radiohead::airbag"), sink.shown)
+    }
+
+    @Test
+    fun `a rate limit while resolving waits out Retry-After`() = runTest {
+        val engine = engine()
+        source.playing = { throw RateLimitedException(90.seconds) }
+
+        engine.onLocalTrack(airbagLocally)
+        assertEquals(90.seconds, engine.runOnce())
+        assertTrue(sink.shown.isEmpty())
+
+        advanceTimeBy(30.seconds)
+        source.playing = { apiSaysAirbag }
+        engine.runOnce() // still inside the window: no call, no draw
+        assertEquals(1, source.calls)
+
+        advanceTimeBy(60.seconds)
+        engine.runOnce()
+        assertEquals(listOf("radiohead::airbag"), sink.shown)
+    }
+
+    @Test
+    fun `a revoked session while resolving stops the loop`() = runTest {
+        val engine = engine()
+        source.playing = { throw AuthExpiredException("invalid_grant") }
+
+        engine.onLocalTrack(airbagLocally)
+        engine.run() // returns instead of looping
+
+        assertEquals(SyncStatus.SignedOut, engine.status.value)
+        assertTrue(sink.shown.isEmpty())
     }
 
     @Test

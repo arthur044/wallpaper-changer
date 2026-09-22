@@ -11,6 +11,8 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.scale
 import android.text.TextPaint
 import android.text.TextUtils
 import io.github.arthur044.wallpaperchanger.core.render.ColorThief
@@ -46,7 +48,7 @@ class WallpaperRenderer {
     fun renderBase(art: Bitmap, layout: WallpaperLayout): RenderedBase = drawBase(art, layout, dominantColor(art))
 
     fun drawBase(art: Bitmap, layout: WallpaperLayout, background: Rgb): RenderedBase {
-        val bitmap = Bitmap.createBitmap(layout.canvasWidth, layout.canvasHeight, Bitmap.Config.ARGB_8888)
+        val bitmap = createBitmap(layout.canvasWidth, layout.canvasHeight)
         val canvas = Canvas(bitmap)
         canvas.drawColor(background.argb)
         drawShadow(canvas, layout)
@@ -83,7 +85,7 @@ class WallpaperRenderer {
     private fun drawArt(canvas: Canvas, art: Bitmap, layout: WallpaperLayout) {
         val rect = layout.art
         val square = centerSquare(art)
-        val scaled = Bitmap.createScaledBitmap(square, rect.width, rect.height, true)
+        val scaled = square.scale(rect.width, rect.height)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
             shader = BitmapShader(scaled, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
                 setLocalMatrix(Matrix().apply { setTranslate(rect.left.toFloat(), rect.top.toFloat()) })

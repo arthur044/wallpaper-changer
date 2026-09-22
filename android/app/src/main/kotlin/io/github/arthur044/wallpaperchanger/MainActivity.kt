@@ -58,7 +58,7 @@ class MainActivity : ComponentActivity() {
                         )
                         Screen.DEBUG -> {
                             BackHandler { screen = Screen.MAIN }
-                            AuthDebugScreen(container, onOpenSpike = { screen = Screen.SPIKE }, modifier = modifier)
+                            AuthDebugScreen(container, modifier, onOpenSpike = { screen = Screen.SPIKE })
                         }
                         Screen.SPIKE -> {
                             BackHandler { screen = Screen.DEBUG }

@@ -47,7 +47,7 @@ import java.time.ZoneId
  * the onboarding wizard (M12) and the main screen (M11). Never shows the token.
  */
 @Composable
-fun AuthDebugScreen(container: AppContainer, onOpenSpike: () -> Unit = {}, modifier: Modifier = Modifier) {
+fun AuthDebugScreen(container: AppContainer, modifier: Modifier = Modifier, onOpenSpike: () -> Unit = {}) {
     val auth = container.spotifyAuth
     val context = LocalContext.current
     val scope = rememberCoroutineScope()

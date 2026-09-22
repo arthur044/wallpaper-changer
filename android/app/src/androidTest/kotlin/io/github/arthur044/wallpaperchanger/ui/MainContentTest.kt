@@ -28,6 +28,8 @@ class MainContentTest {
     private val context = InstrumentationRegistry.getInstrumentation().targetContext
     private val airbag = NowPlaying(true, "t1", "a1", "https://i.scdn.co/image/a1", "Airbag", "Radiohead")
 
+    private fun text(id: Int) = context.getString(id)
+
     private fun state(
         syncEnabled: Boolean = true,
         status: SyncStatus = SyncStatus.Showing(airbag),
@@ -151,6 +153,24 @@ class MainContentTest {
         rule.onNodeWithTag(TAG_LOCAL_ONLY).performScrollTo().performClick()
 
         assertEquals(true, localOnly)
+    }
+
+    @Test
+    fun theDebugLinkIsHiddenOutsideDebugBuilds() {
+        show(state()) // showDebugTools defaults to false, as in a release build
+
+        rule.onNodeWithTag(TAG_SYNC_SWITCH).assertExists() // the screen did render
+        rule.onNodeWithText(text(R.string.main_debug_tools)).assertDoesNotExist()
+    }
+
+    @Test
+    fun aDebugBuildKeepsTheLink() {
+        var opened = false
+        show(state().copy(showDebugTools = true), MainCallbacks(onOpenDebug = { opened = true }))
+
+        rule.onNodeWithText(text(R.string.main_debug_tools)).performScrollTo().performClick()
+
+        assertEquals(true, opened)
     }
 
     @Test

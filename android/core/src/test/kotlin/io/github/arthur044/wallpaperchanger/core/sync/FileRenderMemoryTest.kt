@@ -8,6 +8,7 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -37,6 +38,23 @@ class FileRenderMemoryTest {
     fun `a remembered track survives a restart`() = runTest {
         withMemory { it.remember("4uLU6hMCjMI75M1A2tKUQC") }
         assertEquals("4uLU6hMCjMI75M1A2tKUQC", withMemory { it.lastRenderedTrackId() })
+    }
+
+    @Test
+    fun `a disk error is reported, not thrown - forgetting only costs a redraw`() = runTest {
+        val errors = mutableListOf<Throwable>()
+        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        try {
+            // A directory where the file should be: every read and write fails.
+            val blocked = File(dir, "taken").apply { mkdirs() }
+            val memory = FileRenderMemory.create(blocked, scope) { errors += it }
+
+            memory.remember("t1")
+            assertNull(memory.lastRenderedTrackId())
+            assertTrue(errors.isNotEmpty())
+        } finally {
+            scope.coroutineContext.job.cancelAndJoin()
+        }
     }
 
     @Test

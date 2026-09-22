@@ -30,6 +30,9 @@ android {
 
     buildFeatures {
         compose = true
+        // For BuildConfig.DEBUG: the debug screens exist in every build but are
+        // only reachable from a debug one.
+        buildConfig = true
     }
 }
 

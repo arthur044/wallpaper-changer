@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.github.arthur044.wallpaperchanger.AppContainer
+import io.github.arthur044.wallpaperchanger.BuildConfig
 import io.github.arthur044.wallpaperchanger.core.spotify.ArtSource
 import io.github.arthur044.wallpaperchanger.core.sync.SyncStatus
 import io.github.arthur044.wallpaperchanger.media.notificationAccessGranted
@@ -82,6 +83,7 @@ fun MainScreen(
             settings = current,
             art = art,
             notificationAccess = notificationAccess,
+            showDebugTools = BuildConfig.DEBUG,
         ),
         callbacks = MainCallbacks(
             onSyncEnabledChange = { on ->

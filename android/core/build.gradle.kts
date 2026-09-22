@@ -1,6 +1,10 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
+    // Coverage for the pure module; :app is covered by instrumented tests instead.
+    // JaCoCo (built into Gradle) rather than Kover: Kover 0.9.1, its newest
+    // release, fails against Kotlin 2.4.20's Gradle plugin.
+    jacoco
 }
 
 kotlin {
@@ -26,4 +30,13 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    finalizedBy(tasks.jacocoTestReport)
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+    reports {
+        xml.required = true
+        html.required = true
+    }
 }

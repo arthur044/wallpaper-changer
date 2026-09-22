@@ -49,6 +49,8 @@ data class MainUiState(
     val art: ImageBitmap? = null,
     /** Whether the user granted notification access, which "react instantly" needs. */
     val notificationAccess: Boolean = false,
+    /** Debug builds only: the link to the debug and spike screens. */
+    val showDebugTools: Boolean = false,
 )
 
 class MainCallbacks(
@@ -84,8 +86,11 @@ fun MainContent(state: MainUiState, callbacks: MainCallbacks, modifier: Modifier
             LookSection(state.settings, callbacks.onLookChange)
             InstantSection(state, callbacks)
             AdvancedSection(state.settings, callbacks.onSettingsChange)
-            TextButton(onClick = callbacks.onOpenDebug, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-                Text(stringResource(R.string.main_debug_tools))
+            // Kept in the code, but only reachable from a debug build.
+            if (state.showDebugTools) {
+                TextButton(onClick = callbacks.onOpenDebug, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+                    Text(stringResource(R.string.main_debug_tools))
+                }
             }
         }
     }
