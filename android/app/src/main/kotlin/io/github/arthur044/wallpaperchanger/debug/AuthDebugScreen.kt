@@ -28,13 +28,9 @@ import androidx.compose.ui.unit.dp
 import io.github.arthur044.wallpaperchanger.AppContainer
 import io.github.arthur044.wallpaperchanger.auth.AuthStatus
 import io.github.arthur044.wallpaperchanger.auth.SpotifyAuth
+import io.github.arthur044.wallpaperchanger.core.spotify.SpotifyApi
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
@@ -105,7 +101,9 @@ fun AuthDebugScreen(container: AppContainer, modifier: Modifier = Modifier) {
                 enabled = !settings?.clientId.isNullOrBlank(),
                 onClick = { loginLauncher.launch(auth.authorizationIntent(settings!!.clientId)) },
             ) { Text("Login") }
-            Button(onClick = { act("GET /me") { fetchMe(auth) } }) { Text("GET /me") }
+            Button(onClick = { act("Tocando agora") { describePlayback(container.spotifyApi) } }) {
+                Text("Tocando agora")
+            }
             OutlinedButton(onClick = {
                 act("Forçar refresh") { "nova validade ${formatTime(auth.forceRefresh())}" }
             }) { Text("Forçar refresh") }
@@ -125,21 +123,10 @@ private fun describe(status: AuthStatus?): String = when {
 private fun formatTime(epochMillis: Long?): String =
     epochMillis?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).toLocalTime().withNano(0).toString() } ?: "?"
 
-// Throwaway HTTP call just to prove the token works; the real client is M4.
-private suspend fun fetchMe(auth: SpotifyAuth): String {
-    val token = auth.accessToken()
-    return withContext(Dispatchers.IO) {
-        val conn = URL("https://api.spotify.com/v1/me").openConnection() as HttpURLConnection
-        try {
-            conn.setRequestProperty("Authorization", "Bearer $token")
-            conn.connectTimeout = 10_000
-            conn.readTimeout = 10_000
-            val code = conn.responseCode
-            if (code != 200) return@withContext "HTTP $code"
-            val body = conn.inputStream.bufferedReader().use { it.readText() }
-            "HTTP 200 · display_name=${JSONObject(body).optString("display_name", "?")}"
-        } finally {
-            conn.disconnect()
-        }
-    }
+// Checks the real Web API payloads against SpotifyApi's parsing (M4).
+private suspend fun describePlayback(api: SpotifyApi): String {
+    val playing = api.currentlyPlaying() ?: return "nada tocando (204 ou sem faixa)"
+    val tracks = playing.albumId?.let { api.albumTracks(it) }.orEmpty()
+    return "${playing.artistName} – ${playing.trackName} · tocando=${playing.isPlaying} · " +
+        "album=${playing.albumId} · arte=${playing.artUrl != null} · faixas no álbum=${tracks.size}"
 }

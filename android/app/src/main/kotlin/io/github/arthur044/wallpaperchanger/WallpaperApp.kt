@@ -5,6 +5,7 @@ import android.util.Log
 import io.github.arthur044.wallpaperchanger.auth.EncryptedTokenStore
 import io.github.arthur044.wallpaperchanger.auth.SpotifyAuth
 import io.github.arthur044.wallpaperchanger.core.config.SettingsRepository
+import io.github.arthur044.wallpaperchanger.core.spotify.SpotifyApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -31,6 +32,8 @@ class AppContainer(app: Application) {
     )
 
     val spotifyAuth = SpotifyAuth(app, EncryptedTokenStore(app))
+
+    val spotifyApi = SpotifyApi(spotifyAuth)
 
     private companion object {
         const val TAG = "WallpaperApp"
