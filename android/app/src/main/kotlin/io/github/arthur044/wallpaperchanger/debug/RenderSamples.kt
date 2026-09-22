@@ -66,6 +66,23 @@ suspend fun composeCurrent(context: Context, container: AppContainer): String {
     return "$outcome · $elapsedMs ms · ${playing.trackName}"
 }
 
+/**
+ * TEMPORARY (M7): composes the current track and sets it as the wallpaper,
+ * home only or home + lock per the saved "sync lock screen" setting.
+ */
+suspend fun applyCurrent(context: Context, container: AppContainer): String {
+    val playing = checkNotNull(container.spotifyApi.currentlyPlaying()) { "Nothing is playing" }
+    val settings = container.settings.settings.first()
+    val composed = container.composer.compose(playing, canvasSpec(context.screenMetrics()), settings)
+    val result = try {
+        container.applier.apply(composed.bitmap, includeLockScreen = settings.syncLockScreen)
+    } finally {
+        composed.bitmap.recycle()
+    }
+    val target = if (settings.syncLockScreen) "home + lock" else "só home"
+    return "$result ($target) · ${playing.trackName}"
+}
+
 // Phones show the bitmap as-is; a square canvas is center-cropped to the real
 // screen in each orientation, which is what the system displays.
 private fun viewsOf(bitmap: Bitmap, screen: ScreenMetrics): List<Pair<String, Bitmap>> {

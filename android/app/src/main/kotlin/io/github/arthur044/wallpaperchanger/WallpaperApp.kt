@@ -10,6 +10,8 @@ import io.github.arthur044.wallpaperchanger.core.spotify.SpotifyApi
 import io.github.arthur044.wallpaperchanger.render.AlbumBaseCache
 import io.github.arthur044.wallpaperchanger.render.WallpaperComposer
 import io.github.arthur044.wallpaperchanger.render.WallpaperRenderer
+import io.github.arthur044.wallpaperchanger.wallpaper.SystemWallpaperPort
+import io.github.arthur044.wallpaperchanger.wallpaper.WallpaperApplier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -44,6 +46,8 @@ class AppContainer(app: Application) {
     val renderer = WallpaperRenderer()
 
     val composer = WallpaperComposer(artDownloader, renderer, AlbumBaseCache(File(app.cacheDir, "album_bases")))
+
+    val applier = WallpaperApplier(SystemWallpaperPort(app))
 
     private companion object {
         const val TAG = "WallpaperApp"
