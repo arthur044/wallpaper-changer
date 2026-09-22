@@ -13,7 +13,7 @@ import android.graphics.Shader
 import android.graphics.Typeface
 import android.text.TextPaint
 import android.text.TextUtils
-import androidx.palette.graphics.Palette
+import io.github.arthur044.wallpaperchanger.core.render.ColorThief
 import io.github.arthur044.wallpaperchanger.core.render.PixelRect
 import io.github.arthur044.wallpaperchanger.core.render.Rgb
 import io.github.arthur044.wallpaperchanger.core.render.WallpaperLayout
@@ -36,9 +36,12 @@ class WallpaperRenderer {
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
             ?: throw IllegalArgumentException("Album art is not a decodable image (${bytes.size} bytes)")
 
-    /** Most populous color of the art (color_extractor.py used ColorThief). */
-    fun dominantColor(art: Bitmap): Rgb =
-        Rgb.fromArgb(Palette.from(art).generate().getDominantColor(FALLBACK_BACKGROUND.argb))
+    /** The desktop's background color for this art (color_extractor.py), same algorithm and fallback. */
+    fun dominantColor(art: Bitmap): Rgb {
+        val pixels = IntArray(art.width * art.height)
+        art.getPixels(pixels, 0, art.width, 0, 0, art.width, art.height)
+        return ColorThief.dominantColor(pixels) ?: FALLBACK_BACKGROUND
+    }
 
     fun renderBase(art: Bitmap, layout: WallpaperLayout): RenderedBase = drawBase(art, layout, dominantColor(art))
 
@@ -124,11 +127,12 @@ class WallpaperRenderer {
         canvas.drawText(shown, centerX.toFloat(), baseline, paint)
     }
 
-    private companion object {
+    companion object {
+        /** color_extractor.py's _FALLBACK_COLOR, used when the art has no usable pixel. */
         val FALLBACK_BACKGROUND = Rgb(30, 30, 30)
-        val SHADOW_COLOR = Color.argb(140, 0, 0, 0)
-        val BOLD: Typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-        val REGULAR: Typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+        private val SHADOW_COLOR = Color.argb(140, 0, 0, 0)
+        private val BOLD: Typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        private val REGULAR: Typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
     }
 }
 

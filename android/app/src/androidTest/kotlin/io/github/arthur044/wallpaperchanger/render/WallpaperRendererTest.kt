@@ -30,11 +30,15 @@ class WallpaperRendererTest {
     private fun Bitmap.rgbAt(x: Int, y: Int) = Rgb.fromArgb(getPixel(x, y))
 
     @Test
-    fun dominantColorOfASolidImageIsThatColor() {
-        // Palette quantizes to 5 bits per channel before clustering, so the
-        // swatch is within one quantization step (8) of the true color.
-        val found = renderer.dominantColor(solidArt(Color.rgb(200, 30, 60)))
-        assertTrue("got $found", abs(found.r - 200) <= 8 && abs(found.g - 30) <= 8 && abs(found.b - 60) <= 8)
+    fun dominantColorMatchesTheDesktop() {
+        // colorthief returns the center of the color's 5-bit histogram cell:
+        // (200, 30, 60) -> (204, 28, 60), exactly what the PC computes.
+        assertEquals(Rgb(204, 28, 60), renderer.dominantColor(solidArt(Color.rgb(200, 30, 60))))
+    }
+
+    @Test
+    fun allWhiteArtFallsBackLikeTheDesktop() {
+        assertEquals(WallpaperRenderer.FALLBACK_BACKGROUND, renderer.dominantColor(solidArt(Color.WHITE)))
     }
 
     @Test

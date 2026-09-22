@@ -7,8 +7,10 @@ import java.security.MessageDigest
 /**
  * Bump when the renderer's drawing changes, so bases drawn by an older version
  * are never reused.
+ *
+ * 2: background color now matches the desktop (ColorThief port, not Palette).
  */
-const val BASE_RENDER_VERSION = 1
+const val BASE_RENDER_VERSION = 2
 
 /**
  * Cache key for an album's base image (fill + shadow + art, no text).

@@ -46,7 +46,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.appauth)
     implementation(libs.tink.android)
-    implementation(libs.androidx.palette)
 
     testImplementation(libs.junit4)
     androidTestImplementation(libs.androidx.test.ext.junit)
