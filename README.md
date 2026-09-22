@@ -2,6 +2,8 @@
 
 App de bandeja pro Windows. Define o wallpaper da área de trabalho (e opcionalmente a tela de bloqueio) como a capa do álbum que está tocando no Spotify.
 
+Tem também uma **versão Android** em [`android/`](android/README.md), que faz o mesmo no celular. Uso pessoal nos dois casos.
+
 ## Como funciona
 
 **Duas fontes, híbrido:**
@@ -65,6 +67,39 @@ Pause/Resume, Force Sync, alternar Sync Lock Screen, Re-authenticate (aparece em
 .venv\Scripts\pytest
 ```
 
+## Versão Android
+
+Port do mesmo app para Android, em `android/`. Mesma ideia e mesmo visual: a capa vira o
+wallpaper, com a **mesma cor de fundo** do desktop (o algoritmo do ColorThief foi portado
+para Kotlin, não substituído — trocá-lo por outro muda as cores).
+
+**O que muda em relação ao Windows:**
+
+| | Windows | Android |
+|---|---|---|
+| Fonte principal | SMTC (Spotify desktop aberto) | API Web, a cada 25 s, só com a tela ligada |
+| Fonte instantânea | SMTC, sempre | MediaSession local, **opcional** (pede acesso a notificações) |
+| Tela de bloqueio | Tarefa agendada com elevação | Direto, pelo `WallpaperManager` |
+| Controles | Menu da bandeja | Tela do app e bloco nas Configurações rápidas |
+| Ajuste do visual | Editar o `config.json` | Sliders na tela, com redesenho na hora |
+
+**Além disso, no Android:** guia de primeiro uso que valida o Client ID e explica a
+Redirect URI; volta a sincronizar sozinho depois de reiniciar o celular, atualizar o app
+ou ter o processo morto; e um modo "sem notificação fixa", que dispensa o serviço em
+primeiro plano quando a detecção instantânea está ligada.
+
+**Requisitos do Spotify, que valem para quem for instalar:**
+
+- Criar um app próprio no [painel do Spotify](https://developer.spotify.com/dashboard) e
+  usar o **seu** Client ID. Não dá para embutir um Client ID compartilhado: desde
+  15/05/2025 o Spotify só concede cota estendida a empresas com 250 mil usuários ativos
+  por mês, então cada pessoa usa o app dela, em modo de desenvolvimento.
+- O dono do app precisa de **Spotify Premium**, e o modo de desenvolvimento aceita até
+  **5 contas** por app — de sobra para uso pessoal.
+
+Build, testes, estrutura e detalhes de assinatura do APK estão no
+[README do Android](android/README.md).
+
 ## Estrutura do projeto
 
 ```
@@ -74,4 +109,5 @@ src/spotify/                client da API Web, poller (gate híbrido SMTC/API), 
 src/os_integration/        watcher SMTC, detecção de bloqueio, wallpaper/lockscreen/autostart, tray
 src/graphics/               renderização da arte pro wallpaper (Pillow)
 tests/
+android/                   port Android (Kotlin): :core puro + :app, veja android/README.md
 ```
