@@ -29,7 +29,12 @@ import kotlinx.coroutines.withContext
 
 /** Wires [MainContent] to the app: settings, the engine's status, the controller. */
 @Composable
-fun MainScreen(container: AppContainer, onOpenDebug: () -> Unit, modifier: Modifier = Modifier) {
+fun MainScreen(
+    container: AppContainer,
+    onConnect: () -> Unit,
+    onOpenDebug: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
     // Writes go to the app scope so they finish even if the screen goes away.
     val scope = container.appScope
@@ -79,7 +84,7 @@ fun MainScreen(container: AppContainer, onOpenDebug: () -> Unit, modifier: Modif
                 }
             },
             onSettingsChange = { change -> scope.launch { container.settings.update(change) } },
-            onConnect = onOpenDebug,
+            onConnect = onConnect,
             onOpenDebug = onOpenDebug,
         ),
         modifier = modifier,

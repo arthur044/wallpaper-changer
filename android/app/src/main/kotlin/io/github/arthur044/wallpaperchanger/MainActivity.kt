@@ -7,6 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -14,9 +15,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import io.github.arthur044.wallpaperchanger.debug.AuthDebugScreen
+import io.github.arthur044.wallpaperchanger.onboarding.OnboardingScreen
 import io.github.arthur044.wallpaperchanger.ui.AppTheme
 import io.github.arthur044.wallpaperchanger.ui.MainScreen
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+
+private enum class Screen { ONBOARDING, MAIN, DEBUG }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -30,15 +35,30 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             AppTheme {
-                // Two screens don't need a navigation library.
-                var showDebug by rememberSaveable { mutableStateOf(false) }
+                // Three screens don't need a navigation library.
+                var screen by rememberSaveable { mutableStateOf<Screen?>(null) }
+                LaunchedEffect(Unit) {
+                    if (screen == null) {
+                        val ready = container.settings.settings.first().onboardingDone &&
+                            container.spotifyAuth.status().signedIn
+                        screen = if (ready) Screen.MAIN else Screen.ONBOARDING
+                    }
+                }
                 Scaffold { innerPadding ->
                     val modifier = Modifier.padding(innerPadding)
-                    if (showDebug) {
-                        BackHandler { showDebug = false }
-                        AuthDebugScreen(container, modifier)
-                    } else {
-                        MainScreen(container, onOpenDebug = { showDebug = true }, modifier = modifier)
+                    when (screen) {
+                        null -> Unit // deciding; a blank frame for a few ms
+                        Screen.ONBOARDING -> OnboardingScreen(container, onFinished = { screen = Screen.MAIN }, modifier)
+                        Screen.MAIN -> MainScreen(
+                            container,
+                            onConnect = { screen = Screen.ONBOARDING },
+                            onOpenDebug = { screen = Screen.DEBUG },
+                            modifier = modifier,
+                        )
+                        Screen.DEBUG -> {
+                            BackHandler { screen = Screen.MAIN }
+                            AuthDebugScreen(container, modifier)
+                        }
                     }
                 }
             }

@@ -33,6 +33,9 @@ data class Settings(
     // reboot or an app update. Stays on when the session expires, so a new
     // login resumes it.
     @SerialName("sync_enabled") val syncEnabled: Boolean = false,
+    // Android only: the first-run guide was finished (optional steps may have
+    // been skipped), so it isn't shown again on every launch.
+    @SerialName("onboarding_done") val onboardingDone: Boolean = false,
 ) {
     val webApiPollInterval: Duration get() = webApiPollIntervalSeconds.seconds
 

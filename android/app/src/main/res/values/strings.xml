@@ -36,6 +36,36 @@
     <string name="value_number" translatable="false">%1$d</string>
     <string name="value_seconds" translatable="false">%1$d s</string>
 
+    <string name="onb_step_progress">Step %1$d of %2$d</string>
+    <string name="onb_continue">Continue</string>
+    <string name="onb_not_now">Not now</string>
+    <string name="onb_client_title">Connect your Spotify app</string>
+    <string name="onb_client_intro">Wallpaper Changer talks to Spotify through a free developer app that you create once. It takes about two minutes.</string>
+    <string name="onb_client_step1">1. Open the Spotify dashboard and log in.</string>
+    <string name="onb_open_dashboard">Open dashboard</string>
+    <string name="onb_client_step2">2. Create an app. Under Redirect URIs add exactly:</string>
+    <string name="onb_copy">Copy</string>
+    <string name="onb_client_step3">3. Tick “Web API”, save, then paste the app’s Client ID here:</string>
+    <string name="onb_client_id_label">Client ID</string>
+    <string name="onb_client_id_invalid">A Client ID has 32 letters and digits (0–9, a–f).</string>
+    <string name="onb_login_title">Sign in to Spotify</string>
+    <string name="onb_login_body">Spotify will ask you to allow access to what you are playing. Nothing else is read.</string>
+    <string name="onb_login_button">Sign in to Spotify</string>
+    <string name="onb_login_cancelled">Sign-in didn’t finish. If Spotify said “Invalid redirect URI”, check that the dashboard has exactly: %1$s</string>
+    <string name="onb_login_failed">Sign-in failed: %1$s</string>
+    <string name="onb_change_client_id">Use another Client ID</string>
+    <string name="onb_notif_title">Allow the status notification</string>
+    <string name="onb_notif_body">While syncing, Android requires a notification. It shows the song on your wallpaper and has a Stop button. Without it the sync still works, just hidden.</string>
+    <string name="onb_allow">Allow</string>
+    <string name="onb_battery_title">Keep it running</string>
+    <string name="onb_battery_body">Battery saving can stop the sync in the background. Let Wallpaper Changer run unrestricted: it only works while the screen is on.</string>
+    <string name="onb_battery_button">Allow background use</string>
+    <string name="onb_battery_samsung">On Samsung, also make sure it isn’t in Settings › Battery › Background usage limits › Sleeping apps.</string>
+    <string name="onb_open_app_settings">Open app settings</string>
+    <string name="onb_done_title">All set</string>
+    <string name="onb_done_body">Play something on Spotify: the wallpaper follows along. Turn it off any time from the app or from Quick Settings.</string>
+    <string name="onb_start">Start</string>
+
     <string name="tile_label">Album wallpaper</string>
     <string name="tile_on">On</string>
     <string name="tile_off">Off</string>
