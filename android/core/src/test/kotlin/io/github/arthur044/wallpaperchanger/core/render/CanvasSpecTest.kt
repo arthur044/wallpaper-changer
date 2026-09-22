@@ -6,6 +6,23 @@ import org.junit.jupiter.api.Test
 
 class CanvasSpecTest {
     @Test
+    fun `insets bigger than the screen fall back to the whole canvas`() {
+        // A device reporting nonsense must not yield an empty or inverted safe
+        // area: the layout would then have nowhere to put the art.
+        val spec = canvasSpec(ScreenMetrics(1080, 2400, 2.625f, 411, Insets(900, 1500, 900, 1500)))
+
+        assertEquals(PixelRect(0, 0, spec.canvasWidth, spec.canvasHeight), spec.safeArea)
+        assertTrue(spec.safeArea.width > 0 && spec.safeArea.height > 0)
+    }
+
+    @Test
+    fun `absurd insets on a large screen also fall back`() {
+        val spec = canvasSpec(ScreenMetrics(2560, 1600, 2f, 800, Insets(0, 1400, 0, 1400)))
+
+        assertEquals(PixelRect(0, 0, spec.canvasWidth, spec.canvasHeight), spec.safeArea)
+    }
+
+    @Test
     fun `a phone gets a screen-sized canvas minus the system bars`() {
         val spec = canvasSpec(ScreenMetrics(1080, 2400, density = 2.625f, smallestWidthDp = 411, insets = Insets(0, 63, 0, 126)))
 

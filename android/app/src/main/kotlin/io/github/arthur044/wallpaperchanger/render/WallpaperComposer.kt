@@ -27,12 +27,14 @@ class WallpaperComposer(
     private val cpu: CoroutineDispatcher = Dispatchers.Default,
 ) {
     /**
-     * @throws IllegalArgumentException if [nowPlaying] has no album.
-     * @throws TrackNotDrawableException if it has no art and no base is cached.
+     * @throws TrackNotDrawableException if it has no album, or no art and no base is cached.
      * @throws io.github.arthur044.wallpaperchanger.core.spotify.TransientNetworkException if the art download fails.
      */
     suspend fun compose(nowPlaying: NowPlaying, canvas: CanvasSpec, settings: Settings): ComposedWallpaper {
-        val albumId = requireNotNull(nowPlaying.albumId) { "Can't render a track without an album" }
+        // decide() keeps album-less tracks out of here, but say it the same way
+        // as missing art if one ever arrives: retrying it would change nothing.
+        val albumId = nowPlaying.albumId
+            ?: throw TrackNotDrawableException("Track ${nowPlaying.trackId} has no album")
         val key = baseCacheKey(albumId, canvas, settings)
 
         val cached = withContext(io) { cache.get(key) }

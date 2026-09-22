@@ -6,6 +6,7 @@ import io.github.arthur044.wallpaperchanger.core.spotify.AuthExpiredException
 import io.github.arthur044.wallpaperchanger.core.spotify.RateLimitedException
 import io.github.arthur044.wallpaperchanger.core.spotify.TransientNetworkException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -179,6 +180,29 @@ class SyncEngineTest {
 
         assertEquals(1, sink.attempts) // tried once, then moved on
         assertTrue(engine.status.value is SyncStatus.RenderFailed)
+    }
+
+    @Test
+    fun `a second loop on the same engine waits instead of drawing in parallel`() = runTest {
+        // The service and the notification listener share one engine, and the
+        // handover between them overlaps (stopping a service is asynchronous).
+        // While the first loop is inside the render, the second must not start a
+        // cycle of its own: the track isn't marked yet, so it would draw it again.
+        val engine = engine()
+        val insideRender = CompletableDeferred<Unit>()
+        source.playing = { airbag }
+        sink.hold = insideRender
+
+        backgroundScope.launch { engine.run() }
+        backgroundScope.launch { engine.run() }
+        runCurrent()
+        // Long enough that the API throttle would let a second loop poll again.
+        advanceTimeBy(30.seconds)
+
+        assertEquals(1, sink.attempts)
+        insideRender.complete(Unit)
+        runCurrent()
+        assertEquals(listOf("t1"), sink.shown)
     }
 
     @Test
@@ -376,8 +400,15 @@ class SyncEngineTest {
         var attempts = 0
             private set
 
+        /** Keeps the first render suspended, so a second loop gets a chance to run. */
+        var hold: CompletableDeferred<Unit>? = null
+
         override suspend fun show(nowPlaying: NowPlaying) {
             attempts++
+            hold?.let {
+                hold = null
+                it.await()
+            }
             if (cancel) throw CancellationException("service stopped")
             if (blocked) throw WallpaperBlockedException("device policy")
             if (undrawable) throw TrackNotDrawableException("no art for this album")

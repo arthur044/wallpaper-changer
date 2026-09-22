@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -47,6 +49,7 @@ class SyncEngine(
     // Guards the API against "sync now" spam; the regular cadence is the wait.
     private val throttle = ApiThrottle(MIN_CALL_SPACING, timeSource)
     private val wake = Channel<Unit>(Channel.CONFLATED)
+    private val looping = Mutex()
     private val mutableStatus = MutableStateFlow<SyncStatus>(SyncStatus.Starting)
     private var lastRenderedTrackId: String? = null
     private var undrawableTrackId: String? = null
@@ -58,8 +61,16 @@ class SyncEngine(
 
     val status: StateFlow<SyncStatus> = mutableStatus.asStateFlow()
 
-    /** Polls until cancelled, or until the session expires or the wallpaper is blocked. */
-    suspend fun run() {
+    /**
+     * Polls until cancelled, or until the session expires or the wallpaper is blocked.
+     *
+     * One loop at a time, even though two owners can call this: the foreground
+     * service and the notification listener share this engine, and switching
+     * between them overlaps, because stopping a service is asynchronous. A
+     * second caller waits here instead of racing the first one's state, which
+     * would redraw tracks the other had already handled.
+     */
+    suspend fun run() = looping.withLock {
         while (true) {
             val wait = runOnce() ?: return
             withTimeoutOrNull(wait) { wake.receive() }

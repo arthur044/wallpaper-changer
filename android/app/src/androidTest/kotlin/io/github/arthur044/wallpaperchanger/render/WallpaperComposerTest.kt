@@ -9,6 +9,7 @@ import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.render.CanvasSpec
 import io.github.arthur044.wallpaperchanger.core.render.PixelRect
 import io.github.arthur044.wallpaperchanger.core.spotify.ArtSource
+import io.github.arthur044.wallpaperchanger.core.sync.TrackNotDrawableException
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -82,6 +83,27 @@ class WallpaperComposerTest {
 
         assertFalse(result.reusedBase)
         assertEquals(2, art.downloads)
+    }
+
+    @Test
+    fun anAlbumWithNoArtIsReportedAsUndrawable() = runTest {
+        // Spotify does return albums with no images. The engine relies on this
+        // exact type to skip the track instead of retrying it on every poll.
+        val artless = airbag.copy(artUrl = null)
+
+        val thrown = runCatching { composer.compose(artless, phone, Settings()) }.exceptionOrNull()
+
+        assertTrue("got $thrown", thrown is TrackNotDrawableException)
+        assertEquals(0, art.downloads)
+    }
+
+    @Test
+    fun aTrackWithNoAlbumIsReportedAsUndrawable() = runTest {
+        val albumless = airbag.copy(albumId = null)
+
+        val thrown = runCatching { composer.compose(albumless, phone, Settings()) }.exceptionOrNull()
+
+        assertTrue("got $thrown", thrown is TrackNotDrawableException)
     }
 
     @Test

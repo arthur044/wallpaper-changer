@@ -72,11 +72,14 @@ class MediaSessionProbe(private val context: Context, private val now: () -> Lon
             watch(controllers.orEmpty())
         }
         manager.addOnActiveSessionsChangedListener(onSessions, component, handler)
-        watch(manager.getActiveSessions(component))
+        // Everything that touches `watched`/`watcher` runs on the main looper,
+        // including this first look: the session-changed callback arrives there,
+        // and a second writer would leak a registered callback nobody unregisters.
+        handler.post { watch(manager.getActiveSessions(component)) }
 
         awaitClose {
             manager.removeOnActiveSessionsChangedListener(onSessions)
-            watcher?.let { watched?.unregisterCallback(it) }
+            handler.post { watcher?.let { watched?.unregisterCallback(it) } }
         }
     }
 }

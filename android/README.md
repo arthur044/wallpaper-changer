@@ -70,6 +70,14 @@ contrário todos falham com "No compose hierarchies found". Ajuda:
 Os testes instrumentados não trocam o wallpaper de verdade: usam uma implementação falsa
 do `WallpaperManager`.
 
+**`DesktopColorParityTest` não roda sozinho.** Ele compara capas reais com as cores
+calculadas pelo desktop e precisa de arquivos que não estão no repositório, porque as
+capas são protegidas por direito autoral. Sem eles o teste se pula, então **a paridade de
+cor com o PC é uma conferência manual**; o que roda sempre é o gabarito sintético do
+`ColorThiefTest`. Para rodar a versão real, gere as cores com o `colorthief` do desktop e
+empurre para `cache/color_parity/` no aparelho, com um `expected.txt` de linhas
+`<nome> <rrggbb>`.
+
 ## Estrutura
 
 | Módulo | Conteúdo |
