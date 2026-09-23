@@ -44,6 +44,8 @@ class SyncEngine(
     /** Pre-warms the index for the whole album; without it only the played track is known. */
     private val albumTracks: AlbumTracksSource? = null,
     private val index: TrackAlbumIndex = TrackAlbumIndex(),
+    /** Keeps [index] across restarts: songs of albums seen before need no lookup. */
+    private val trackIndexStore: TrackIndexStore = TrackIndexStore.None,
     timeSource: TimeSource = TimeSource.Monotonic,
 ) {
     // Guards the API against "sync now" spam; the regular cadence is the wait.
@@ -60,6 +62,8 @@ class SyncEngine(
     private var lastDrawn: NowPlaying? = null
     // An album whose tracklist is fetched right after the render, not before it.
     private var pendingTracklist: ResolvedAlbum? = null
+    // Tracks already forgotten once after failing to draw (see forgetOnce).
+    private val forgottenAfterFailure = mutableSetOf<String>()
     private val latestLocal = AtomicReference<LocalTrack?>(null)
     private var backoff = Duration.ZERO
     private var resolveBackoff = Duration.ZERO
@@ -131,6 +135,7 @@ class SyncEngine(
     private suspend fun pollOnce(): Duration? {
         if (!memoryLoaded) {
             lastRenderedTrackId = memory.lastRenderedTrackId()
+            index.restore(trackIndexStore.load())
             memoryLoaded = true
         }
         val current = settings.first()
@@ -239,6 +244,14 @@ class SyncEngine(
             return
         }
         index.record(album, tracks.map { trackKey(it.artistName, it.name) })
+        trackIndexStore.save(index.snapshot())
+    }
+
+    // Maybe the saved art link stopped working: forget the track once, so the
+    // next lookup asks Spotify again instead of failing on the stale link.
+    private suspend fun forgetOnce(trackKey: String?) {
+        if (trackKey == null || !forgottenAfterFailure.add(trackKey)) return
+        if (index.forget(trackKey)) trackIndexStore.save(index.snapshot())
     }
 
     /**
@@ -265,6 +278,7 @@ class SyncEngine(
             // The API names this very track: draw it now, and let the tracklist
             // (which only saves calls for the album's other songs) follow.
             index.record(album, listOf(playingKey))
+            trackIndexStore.save(index.snapshot())
             pendingTracklist = album
             return Resolution.Found(album)
         }
@@ -276,6 +290,7 @@ class SyncEngine(
             .getOrDefault(emptyList())
             .mapTo(keys) { trackKey(it.artistName, it.name) }
         index.record(album, keys)
+        trackIndexStore.save(index.snapshot())
         // Unknown when the API is reporting another device: don't draw that track here.
         return index[wantedKey]?.let(Resolution::Found) ?: Resolution.Unknown
     }
@@ -312,6 +327,7 @@ class SyncEngine(
         } catch (e: Exception) {
             // Left unmarked, so the next poll sees a new track and tries again.
             mutableStatus.value = SyncStatus.RenderFailed(nowPlaying, e)
+            forgetOnce(nowPlaying.trackId)
             return true
         }
         lastRenderedTrackId = nowPlaying.trackId

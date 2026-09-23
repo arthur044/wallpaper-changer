@@ -1,6 +1,7 @@
 package io.github.arthur044.wallpaperchanger.core.sync
 
 import io.github.arthur044.wallpaperchanger.core.NowPlaying
+import io.github.arthur044.wallpaperchanger.core.ResolvedAlbum
 import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.spotify.AlbumTrack
 import io.github.arthur044.wallpaperchanger.core.spotify.AuthExpiredException
@@ -31,8 +32,10 @@ class SyncEngineLocalSessionTest {
     private val airbagLocally = LocalTrack("Airbag", "Radiohead", isPlaying = true)
     private val luckyLocally = LocalTrack("Lucky", "Radiohead", isPlaying = true)
 
+    private val store = FakeStore()
+
     private fun TestScope.engine() =
-        SyncEngine(source, sink, settings, albumTracks = tracks, timeSource = testScheduler.timeSource)
+        SyncEngine(source, sink, settings, albumTracks = tracks, trackIndexStore = store, timeSource = testScheduler.timeSource)
 
     @Test
     fun `the first track of an album is resolved once, then the album is free`() = runTest {
@@ -212,6 +215,42 @@ class SyncEngineLocalSessionTest {
     }
 
     @Test
+    fun `after a restart a song of a known album needs no lookup`() = runTest {
+        store.saved = listOf("radiohead::airbag" to ResolvedAlbum("a1", "https://i.scdn.co/image/a1"))
+        val engine = engine()
+
+        engine.onLocalTrack(airbagLocally)
+        engine.runOnce()
+
+        assertEquals(listOf("radiohead::airbag"), sink.shown)
+        assertEquals(0, source.calls)
+    }
+
+    @Test
+    fun `a newly resolved album is saved`() = runTest {
+        val engine = engine()
+        source.playing = { apiSaysAirbag }
+        tracks.byAlbum = mapOf("a1" to listOf(AlbumTrack("Airbag", "Radiohead"), AlbumTrack("Lucky", "Radiohead")))
+
+        engine.onLocalTrack(airbagLocally)
+        engine.runOnce()
+
+        assertEquals(setOf("radiohead::airbag", "radiohead::lucky"), store.saved.map { it.first }.toSet())
+    }
+
+    @Test
+    fun `a saved song that fails to draw is forgotten, once`() = runTest {
+        store.saved = listOf("radiohead::airbag" to ResolvedAlbum("a1", "https://gone"))
+        sink.fail = true
+        val engine = engine()
+
+        engine.onLocalTrack(airbagLocally)
+        engine.runOnce()
+
+        assertTrue(store.saved.isEmpty(), "forgotten, so the next attempt asks Spotify")
+    }
+
+    @Test
     fun `a failed tracklist prefetch still draws the current track`() = runTest {
         val engine = engine()
         source.playing = { apiSaysAirbag }
@@ -256,10 +295,22 @@ class SyncEngineLocalSessionTest {
     private class FakeSink : WallpaperSink {
         val shown = mutableListOf<String?>()
         var onShow: () -> Unit = {}
+        var fail = false
 
         override suspend fun show(nowPlaying: NowPlaying) {
+            if (fail) throw IllegalStateException("could not draw")
             onShow()
             shown += nowPlaying.trackId
+        }
+    }
+
+    private class FakeStore : TrackIndexStore {
+        var saved: List<Pair<String, ResolvedAlbum>> = emptyList()
+
+        override suspend fun load(): List<Pair<String, ResolvedAlbum>> = saved
+
+        override suspend fun save(entries: List<Pair<String, ResolvedAlbum>>) {
+            saved = entries
         }
     }
 }

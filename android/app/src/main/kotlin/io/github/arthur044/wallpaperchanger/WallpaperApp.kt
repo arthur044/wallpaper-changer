@@ -9,6 +9,7 @@ import io.github.arthur044.wallpaperchanger.core.spotify.ArtDownloader
 import io.github.arthur044.wallpaperchanger.core.render.canvasSpec
 import io.github.arthur044.wallpaperchanger.core.spotify.SpotifyApi
 import io.github.arthur044.wallpaperchanger.core.sync.FileRenderMemory
+import io.github.arthur044.wallpaperchanger.core.sync.FileTrackIndexStore
 import io.github.arthur044.wallpaperchanger.core.sync.SyncEngine
 import io.github.arthur044.wallpaperchanger.sync.SyncController
 import io.github.arthur044.wallpaperchanger.render.defaultDisplayWindowContext
@@ -84,12 +85,19 @@ class AppContainer(app: Application) {
         onError = { Log.w(TAG, "Could not read or save the last drawn track", it) },
     )
 
+    private val trackIndexStore = FileTrackIndexStore.create(
+        file = File(app.filesDir, "sync_state/track_index.json"),
+        scope = appScope,
+        onError = { Log.w(TAG, "Could not read or save the track index", it) },
+    )
+
     val syncEngine = SyncEngine(
         source = { spotifyApi.currentlyPlaying() },
         sink = wallpaperUpdater,
         settings = settings.settings,
         memory = renderMemory,
         albumTracks = { albumId -> spotifyApi.albumTracks(albumId) },
+        trackIndexStore = trackIndexStore,
     )
 
     val syncController = SyncController(app, settings, spotifyAuth, appScope)

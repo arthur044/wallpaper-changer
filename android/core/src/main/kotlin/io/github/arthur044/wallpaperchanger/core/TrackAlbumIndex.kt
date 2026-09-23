@@ -8,9 +8,9 @@ data class ResolvedAlbum(val albumId: String, val artUrl: String?)
  * every track on it is recorded at once, so jumping straight to any later track
  * of that album is recognized without another Web API call.
  *
- * Bounded LRU (the desktop version grew without limit): ~40 albums' worth of
- * tracks at the default size. In-memory only; losing it on process death just
- * costs one re-resolution per album. Safe to call from multiple threads.
+ * Bounded LRU: a few hundred albums' worth of tracks at the default size.
+ * Kept across restarts through a TrackIndexStore (snapshot/restore), so songs
+ * of albums seen before need no lookup. Safe to call from multiple threads.
  */
 class TrackAlbumIndex(private val maxEntries: Int = DEFAULT_MAX_ENTRIES) {
     init {
@@ -30,7 +30,21 @@ class TrackAlbumIndex(private val maxEntries: Int = DEFAULT_MAX_ENTRIES) {
         trackKeys.forEach { entries[it] = album }
     }
 
+    /** Every entry, least recently used first: what a store saves. */
+    @Synchronized
+    fun snapshot(): List<Pair<String, ResolvedAlbum>> = entries.map { it.key to it.value }
+
+    /** Puts saved entries back in order, so recency survives a restart. */
+    @Synchronized
+    fun restore(saved: List<Pair<String, ResolvedAlbum>>) {
+        saved.forEach { (key, album) -> entries[key] = album }
+    }
+
+    /** @return whether [trackKey] was known. */
+    @Synchronized
+    fun forget(trackKey: String): Boolean = entries.remove(trackKey) != null
+
     companion object {
-        const val DEFAULT_MAX_ENTRIES = 2_000
+        const val DEFAULT_MAX_ENTRIES = 5_000
     }
 }
