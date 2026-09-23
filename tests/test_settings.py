@@ -9,6 +9,7 @@ def test_background_options_default_to_the_current_look():
     assert settings.text_card == "none"
     assert settings.art_frame == "none"
     assert settings.smooth_transition is False
+    assert settings.blur_strength == 26
 
 
 def test_blurred_art_background_and_frames_are_valid_choices():
@@ -58,3 +59,15 @@ def test_from_dict_ignores_unknown_keys():
 def test_smooth_transition_is_an_on_off_option():
     assert Settings.from_dict({"smooth_transition": True}).smooth_transition is True
     assert Settings.from_dict({"smooth_transition": "yes"}).smooth_transition is False
+
+
+
+def test_blur_strength_is_kept_within_0_and_100():
+    assert Settings.from_dict({"blur_strength": 60}).blur_strength == 60
+    assert Settings.from_dict({"blur_strength": 250}).blur_strength == 100
+    assert Settings.from_dict({"blur_strength": -5}).blur_strength == 0
+
+
+def test_an_invalid_blur_strength_resets_to_the_default():
+    assert Settings.from_dict({"blur_strength": "strong"}).blur_strength == 26
+    assert Settings.from_dict({"blur_strength": True}).blur_strength == 26

@@ -95,6 +95,7 @@ class TrayApp:
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Art glow", self._toggle_glow, checked=lambda item: self._settings.art_glow),
+            pystray.MenuItem("Blur strength", self._build_blur_menu()),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
                 "No frame",
@@ -140,6 +141,28 @@ class TrayApp:
 
     def _toggle_glow(self, icon, item) -> None:
         self._settings.art_glow = not self._settings.art_glow
+        self._apply_style_change()
+
+    # Presets for the blurred background; any 0-100 value works from config.json.
+    _BLUR_LEVELS = (("Soft", 10), ("Medium (default)", 26), ("Strong", 50), ("Maximum", 100))
+
+    def _build_blur_menu(self) -> pystray.Menu:
+        return pystray.Menu(*(self._blur_item(name, value) for name, value in self._BLUR_LEVELS))
+
+    # A factory, not a lambda with value=value: pystray counts an action's
+    # parameters, defaults included, and rejects more than (icon, item).
+    def _blur_item(self, name: str, value: int) -> pystray.MenuItem:
+        return pystray.MenuItem(
+            name,
+            lambda icon, item: self._set_blur_strength(value),
+            checked=lambda item: self._settings.blur_strength == value,
+            radio=True,
+        )
+
+    def _set_blur_strength(self, value: int) -> None:
+        if self._settings.blur_strength == value:
+            return
+        self._settings.blur_strength = value
         self._apply_style_change()
 
     def _set_frame(self, frame: str) -> None:

@@ -57,6 +57,7 @@ Pra rodar de novo depois (trocar de conta, token revogado): `python main.py --se
 | `show_track_info` | `true` | Desenha texto de faixa/artista embaixo da arte |
 | `background_style` | `"solid"` | Fundo: `"solid"` (cor predominante da capa), `"mesh"` (gradiente suave com 2 a 4 cores da capa) ou `"blur"` (a própria capa cobrindo a tela, desfocada e escurecida nas bordas) |
 | `art_glow` | `false` | Troca a sombra preta da arte por um brilho na cor mais vibrante da capa |
+| `blur_strength` | `26` | Intensidade do desfoque do fundo `"blur"`, de 0 (quase nítido) a 100 (uma nuvem de cor); o escurecimento das bordas é fixo |
 | `art_frame` | `"none"` | Moldura de vidro em volta da capa: `"none"`, `"single"` (uma borda) ou `"double"` (duas); a capa encolhe para caber nela, sem mover o texto |
 | `smooth_transition` | `false` | Troca o wallpaper com o fade do próprio Windows (precisa das animações do sistema ligadas); se falhar, troca na hora |
 | `text_card` | `"none"` | Cartão atrás do título/artista: `"none"` ou `"glass"` (vidro fosco sobre o fundo). Só com `show_track_info` |

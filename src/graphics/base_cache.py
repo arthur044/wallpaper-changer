@@ -45,6 +45,8 @@ def base_cache_key(album_id: str, canvas_size: Tuple[int, int], settings: Settin
             settings.background_style,
             settings.art_glow,
             settings.art_frame,
+            # Only the blurred background uses it: other styles keep their bases.
+            settings.blur_strength if settings.background_style == "blur" else None,
         )
     )
     return f"{_file_safe_id(album_id)}_{width}x{height}_{_sha256_hex(inputs)[:12]}"

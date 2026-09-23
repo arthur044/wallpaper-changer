@@ -70,6 +70,9 @@ class Settings:
     # Troca o wallpaper pelo caminho que o Windows anima (fade), quando as
     # animações do sistema estão ligadas; se falhar, troca na hora como antes.
     smooth_transition: bool = False
+    # Intensidade do desfoque do fundo "blur", de 0 (quase nítido) a 100 (uma
+    # nuvem de cor). 26 é o visual original. O escurecimento das bordas é fixo.
+    blur_strength: int = 26
     fallback_resolution: List[int] = field(default_factory=lambda: [1920, 1080])
     log_level: str = "INFO"
     sync_lock_screen: bool = False
@@ -78,6 +81,8 @@ class Settings:
     def from_dict(cls, data: dict) -> "Settings":
         known_fields = {f.name for f in dataclasses.fields(cls)}
         filtered = {k: v for k, v in data.items() if k in known_fields}
+        if "blur_strength" in filtered:
+            filtered["blur_strength"] = _clamp_blur_strength(filtered["blur_strength"])
         frame = filtered.get("art_frame")
         if isinstance(frame, bool):
             filtered["art_frame"] = _LEGACY_FRAME[frame]
@@ -93,6 +98,19 @@ _CHOICES = {
     "art_frame": ART_FRAMES,
     "smooth_transition": (True, False),
 }
+
+BLUR_STRENGTH_RANGE = (0, 100)
+_DEFAULT_BLUR_STRENGTH = 26
+
+
+def _clamp_blur_strength(value) -> int:
+    # bool é subclasse de int em Python: True não é uma intensidade.
+    if isinstance(value, bool) or not isinstance(value, int):
+        logger.warning("Invalid blur_strength=%r in config, using default", value)
+        return _DEFAULT_BLUR_STRENGTH
+    low, high = BLUR_STRENGTH_RANGE
+    return min(high, max(low, value))
+
 
 # A moldura já foi uma chave liga/desliga; configs dessa época continuam valendo.
 _LEGACY_FRAME = {True: "double", False: "none"}

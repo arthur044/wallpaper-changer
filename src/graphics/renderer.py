@@ -38,7 +38,9 @@ _CARD_RADIUS_PCT = 0.02
 _CARD_BLUR_PCT = 0.02
 # "blur" background: the art covering the screen, blurred enough to soften it
 # but not so much that its shapes stop reading, then darkened toward the edges.
-_BLUR_BG_SIGMA_PCT = 0.026  # of the canvas short side
+# Sigma per point of blur_strength, as a fraction of the canvas short side:
+# the default 26 gives 2.6%, 100 gives 10% (a cloud of color).
+_BLUR_BG_SIGMA_PER_STRENGTH = 0.001
 _BLUR_BG_DOWNSCALE = 4
 _VIGNETTE_MIN_ALPHA = 50  # black over the centre...
 _VIGNETTE_GAIN = 0.5  # ...rising toward the edges, up to ~177 in the corners
@@ -107,7 +109,7 @@ def _glow_layer(
     return _halo_layer(layout, color + (_GLOW_ALPHA,), blur, spread, 0, settings.corner_radius)
 
 
-def _blurred_art_background(art: Image.Image, size: Tuple[int, int]) -> Image.Image:
+def _blurred_art_background(art: Image.Image, size: Tuple[int, int], strength: int) -> Image.Image:
     """The art covering the canvas (center-cropped), blurred and darkened toward the edges.
 
     Blurred on a quarter-size copy: it looks the same once upscaled (the blur
@@ -119,7 +121,7 @@ def _blurred_art_background(art: Image.Image, size: Tuple[int, int]) -> Image.Im
     cover_w, cover_h = max(small_w, round(art.width * scale)), max(small_h, round(art.height * scale))
     left, top = (cover_w - small_w) // 2, (cover_h - small_h) // 2
     small = art.resize((cover_w, cover_h), Image.LANCZOS).crop((left, top, left + small_w, top + small_h))
-    sigma = min(width, height) * _BLUR_BG_SIGMA_PCT / _BLUR_BG_DOWNSCALE
+    sigma = min(width, height) * strength * _BLUR_BG_SIGMA_PER_STRENGTH / _BLUR_BG_DOWNSCALE
     background = small.filter(ImageFilter.GaussianBlur(sigma)).resize(size, Image.BICUBIC).convert("RGBA")
 
     # radial_gradient is 0 at the centre and 255 at its rim; stretched to the
@@ -172,7 +174,7 @@ def _build_base_canvas(art_bytes: bytes, settings: Settings, layout: ArtLayout) 
     if use_mesh:
         background = mesh_background(layout.canvas_size, pick_mesh_colors(dominant_rgb, palette))
     elif settings.background_style == "blur":
-        background = _blurred_art_background(art_image, layout.canvas_size)
+        background = _blurred_art_background(art_image, layout.canvas_size, settings.blur_strength)
     else:
         background = Image.new("RGB", layout.canvas_size, dominant_rgb)
     canvas = background.convert("RGBA")

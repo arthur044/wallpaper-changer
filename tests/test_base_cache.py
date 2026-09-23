@@ -126,3 +126,16 @@ def test_prune_keeps_the_base_in_use_whatever_its_name(tmp_path):
     prune_album_bases(tmp_path, keep=in_use)
 
     assert in_use.exists()
+
+
+
+def test_blur_strength_only_matters_to_the_blurred_background():
+    blur = dataclasses.replace(Settings(), background_style="blur")
+    solid = Settings()
+
+    assert base_cache_key("abc123", _CANVAS, blur) != base_cache_key(
+        "abc123", _CANVAS, dataclasses.replace(blur, blur_strength=80)
+    )
+    assert base_cache_key("abc123", _CANVAS, solid) == base_cache_key(
+        "abc123", _CANVAS, dataclasses.replace(solid, blur_strength=80)
+    )

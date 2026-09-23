@@ -188,3 +188,16 @@ def test_smooth_transition_toggles_and_redraws(monkeypatch):
     tray._toggle_smooth(tray._icon, None)
     assert settings.smooth_transition is False
     assert len(saved) == 2
+
+
+
+def test_blur_strength_levels_are_saved_and_redrawn(monkeypatch):
+    settings = Settings()
+    tray, saved = _style_tray(monkeypatch, settings)
+
+    tray._set_blur_strength(60)
+    assert settings.blur_strength == 60
+    assert tray._app_state.force_sync_event.is_set()
+
+    tray._set_blur_strength(60)
+    assert len(saved) == 1, "picking the current level again changes nothing"

@@ -400,3 +400,21 @@ def test_reusing_a_cached_base_marks_it_as_recently_used(tmp_path):
     render_for_now_playing(_now_playing(), Settings(show_track_info=False), _LAYOUT, base_path, tmp_path / "out.png")
 
     assert base_path.stat().st_mtime > 1000, "a base in use must not look stale to the cache limit"
+
+
+
+def test_a_stronger_blur_smooths_the_background_more(tmp_path, monkeypatch):
+    # Fine stripes: the weaker the blur, the more of them survive.
+    art = Image.new("RGB", (64, 64), (0, 0, 0))
+    draw = ImageDraw.Draw(art)
+    for x in range(0, 64, 4):
+        draw.rectangle([x, 0, x + 1, 63], fill=(255, 255, 255))
+
+    def spread(strength):
+        (tmp_path / str(strength)).mkdir()
+        image = _render_base_only(
+            tmp_path / str(strength), monkeypatch, Settings(background_style="blur", blur_strength=strength), _png_bytes(art)
+        )
+        return ImageStat.Stat(image.crop((0, 0, 60, 30))).stddev[0]
+
+    assert spread(5) > spread(26) > spread(100)
