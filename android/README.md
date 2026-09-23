@@ -58,7 +58,7 @@ então um login feito pelo debug pode perguntar qual app abrir.
 
 ### Gerar o APK sozinho
 
-Dê um duplo clique em `android/build-apk.cmd` (ou rode `.uild-apk.ps1` no PowerShell). Ele:
+Dê um duplo clique em `android/build-apk.cmd` (ou rode `.\build-apk.ps1` no PowerShell). Ele:
 
 1. confere os pré-requisitos: `keystore.properties`, a chave de assinatura e o SDK;
 2. gera o APK de release e confere que saiu assinado com a sua chave;
