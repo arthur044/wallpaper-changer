@@ -1,3 +1,5 @@
+import dataclasses
+
 from PIL import Image, ImageDraw, ImageFont, ImageStat
 
 from src.config.settings import Settings
@@ -304,3 +306,69 @@ def test_no_card_without_track_info(tmp_path):
     )
 
     assert Image.open(out).convert("RGB").tobytes() == base.tobytes()
+
+
+
+def _art_top_red_bottom_blue() -> bytes:
+    art = Image.new("RGB", (64, 64), (200, 30, 30))
+    art.paste((30, 40, 200), (0, 32, 64, 64))
+    return _png_bytes(art)
+
+
+def _render_base_only(tmp_path, monkeypatch, settings, art_bytes) -> Image.Image:
+    monkeypatch.setattr("src.graphics.renderer.download_art", lambda url: art_bytes)
+    out = tmp_path / "out.png"
+    render_for_now_playing(
+        _now_playing(), dataclasses.replace(settings, show_track_info=False), _LAYOUT, tmp_path / "b.png", out
+    )
+    return Image.open(out).convert("RGB")
+
+
+def test_blurred_art_background_is_the_cover_itself(tmp_path, monkeypatch):
+    # The layout is landscape, so the square art covers it by width: its top
+    # (red) ends up behind the top of the screen, its bottom (blue) at the bottom.
+    result = _render_base_only(tmp_path, monkeypatch, Settings(background_style="blur"), _art_top_red_bottom_blue())
+
+    top_left = result.getpixel((5, 5))
+    bottom_left = result.getpixel((5, 294))
+    assert top_left[0] > top_left[2], f"top should be reddish, got {top_left}"
+    assert bottom_left[2] > bottom_left[0], f"bottom should be bluish, got {bottom_left}"
+
+
+def test_blurred_art_background_is_darkened_toward_the_edges(tmp_path, monkeypatch):
+    flat = Image.new("RGB", (64, 64), (200, 200, 200))
+    result = _render_base_only(tmp_path, monkeypatch, Settings(background_style="blur"), _png_bytes(flat))
+
+    corner = sum(result.getpixel((1, 1)))
+    assert corner < 3 * 200 * 0.8, "the vignette should darken the corners"
+
+
+def test_blurred_art_background_needs_no_accent_palette(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr("src.graphics.renderer.extract_accent_palette", lambda b: calls.append(1) or [])
+
+    _render_base_only(tmp_path, monkeypatch, Settings(background_style="blur"), _art_top_red_bottom_blue())
+
+    assert calls == []
+
+
+def test_glass_frame_takes_the_arts_place_and_shrinks_the_art(tmp_path, monkeypatch):
+    # White art on a black fill: without a frame, the art reaches its layout edge.
+    white = _png_bytes(Image.new("RGB", (64, 64), (255, 255, 255)))
+    black_fill = Settings(shadow_blur_radius=0)
+    monkeypatch.setattr("src.graphics.renderer.extract_dominant_color", lambda b: (0, 0, 0))
+
+    (tmp_path / "plain").mkdir()
+    (tmp_path / "frame").mkdir()
+    plain = _render_base_only(tmp_path / "plain", monkeypatch, black_fill, white)
+    framed = _render_base_only(tmp_path / "frame", monkeypatch, dataclasses.replace(black_fill, art_frame=True), white)
+
+    x, y = _LAYOUT.art_position
+    near_edge = (x + 3, y + _LAYOUT.art_size // 2)  # inside the art's footprint, by its left edge
+    assert plain.getpixel(near_edge) == (255, 255, 255)
+    edge = framed.getpixel(near_edge)
+    assert 0 < sum(edge) < 3 * 200, f"a translucent glass frame should sit there now, got {edge}"
+    centre = (x + _LAYOUT.art_size // 2, y + _LAYOUT.art_size // 2)
+    assert framed.getpixel(centre) == (255, 255, 255), "the art is still in the middle"
+    outside = (x - 3, y + _LAYOUT.art_size // 2)
+    assert framed.getpixel(outside) == (0, 0, 0), "nothing grows past the art's old footprint"

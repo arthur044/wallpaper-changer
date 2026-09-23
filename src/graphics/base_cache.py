@@ -31,6 +31,7 @@ def base_cache_key(album_id: str, canvas_size: Tuple[int, int], settings: Settin
             settings.shadow_blur_radius,
             settings.background_style,
             settings.art_glow,
+            settings.art_frame,
         )
     )
     return f"{_file_safe_id(album_id)}_{width}x{height}_{_sha256_hex(inputs)[:12]}"

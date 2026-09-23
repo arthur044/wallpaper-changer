@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_REDIRECT_URI = "http://127.0.0.1:8888/callback"
 DEFAULT_SCOPE = "user-read-currently-playing user-read-playback-state"
 
-BACKGROUND_STYLES = ("solid", "mesh")
+BACKGROUND_STYLES = ("solid", "mesh", "blur")
 TEXT_CARDS = ("none", "glass")
 
 
@@ -54,13 +54,17 @@ class Settings:
     corner_radius: int = 16
     shadow_blur_radius: int = 24
     show_track_info: bool = True
-    # Fundo atrás da arte: "solid" (cor predominante, o visual original) ou
-    # "mesh" (gradiente suave com 2 a 4 cores da capa).
+    # Fundo atrás da arte: "solid" (cor predominante, o visual original),
+    # "mesh" (gradiente suave com 2 a 4 cores da capa) ou "blur" (a própria
+    # capa cobrindo a tela, desfocada e escurecida nas bordas).
     background_style: str = "solid"
     # Sombra da arte na cor mais vibrante da capa, em vez de preta.
     art_glow: bool = False
     # Cartão atrás do título/artista: "none" ou "glass" (vidro fosco).
     text_card: str = "none"
+    # Duas molduras de vidro em volta da arte. A arte encolhe para caber nelas,
+    # então o conjunto ocupa o mesmo espaço e o texto não se mexe.
+    art_frame: bool = False
     fallback_resolution: List[int] = field(default_factory=lambda: [1920, 1080])
     log_level: str = "INFO"
     sync_lock_screen: bool = False
@@ -78,6 +82,7 @@ _CHOICES = {
     "background_style": BACKGROUND_STYLES,
     "text_card": TEXT_CARDS,
     "art_glow": (True, False),
+    "art_frame": (True, False),
 }
 
 

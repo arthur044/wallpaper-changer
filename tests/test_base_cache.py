@@ -21,6 +21,8 @@ def test_same_inputs_give_the_same_key():
         {"shadow_blur_radius": 60},
         {"background_style": "mesh"},
         {"art_glow": True},
+        {"background_style": "blur"},
+        {"art_frame": True},
     ],
 )
 def test_pixel_affecting_settings_change_the_key(change):

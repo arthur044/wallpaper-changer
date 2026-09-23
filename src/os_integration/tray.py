@@ -87,8 +87,15 @@ class TrayApp:
                 checked=lambda item: self._settings.background_style == "mesh",
                 radio=True,
             ),
+            pystray.MenuItem(
+                "Blurred art background",
+                lambda icon, item: self._set_background("blur"),
+                checked=lambda item: self._settings.background_style == "blur",
+                radio=True,
+            ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Art glow", self._toggle_glow, checked=lambda item: self._settings.art_glow),
+            pystray.MenuItem("Glass frame", self._toggle_frame, checked=lambda item: self._settings.art_frame),
             pystray.MenuItem("Glass card", self._toggle_glass, checked=lambda item: self._settings.text_card == "glass"),
         )
 
@@ -110,6 +117,10 @@ class TrayApp:
 
     def _toggle_glow(self, icon, item) -> None:
         self._settings.art_glow = not self._settings.art_glow
+        self._apply_style_change()
+
+    def _toggle_frame(self, icon, item) -> None:
+        self._settings.art_frame = not self._settings.art_frame
         self._apply_style_change()
 
     def _toggle_glass(self, icon, item) -> None:

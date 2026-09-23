@@ -7,6 +7,18 @@ def test_background_options_default_to_the_current_look():
     assert settings.background_style == "solid"
     assert settings.art_glow is False
     assert settings.text_card == "none"
+    assert settings.art_frame is False
+
+
+def test_blurred_art_background_and_frame_are_valid_choices():
+    settings = Settings.from_dict({"background_style": "blur", "art_frame": True})
+
+    assert settings.background_style == "blur"
+    assert settings.art_frame is True
+
+
+def test_an_invalid_art_frame_value_resets_to_off():
+    assert Settings.from_dict({"art_frame": "yes"}).art_frame is False
 
 
 def test_from_dict_keeps_valid_background_options():

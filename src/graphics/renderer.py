@@ -35,6 +35,16 @@ _CARD_PAD_X_PCT = 0.03
 _CARD_PAD_Y_PCT = 0.018
 _CARD_RADIUS_PCT = 0.02
 _CARD_BLUR_PCT = 0.02
+# "blur" background: the art covering the screen, blurred enough to soften it
+# but not so much that its shapes stop reading, then darkened toward the edges.
+_BLUR_BG_SIGMA_PCT = 0.026  # of the canvas short side
+_BLUR_BG_DOWNSCALE = 4
+_VIGNETTE_MIN_ALPHA = 50  # black over the centre...
+_VIGNETTE_GAIN = 0.5  # ...rising toward the edges, up to ~177 in the corners
+# Glass frame: two rims around the art, as fractions of the (shrunken) art side.
+_FRAME_OUTER_PCT = 0.075
+_FRAME_INNER_PCT = 0.035
+_FRAME_RIMS = ((_FRAME_OUTER_PCT, 24, 90), (_FRAME_INNER_PCT, 28, 110))  # (gap, veil alpha, edge alpha)
 # Big blurs run on a downscaled layer: same look (the result is smooth), about
 # half the time on a full-screen canvas.
 _MAX_BLUR_DOWNSCALE = 4
@@ -94,6 +104,58 @@ def _glow_layer(
     return _halo_layer(layout, color + (_GLOW_ALPHA,), blur, spread, 0, settings.corner_radius)
 
 
+def _blurred_art_background(art: Image.Image, size: Tuple[int, int]) -> Image.Image:
+    """The art covering the canvas (center-cropped), blurred and darkened toward the edges.
+
+    Blurred on a quarter-size copy: it looks the same once upscaled (the blur
+    removed the detail a bigger copy would keep) at a fraction of the cost."""
+    width, height = size
+    small_w = max(1, width // _BLUR_BG_DOWNSCALE)
+    small_h = max(1, height // _BLUR_BG_DOWNSCALE)
+    scale = max(small_w / art.width, small_h / art.height)
+    cover_w, cover_h = max(small_w, round(art.width * scale)), max(small_h, round(art.height * scale))
+    left, top = (cover_w - small_w) // 2, (cover_h - small_h) // 2
+    small = art.resize((cover_w, cover_h), Image.LANCZOS).crop((left, top, left + small_w, top + small_h))
+    sigma = min(width, height) * _BLUR_BG_SIGMA_PCT / _BLUR_BG_DOWNSCALE
+    background = small.filter(ImageFilter.GaussianBlur(sigma)).resize(size, Image.BICUBIC).convert("RGBA")
+
+    # radial_gradient is 0 at the centre and 255 at its rim; stretched to the
+    # canvas it follows the screen's shape.
+    darkness = Image.radial_gradient("L").resize(size, Image.BILINEAR)
+    darkness = darkness.point(lambda v: min(255, int(_VIGNETTE_MIN_ALPHA + v * _VIGNETTE_GAIN)))
+    shade = Image.new("RGBA", size, (0, 0, 0, 0))
+    shade.putalpha(darkness)
+    return Image.alpha_composite(background, shade).convert("RGB")
+
+
+def _framed_art(layout: ArtLayout) -> ArtLayout:
+    """The art shrunk so that it plus its outer glass rim fill the art's original box."""
+    inner = round(layout.art_size / (1 + 2 * _FRAME_OUTER_PCT))
+    offset = (layout.art_size - inner) // 2
+    x, y = layout.art_position
+    return ArtLayout(canvas_size=layout.canvas_size, art_size=inner, art_position=(x + offset, y + offset))
+
+
+def _glass_frame_layer(art: ArtLayout, settings: Settings) -> Image.Image:
+    """Two nested rims around [art]: a light veil and a hairline edge each, the
+    outer one fainter. The background shows through, blurred or not."""
+    layer = Image.new("RGBA", art.canvas_size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    edge_width = max(1, round(art.canvas_size[1] / 540))
+    x, y = art.art_position
+    for gap_pct, veil, edge in _FRAME_RIMS:
+        gap = round(art.art_size * gap_pct)
+        box = [x - gap, y - gap, x + art.art_size + gap - 1, y + art.art_size + gap - 1]
+        draw.rounded_rectangle(
+            box,
+            radius=settings.corner_radius + gap,
+            fill=(255, 255, 255, veil),
+            outline=(255, 255, 255, edge),
+            width=edge_width,
+        )
+    return layer
+
+
 def _build_base_canvas(art_bytes: bytes, settings: Settings, layout: ArtLayout) -> Image.Image:
     """Background fill + shadow + centered rounded art. No track text — this is the
     part that's identical for every track on the same album, so it's safe to cache."""
@@ -101,9 +163,12 @@ def _build_base_canvas(art_bytes: bytes, settings: Settings, layout: ArtLayout) 
     use_mesh = settings.background_style == "mesh"
     # One extraction shared by every effect that needs accents; none without them.
     palette = extract_accent_palette(art_bytes) if (use_mesh or settings.art_glow) else []
+    art_image = Image.open(BytesIO(art_bytes)).convert("RGB")
 
     if use_mesh:
         background = mesh_background(layout.canvas_size, pick_mesh_colors(dominant_rgb, palette))
+    elif settings.background_style == "blur":
+        background = _blurred_art_background(art_image, layout.canvas_size)
     else:
         background = Image.new("RGB", layout.canvas_size, dominant_rgb)
     canvas = background.convert("RGBA")
@@ -114,11 +179,16 @@ def _build_base_canvas(art_bytes: bytes, settings: Settings, layout: ArtLayout) 
         halo = _shadow_layer(layout, settings)
     canvas = Image.alpha_composite(canvas, halo)
 
-    art = Image.open(BytesIO(art_bytes)).convert("RGB")
-    art = art.resize((layout.art_size, layout.art_size), Image.LANCZOS)
-    mask = _rounded_mask(layout.art_size, settings.corner_radius)
+    # The shadow or glow keeps the art's original box: with a frame, that is
+    # the outer rim, and the art itself sits inside it.
+    art_box = layout
+    if settings.art_frame:
+        art_box = _framed_art(layout)
+        canvas = Image.alpha_composite(canvas, _glass_frame_layer(art_box, settings))
 
-    canvas.paste(art, layout.art_position, mask)
+    art = art_image.resize((art_box.art_size, art_box.art_size), Image.LANCZOS)
+    mask = _rounded_mask(art_box.art_size, settings.corner_radius)
+    canvas.paste(art, art_box.art_position, mask)
 
     return canvas.convert("RGB")
 

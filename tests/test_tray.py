@@ -141,3 +141,27 @@ def test_restart_runs_the_callback_and_closes_the_tray(monkeypatch):
 
     assert calls == ["restart"]
     assert stopped == [1]
+
+
+
+def test_blurred_background_is_a_background_choice(monkeypatch):
+    settings = Settings()
+    tray, saved = _style_tray(monkeypatch, settings)
+
+    tray._set_background("blur")
+
+    assert settings.background_style == "blur"
+    assert saved == [settings]
+
+
+def test_glass_frame_toggles_on_and_off(monkeypatch):
+    settings = Settings()
+    tray, saved = _style_tray(monkeypatch, settings)
+
+    tray._toggle_frame(tray._icon, None)
+    assert settings.art_frame is True
+    assert tray._app_state.force_sync_event.is_set()
+
+    tray._toggle_frame(tray._icon, None)
+    assert settings.art_frame is False
+    assert len(saved) == 2
