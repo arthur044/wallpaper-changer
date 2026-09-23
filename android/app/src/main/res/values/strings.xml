@@ -26,6 +26,9 @@
     <string name="main_corner_radius">Rounded corners</string>
     <string name="main_shadow">Shadow</string>
     <string name="main_offset">Vertical position</string>
+    <string name="main_mesh_background">Gradient background in the cover’s colors</string>
+    <string name="main_art_glow">Glow in the cover’s color</string>
+    <string name="main_glass_card">Frosted card behind the text</string>
     <string name="main_show_track_info">Show song and artist</string>
     <string name="main_sync_lock_screen">Also on the lock screen</string>
     <string name="main_section_advanced">Advanced</string>

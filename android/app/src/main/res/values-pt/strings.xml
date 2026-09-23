@@ -24,6 +24,9 @@
     <string name="main_corner_radius">Cantos arredondados</string>
     <string name="main_shadow">Sombra</string>
     <string name="main_offset">Posição vertical</string>
+    <string name="main_mesh_background">Fundo em gradiente com as cores da capa</string>
+    <string name="main_art_glow">Brilho na cor da capa</string>
+    <string name="main_glass_card">Cartão de vidro atrás do texto</string>
     <string name="main_show_track_info">Mostrar música e artista</string>
     <string name="main_sync_lock_screen">Também na tela de bloqueio</string>
     <string name="main_section_advanced">Avançado</string>

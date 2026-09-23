@@ -55,6 +55,9 @@ class SyncEngine(
     private var undrawableTrackId: String? = null
     private var memoryLoaded = false
     private val redrawPending = AtomicBoolean(false)
+    // The track on the wallpaper, in memory only (a restart forgets it, like
+    // the desktop): what redraw() repaints when nothing is playing.
+    private var lastDrawn: NowPlaying? = null
     private val latestLocal = AtomicReference<LocalTrack?>(null)
     private var backoff = Duration.ZERO
     private var resolveBackoff = Duration.ZERO
@@ -135,7 +138,9 @@ class SyncEngine(
             return interval
         }
         if (redrawPending.getAndSet(false)) {
-            val onScreen = (status.value as? SyncStatus.Showing)?.nowPlaying
+            // With the music paused the status is Idle, yet the wallpaper still
+            // shows the last track: a look change must repaint that one too.
+            val onScreen = (status.value as? SyncStatus.Showing)?.nowPlaying ?: lastDrawn
             if (onScreen != null && !render(onScreen)) return null
             // Then poll as usual (if the throttle allows): the track may have changed.
         }
@@ -280,6 +285,7 @@ class SyncEngine(
             return true
         }
         lastRenderedTrackId = nowPlaying.trackId
+        lastDrawn = nowPlaying
         memory.remember(nowPlaying.trackId)
         mutableStatus.value = SyncStatus.Showing(nowPlaying)
         return true

@@ -1,6 +1,7 @@
 package io.github.arthur044.wallpaperchanger.ui
 
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -12,7 +13,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.arthur044.wallpaperchanger.R
 import io.github.arthur044.wallpaperchanger.core.NowPlaying
+import io.github.arthur044.wallpaperchanger.core.config.BackgroundStyle
 import io.github.arthur044.wallpaperchanger.core.config.Settings
+import io.github.arthur044.wallpaperchanger.core.config.TextCard
 import io.github.arthur044.wallpaperchanger.core.sync.SyncStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -71,6 +74,27 @@ class MainContentTest {
         rule.onNodeWithTag(TAG_TRACK_INFO).performScrollTo().performClick()
 
         assertEquals(false, changed?.showTrackInfo)
+    }
+
+    @Test
+    fun theStyleSwitchesAreLookChanges() {
+        var changed: Settings? = null
+        show(state(), MainCallbacks(onLookChange = { changed = it(changed ?: Settings()) }))
+
+        rule.onNodeWithTag(TAG_MESH).performScrollTo().performClick()
+        rule.onNodeWithTag(TAG_GLOW).performScrollTo().performClick()
+        rule.onNodeWithTag(TAG_GLASS).performScrollTo().performClick()
+
+        assertEquals(BackgroundStyle.MESH, changed?.backgroundStyle)
+        assertEquals(true, changed?.artGlow)
+        assertEquals(TextCard.GLASS, changed?.textCard)
+    }
+
+    @Test
+    fun theGlassCardNeedsTheTrackInfo() {
+        show(state(settings = Settings(showTrackInfo = false)), MainCallbacks())
+
+        rule.onNodeWithTag(TAG_GLASS).performScrollTo().assertIsNotEnabled()
     }
 
     @Test

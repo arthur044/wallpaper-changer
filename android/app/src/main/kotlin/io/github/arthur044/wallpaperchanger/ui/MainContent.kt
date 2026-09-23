@@ -36,7 +36,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.arthur044.wallpaperchanger.R
+import io.github.arthur044.wallpaperchanger.core.config.BackgroundStyle
 import io.github.arthur044.wallpaperchanger.core.config.Settings
+import io.github.arthur044.wallpaperchanger.core.config.TextCard
 import io.github.arthur044.wallpaperchanger.core.sync.SyncStatus
 import io.github.arthur044.wallpaperchanger.sync.describe
 import kotlin.math.roundToInt
@@ -181,6 +183,28 @@ private fun LookSection(settings: Settings, onLookChange: ((Settings) -> Setting
             onCommit = { b -> onLookChange { it.copy(shadowBlurRadius = b.roundToInt()) } },
             tag = TAG_SHADOW,
         )
+        SwitchRow(
+            label = stringResource(R.string.main_mesh_background),
+            checked = settings.backgroundStyle == BackgroundStyle.MESH,
+            onCheckedChange = { on ->
+                onLookChange { it.copy(backgroundStyle = if (on) BackgroundStyle.MESH else BackgroundStyle.SOLID) }
+            },
+            modifier = Modifier.testTag(TAG_MESH),
+        )
+        SwitchRow(
+            label = stringResource(R.string.main_art_glow),
+            checked = settings.artGlow,
+            onCheckedChange = { on -> onLookChange { it.copy(artGlow = on) } },
+            modifier = Modifier.testTag(TAG_GLOW),
+        )
+        SwitchRow(
+            label = stringResource(R.string.main_glass_card),
+            checked = settings.textCard == TextCard.GLASS,
+            onCheckedChange = { on -> onLookChange { it.copy(textCard = if (on) TextCard.GLASS else TextCard.NONE) } },
+            // The card wraps the song and artist: without them there is nothing to put on it.
+            enabled = settings.showTrackInfo,
+            modifier = Modifier.testTag(TAG_GLASS),
+        )
         SettingSlider(
             label = stringResource(R.string.main_offset),
             value = (settings.artOffsetYPct * 100).toFloat(),
@@ -284,6 +308,9 @@ internal const val TAG_ART_SIZE = "artSize"
 internal const val TAG_CORNERS = "corners"
 internal const val TAG_SHADOW = "shadow"
 internal const val TAG_OFFSET = "offset"
+internal const val TAG_MESH = "meshBackground"
+internal const val TAG_GLOW = "artGlow"
+internal const val TAG_GLASS = "glassCard"
 internal const val TAG_TRACK_INFO = "trackInfo"
 internal const val TAG_LOCK_SCREEN = "lockScreen"
 internal const val TAG_POLL = "pollInterval"

@@ -347,6 +347,24 @@ class SyncEngineTest {
     }
 
     @Test
+    fun `redraw while paused repaints the wallpaper on screen`() = runTest {
+        // A style change from the settings screen goes through redraw(): with the
+        // music paused it must still repaint, or nothing shows until the next play.
+        val engine = engine()
+        source.playing = { airbag }
+        cycle(engine)
+        source.playing = { airbag.copy(isPlaying = false) }
+        cycle(engine)
+        assertEquals(SyncStatus.Idle, engine.status.value)
+
+        settings.value = Settings(cornerRadius = 40)
+        engine.redraw()
+        cycle(engine)
+
+        assertEquals(listOf("t1", "t1"), sink.shown)
+    }
+
+    @Test
     fun `redraw with nothing on screen draws nothing`() = runTest {
         val engine = engine()
         source.playing = { null }
