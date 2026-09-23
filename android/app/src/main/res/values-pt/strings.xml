@@ -28,6 +28,7 @@
     <string name="main_background_solid">Sólido</string>
     <string name="main_background_mesh">Gradiente</string>
     <string name="main_background_blur">Capa desfocada</string>
+    <string name="main_blur_strength">Intensidade do desfoque</string>
     <string name="main_frame">Moldura de vidro</string>
     <string name="main_frame_none">Sem</string>
     <string name="main_frame_single">Simples</string>

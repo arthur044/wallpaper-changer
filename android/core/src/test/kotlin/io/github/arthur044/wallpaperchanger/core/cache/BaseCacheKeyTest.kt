@@ -72,6 +72,16 @@ class BaseCacheKeyTest {
     }
 
     @Test
+    fun `blur strength only matters to the blurred background`() {
+        val blur = Settings(backgroundStyle = BackgroundStyle.BLUR)
+        assertNotEquals(
+            baseCacheKey("1rG6IgNdwE1IGFuIKuYosz", phone, blur),
+            baseCacheKey("1rG6IgNdwE1IGFuIKuYosz", phone, blur.copy(blurStrength = 80)),
+        )
+        assertEquals(key, baseCacheKey("1rG6IgNdwE1IGFuIKuYosz", phone, Settings(blurStrength = 80)))
+    }
+
+    @Test
     fun `an unexpected album id cannot escape into the file system`() {
         val odd = baseCacheKey("../../etc/passwd", phone, Settings())
         assertTrue(odd.matches(Regex("[A-Za-z0-9_x]+")), odd)

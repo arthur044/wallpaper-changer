@@ -34,6 +34,7 @@ class SettingsSerializerTest {
             textCard = TextCard.GLASS,
             smoothTransition = true,
             artFrame = ArtFrame.DOUBLE,
+            blurStrength = 60,
         )
         assertEquals(s, decode(encode(s)))
     }

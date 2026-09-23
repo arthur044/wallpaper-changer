@@ -36,6 +36,7 @@ class SettingsTest {
         assertEquals(TextCard.NONE, s.textCard)
         assertFalse(s.smoothTransition)
         assertEquals(ArtFrame.NONE, s.artFrame)
+        assertEquals(26, s.blurStrength)
     }
 
     @Test
@@ -60,6 +61,13 @@ class SettingsTest {
         assertEquals(0, s.cornerRadius)
         assertEquals(Settings.BLUR_RADIUS_RANGE.last, s.shadowBlurRadius)
         assertEquals(Settings.ART_OFFSET_Y_PCT_RANGE.start, s.artOffsetYPct)
+    }
+
+    @Test
+    fun `sanitized keeps the blur strength within 0 and 100`() {
+        assertEquals(100, Settings(blurStrength = 250).sanitized().blurStrength)
+        assertEquals(0, Settings(blurStrength = -5).sanitized().blurStrength)
+        assertEquals(60, Settings(blurStrength = 60).sanitized().blurStrength)
     }
 
     @Test

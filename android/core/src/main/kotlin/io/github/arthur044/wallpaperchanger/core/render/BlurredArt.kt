@@ -16,20 +16,23 @@ import kotlin.math.sqrt
  */
 
 private const val DOWNSCALE = 4
-private const val SIGMA_OF_SHORT = 0.026f
+// Sigma per point of strength, as a fraction of the canvas short side: the
+// default 26 gives 2.6%, 100 gives 10%. The desktop's value, for the same look.
+private const val SIGMA_PER_STRENGTH = 0.001f
 // Pillow's radial_gradient, stretched over the canvas: 0 at the centre, 181
 // at the middle of each edge, capped at 255. The shade's alpha is 50 + v / 2.
 private const val RADIAL_AT_EDGE = 181.02
 private const val VIGNETTE_MIN_ALPHA = 50.0
 private const val VIGNETTE_GAIN = 0.5
 
-/** Opaque ARGB pixels of the background, row-major, [width] x [height]. */
-fun blurredArtBackground(art: IntArray, artWidth: Int, artHeight: Int, width: Int, height: Int): IntArray {
+/** Opaque ARGB pixels of the background, row-major, [width] x [height]; [strength] is 0-100. */
+@Suppress("LongParameterList")
+fun blurredArtBackground(art: IntArray, artWidth: Int, artHeight: Int, width: Int, height: Int, strength: Int): IntArray {
     require(art.size == artWidth * artHeight && width > 0 && height > 0)
     val smallW = max(1, width / DOWNSCALE)
     val smallH = max(1, height / DOWNSCALE)
     val small = coverSample(art, artWidth, artHeight, smallW, smallH)
-    blurChannels(small, smallW, smallH, min(width, height) * SIGMA_OF_SHORT / DOWNSCALE)
+    blurChannels(small, smallW, smallH, min(width, height) * strength * SIGMA_PER_STRENGTH / DOWNSCALE)
     return upscaleWithVignette(small, smallW, smallH, width, height)
 }
 

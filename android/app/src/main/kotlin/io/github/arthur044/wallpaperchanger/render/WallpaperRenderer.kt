@@ -79,7 +79,7 @@ class WallpaperRenderer {
         val glow = if (settings.artGlow) pickGlowColor(palette, background) else null
         val mesh = if (settings.backgroundStyle == BackgroundStyle.MESH) pickMeshColors(background, palette) else null
         val blurredArt = settings.backgroundStyle == BackgroundStyle.BLUR
-        return drawBase(art, layout, background, glow, mesh, blurredArt, settings.artFrame)
+        return drawBase(art, layout, background, glow, mesh, blurredArt, settings.artFrame, settings.blurStrength)
     }
 
     /**
@@ -97,13 +97,17 @@ class WallpaperRenderer {
         mesh: List<Rgb>? = null,
         blurredArt: Boolean = false,
         frame: ArtFrame = ArtFrame.NONE,
+        blurStrength: Int = Settings.DEFAULT_BLUR_STRENGTH,
     ): RenderedBase {
         val (w, h) = layout.canvasWidth to layout.canvasHeight
         val bitmap = createBitmap(w, h)
         val canvas = Canvas(bitmap)
         when {
             mesh != null -> bitmap.setPixels(meshPixels(w, h, mesh), 0, w, 0, 0, w, h)
-            blurredArt -> bitmap.setPixels(blurredArtBackground(pixelsOf(art), art.width, art.height, w, h), 0, w, 0, 0, w, h)
+            blurredArt -> {
+                val pixels = blurredArtBackground(pixelsOf(art), art.width, art.height, w, h, blurStrength)
+                bitmap.setPixels(pixels, 0, w, 0, 0, w, h)
+            }
             else -> canvas.drawColor(background.argb)
         }
         // Shadow and glow keep the art's laid-out box: with a frame, that is the outer rim.

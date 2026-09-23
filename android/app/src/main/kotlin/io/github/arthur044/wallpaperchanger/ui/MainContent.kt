@@ -202,6 +202,16 @@ private fun LookSection(state: MainUiState, callbacks: MainCallbacks) {
             onSelect = { style -> onLookChange { it.copy(backgroundStyle = style) } },
             tagPrefix = TAG_BACKGROUND,
         )
+        if (settings.backgroundStyle == BackgroundStyle.BLUR) {
+            SettingSlider(
+                label = stringResource(R.string.main_blur_strength),
+                value = settings.blurStrength.toFloat(),
+                range = Settings.BLUR_STRENGTH_RANGE.toFloatRange(),
+                display = { stringResource(R.string.value_number, it.roundToInt()) },
+                onCommit = { v -> onLookChange { it.copy(blurStrength = v.roundToInt()) } },
+                tag = TAG_BLUR_STRENGTH,
+            )
+        }
         ChoiceRow(
             label = stringResource(R.string.main_frame),
             options = listOf(
@@ -349,6 +359,7 @@ internal const val TAG_SHADOW = "shadow"
 internal const val TAG_OFFSET = "offset"
 internal const val TAG_BACKGROUND = "background"
 internal const val TAG_FRAME = "frame"
+internal const val TAG_BLUR_STRENGTH = "blurStrength"
 internal const val TAG_GLOW = "artGlow"
 internal const val TAG_GLASS = "glassCard"
 internal const val TAG_SMOOTH = "smoothTransition"

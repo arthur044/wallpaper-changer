@@ -30,6 +30,7 @@
     <string name="main_background_solid">Solid</string>
     <string name="main_background_mesh">Gradient</string>
     <string name="main_background_blur">Blurred cover</string>
+    <string name="main_blur_strength">Blur strength</string>
     <string name="main_frame">Glass frame</string>
     <string name="main_frame_none">None</string>
     <string name="main_frame_single">Single</string>

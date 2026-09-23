@@ -137,6 +137,25 @@ class MainContentTest {
     }
 
     @Test
+    fun theBlurStrengthSliderOnlyShowsWithTheBlurredBackground() {
+        var changed: Settings? = null
+        show(state(settings = Settings(backgroundStyle = BackgroundStyle.BLUR)), MainCallbacks(onLookChange = { changed = it(Settings()) }))
+
+        rule.onNodeWithTag(TAG_BLUR_STRENGTH).performScrollTo()
+            .performSemanticsAction(SemanticsActions.SetProgress) { it(60f) }
+
+        assertEquals(60, changed?.blurStrength)
+    }
+
+    @Test
+    fun noBlurSliderWithOtherBackgrounds() {
+        show(state())
+
+        rule.onNodeWithTag("${TAG_BACKGROUND}_0").performScrollTo().assertExists()
+        rule.onNodeWithTag(TAG_BLUR_STRENGTH).assertDoesNotExist()
+    }
+
+    @Test
     fun pickingTheCurrentChoiceChangesNothing() {
         var changed: Settings? = null
         show(state(), MainCallbacks(onLookChange = { changed = it(Settings()) }))

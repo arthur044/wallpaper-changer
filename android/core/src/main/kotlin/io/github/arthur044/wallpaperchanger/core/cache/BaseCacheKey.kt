@@ -1,5 +1,6 @@
 package io.github.arthur044.wallpaperchanger.core.cache
 
+import io.github.arthur044.wallpaperchanger.core.config.BackgroundStyle
 import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.render.CanvasSpec
 import java.security.MessageDigest
@@ -34,6 +35,8 @@ fun baseCacheKey(albumId: String, canvas: CanvasSpec, settings: Settings): Strin
         settings.artSizePct, settings.cornerRadius, settings.shadowBlurRadius,
         settings.artOffsetYPct, settings.showTrackInfo,
         settings.backgroundStyle, settings.artGlow, settings.artFrame,
+        // Only the blurred background uses it: other styles keep their bases.
+        if (settings.backgroundStyle == BackgroundStyle.BLUR) settings.blurStrength else null,
     ).joinToString("|")
     return "${fileSafeId(albumId)}_${canvas.canvasWidth}x${canvas.canvasHeight}_${sha256Hex(inputs).take(12)}"
 }
