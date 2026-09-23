@@ -9,6 +9,7 @@ import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.arthur044.wallpaperchanger.core.config.BackgroundStyle
 import io.github.arthur044.wallpaperchanger.core.config.Settings
+import io.github.arthur044.wallpaperchanger.core.config.TextCard
 import io.github.arthur044.wallpaperchanger.core.render.CanvasSpec
 import io.github.arthur044.wallpaperchanger.core.render.PixelRect
 import io.github.arthur044.wallpaperchanger.core.render.computeLayout
@@ -61,7 +62,11 @@ class RenderCostTest {
             val base = millis { renderer.renderBase(art, layout, settings).bitmap.recycle() }
             val built = renderer.renderBase(art, layout, settings)
             val track = millis { renderer.drawFinal(built, layout, "Nome da Faixa Bem Longo", "Artista").recycle() }
-            Log.i(TAG, "$name: base $base ms, per track $track ms")
+            val glass = millis {
+                renderer.drawFinal(built, layout, "Nome da Faixa Bem Longo", "Artista", TextCard.GLASS).recycle()
+            }
+            Log.i(TAG, "$name: base $base ms, per track $track ms, with glass card $glass ms")
+            assertTrue("$name glass track took $glass ms", glass < 1_000)
             assertTrue("$name base took $base ms", base < 3_000)
             assertTrue("$name track took $track ms", track < 1_000)
         }

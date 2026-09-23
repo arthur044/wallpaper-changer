@@ -7,6 +7,7 @@ import android.graphics.Paint
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.arthur044.wallpaperchanger.core.config.BackgroundStyle
 import io.github.arthur044.wallpaperchanger.core.config.Settings
+import io.github.arthur044.wallpaperchanger.core.config.TextCard
 import io.github.arthur044.wallpaperchanger.core.render.CanvasSpec
 import io.github.arthur044.wallpaperchanger.core.render.PixelRect
 import io.github.arthur044.wallpaperchanger.core.render.Rgb
@@ -177,6 +178,53 @@ class WallpaperRendererTest {
         val mesh = renderer.renderBase(artWithAccent(), layout, Settings(backgroundStyle = BackgroundStyle.MESH))
         assertEquals(1, corners(solid.bitmap).toSet().size)
         assertTrue(corners(mesh.bitmap).toSet().size > 1)
+    }
+
+    private fun checkerboard() = Bitmap.createBitmap(1080, 2400, Bitmap.Config.ARGB_8888).apply {
+        val pixels = IntArray(width * height) { i ->
+            if (((i % width) / 4 + (i / width) / 4) % 2 == 0) Color.WHITE else Color.BLACK
+        }
+        setPixels(pixels, 0, width, 0, 0, width, height)
+    }
+
+    private fun redSpread(bitmap: Bitmap, area: PixelRect): Double {
+        val reds = (area.top until area.bottom).flatMap { y -> (area.left until area.right).map { x -> bitmap.rgbAt(x, y).r } }
+        val mean = reds.average()
+        return kotlin.math.sqrt(reds.sumOf { (it - mean) * (it - mean) } / reds.size)
+    }
+
+    // The card's top padding: inside the card, above the glyphs. Located with
+    // the renderer's own geometry, not guessed coordinates.
+    private fun paddingStrip(): PixelRect {
+        val ink = checkNotNull(renderer.inkBounds(layout, "Airbag", "Radiohead"))
+        val card = checkNotNull(renderer.glassCardFor(layout, "Airbag", "Radiohead")).box
+        return PixelRect(ink.left, card.top + 2, ink.right, ink.top - 1).also { assertTrue(it.height >= 3) }
+    }
+
+    @Test
+    fun glassCardFrostsWhatIsBehindTheText() {
+        val base = RenderedBase(checkerboard())
+        val strip = paddingStrip()
+
+        val glass = renderer.drawFinal(base, layout, "Airbag", "Radiohead", TextCard.GLASS)
+        val plain = renderer.drawFinal(base, layout, "Airbag", "Radiohead", TextCard.NONE)
+
+        assertTrue("the checkerboard should be blurred away", redSpread(glass, strip) < 20)
+        assertTrue("without a card the background stays as is", redSpread(plain, strip) > 100)
+    }
+
+    @Test
+    fun textColorIsJudgedOnTheCard() {
+        // Mid-gray reads as dark (light text) on its own; the card's white tint
+        // lifts it past the threshold, so the text over it turns dark.
+        val base = RenderedBase(Bitmap.createBitmap(1080, 2400, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.rgb(128, 128, 128)) })
+        val band = checkNotNull(layout.text).band
+
+        val plain = renderer.drawFinal(base, layout, "Airbag", "Radiohead", TextCard.NONE)
+        val glass = renderer.drawFinal(base, layout, "Airbag", "Radiohead", TextCard.GLASS)
+
+        assertTrue("plain text on mid-gray should be light", !hasDarkInk(plain, band))
+        assertTrue("text on the tinted card should be dark", hasDarkInk(glass, band))
     }
 
     private fun hasDarkInk(bitmap: Bitmap, area: PixelRect): Boolean {

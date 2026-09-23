@@ -42,7 +42,7 @@ class WallpaperComposer(
         return try {
             val layout = computeLayout(canvas, settings, base.sourceArtSidePx)
             val final = withContext(cpu) {
-                renderer.drawFinal(base.base, layout, nowPlaying.trackName, nowPlaying.artistName)
+                renderer.drawFinal(base.base, layout, nowPlaying.trackName, nowPlaying.artistName, settings.textCard)
             }
             ComposedWallpaper(final, reusedBase = cached != null)
         } finally {
