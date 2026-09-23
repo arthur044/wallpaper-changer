@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.os.SystemClock
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.arthur044.wallpaperchanger.core.config.BackgroundStyle
 import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.render.CanvasSpec
 import io.github.arthur044.wallpaperchanger.core.render.PixelRect
@@ -52,6 +53,8 @@ class RenderCostTest {
         val styles = mapOf(
             "solid" to Settings(),
             "glow" to Settings(artGlow = true),
+            "mesh" to Settings(backgroundStyle = BackgroundStyle.MESH),
+            "mesh+glow" to Settings(backgroundStyle = BackgroundStyle.MESH, artGlow = true),
         )
         styles.forEach { (name, settings) ->
             val layout = computeLayout(phone, settings, sourceArtSidePx = 640)

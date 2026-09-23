@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.arthur044.wallpaperchanger.core.config.BackgroundStyle
 import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.render.CanvasSpec
 import io.github.arthur044.wallpaperchanger.core.render.PixelRect
@@ -155,6 +156,27 @@ class WallpaperRendererTest {
         val corner = glow.bitmap.rgbAt(2, 2)
         val below = glow.bitmap.rgbAt(layout.art.centerX, layout.art.bottom + 2)
         assertTrue("no black shadow under a glowing art ($below vs fill $corner)", below.r >= corner.r)
+    }
+
+    private fun corners(bitmap: Bitmap) = listOf(
+        bitmap.rgbAt(0, 0), bitmap.rgbAt(bitmap.width - 1, 0),
+        bitmap.rgbAt(0, bitmap.height - 1), bitmap.rgbAt(bitmap.width - 1, bitmap.height - 1),
+    )
+
+    @Test
+    fun meshBackgroundVariesAcrossTheCanvas() {
+        val colors = listOf(Rgb(20, 40, 110), Rgb(240, 150, 30), Rgb(30, 190, 150), Rgb(200, 40, 120))
+        val base = renderer.drawBase(white, layout, gray, mesh = colors)
+        assertTrue("a mesh can't be one flat color: ${corners(base.bitmap)}", corners(base.bitmap).toSet().size > 1)
+        assertEquals(Rgb(255, 255, 255), base.bitmap.rgbAt(layout.art.centerX, layout.art.centerY))
+    }
+
+    @Test
+    fun meshSettingPaintsTheArtsColors() {
+        val solid = renderer.renderBase(artWithAccent(), layout, Settings())
+        val mesh = renderer.renderBase(artWithAccent(), layout, Settings(backgroundStyle = BackgroundStyle.MESH))
+        assertEquals(1, corners(solid.bitmap).toSet().size)
+        assertTrue(corners(mesh.bitmap).toSet().size > 1)
     }
 
     private fun hasDarkInk(bitmap: Bitmap, area: PixelRect): Boolean {

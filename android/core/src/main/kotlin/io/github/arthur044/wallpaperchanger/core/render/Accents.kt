@@ -2,6 +2,7 @@ package io.github.arthur044.wallpaperchanger.core.render
 
 import io.github.arthur044.wallpaperchanger.core.config.BackgroundStyle
 import io.github.arthur044.wallpaperchanger.core.config.Settings
+import kotlin.math.abs
 import kotlin.math.sqrt
 
 // Ports of color_extractor.py's accent helpers. Same constants and the same
@@ -40,6 +41,34 @@ fun pickGlowColor(palette: List<Rgb>, background: Rgb): Rgb {
         lifted = mix(color, target, t)
     }
     return lifted
+}
+
+private const val MESH_MAX_COLORS = 4
+private const val MESH_MIN_COLORS = 3
+// Palette colors closer than this to one already picked add nothing to the mesh.
+private const val MESH_MIN_DISTANCE = 48.0
+// Tones of the dominant that fill in a monochrome cover: toward white (+) or
+// black (-). Small, so an all-black cover stays a dark, charcoal gradient.
+private val MESH_TONES = doubleArrayOf(0.18, -0.4, 0.32)
+private const val MESH_MIN_TONE_DISTANCE = 20.0
+
+/**
+ * The dominant first, then the most populous palette colors clearly different
+ * from everything picked so far (up to 4 in all). A cover too uniform for 3
+ * gets tones of its dominant instead.
+ */
+fun pickMeshColors(dominant: Rgb, palette: List<Rgb>): List<Rgb> {
+    val chosen = mutableListOf(dominant)
+    for (color in palette) {
+        if (chosen.size == MESH_MAX_COLORS) break
+        if (chosen.all { distance(color, it) >= MESH_MIN_DISTANCE }) chosen += color
+    }
+    for (step in MESH_TONES) {
+        if (chosen.size >= MESH_MIN_COLORS) break
+        val tone = mix(dominant, if (step > 0) WHITE else BLACK, abs(step))
+        if (chosen.all { distance(tone, it) >= MESH_MIN_TONE_DISTANCE }) chosen += tone
+    }
+    return chosen.toList()
 }
 
 // HSV saturation x value, which reduces to (max - min) / 255.

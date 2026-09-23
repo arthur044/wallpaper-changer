@@ -15,6 +15,7 @@ import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
 import android.text.TextPaint
 import android.text.TextUtils
+import io.github.arthur044.wallpaperchanger.core.config.BackgroundStyle
 import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.render.ACCENT_COLOR_COUNT
 import io.github.arthur044.wallpaperchanger.core.render.ACCENT_QUALITY
@@ -23,8 +24,10 @@ import io.github.arthur044.wallpaperchanger.core.render.PixelRect
 import io.github.arthur044.wallpaperchanger.core.render.Rgb
 import io.github.arthur044.wallpaperchanger.core.render.WallpaperLayout
 import io.github.arthur044.wallpaperchanger.core.render.averageColor
+import io.github.arthur044.wallpaperchanger.core.render.meshPixels
 import io.github.arthur044.wallpaperchanger.core.render.needsAccentPalette
 import io.github.arthur044.wallpaperchanger.core.render.pickGlowColor
+import io.github.arthur044.wallpaperchanger.core.render.pickMeshColors
 import io.github.arthur044.wallpaperchanger.core.render.textColorFor
 import kotlin.math.min
 
@@ -61,14 +64,29 @@ class WallpaperRenderer {
             emptyList()
         }
         val glow = if (settings.artGlow) pickGlowColor(palette, background) else null
-        return drawBase(art, layout, background, glow)
+        val mesh = if (settings.backgroundStyle == BackgroundStyle.MESH) pickMeshColors(background, palette) else null
+        return drawBase(art, layout, background, glow, mesh)
     }
 
-    /** [glow] replaces the dark drop shadow with a halo of that color. */
-    fun drawBase(art: Bitmap, layout: WallpaperLayout, background: Rgb, glow: Rgb? = null): RenderedBase {
+    /**
+     * [glow] replaces the dark drop shadow with a halo of that color; [mesh]
+     * replaces the flat [background] fill with a gradient of those colors.
+     */
+    fun drawBase(
+        art: Bitmap,
+        layout: WallpaperLayout,
+        background: Rgb,
+        glow: Rgb? = null,
+        mesh: List<Rgb>? = null,
+    ): RenderedBase {
         val bitmap = createBitmap(layout.canvasWidth, layout.canvasHeight)
         val canvas = Canvas(bitmap)
-        canvas.drawColor(background.argb)
+        if (mesh != null) {
+            val (w, h) = layout.canvasWidth to layout.canvasHeight
+            bitmap.setPixels(meshPixels(w, h, mesh), 0, w, 0, 0, w, h)
+        } else {
+            canvas.drawColor(background.argb)
+        }
         if (glow != null) drawGlow(canvas, layout, glow) else drawShadow(canvas, layout)
         drawArt(canvas, art, layout)
         return RenderedBase(bitmap)
