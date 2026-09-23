@@ -13,6 +13,10 @@ import io.github.arthur044.wallpaperchanger.core.sync.SyncEngine
 import io.github.arthur044.wallpaperchanger.sync.SyncController
 import io.github.arthur044.wallpaperchanger.render.defaultDisplayWindowContext
 import io.github.arthur044.wallpaperchanger.render.screenMetrics
+import io.github.arthur044.wallpaperchanger.wallpaper.LiveWallpaper
+import io.github.arthur044.wallpaperchanger.wallpaper.LiveWallpaperFrames
+import io.github.arthur044.wallpaperchanger.wallpaper.LiveWallpaperStatus
+import io.github.arthur044.wallpaperchanger.wallpaper.SystemLiveWallpaperStatus
 import io.github.arthur044.wallpaperchanger.wallpaper.WallpaperUpdater
 import io.github.arthur044.wallpaperchanger.render.AlbumBaseCache
 import io.github.arthur044.wallpaperchanger.render.WallpaperComposer
@@ -60,7 +64,17 @@ class AppContainer(app: Application) {
     // Screen size is read from a window context: the service has no Activity.
     private val screen by lazy { app.defaultDisplayWindowContext() }
 
-    val wallpaperUpdater = WallpaperUpdater(composer, applier, settings.settings) {
+    /** The latest image, for the live wallpaper (the smooth-transition mode). */
+    val liveFrames = LiveWallpaperFrames(File(app.filesDir, "live_wallpaper/frame.bin"))
+
+    val liveWallpaperStatus: LiveWallpaperStatus = SystemLiveWallpaperStatus(app)
+
+    val wallpaperUpdater = WallpaperUpdater(
+        composer,
+        applier,
+        settings.settings,
+        LiveWallpaper(liveFrames, liveWallpaperStatus),
+    ) {
         canvasSpec(screen.screenMetrics())
     }
 

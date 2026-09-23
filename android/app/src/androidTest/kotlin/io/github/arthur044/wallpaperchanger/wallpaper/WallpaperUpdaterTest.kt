@@ -38,10 +38,13 @@ class WallpaperUpdaterTest {
             .apply { eraseColor(Color.rgb(200, 60, 40)) }
             .compress(Bitmap.CompressFormat.PNG, 100, out)
     }.toByteArray()
+    private val frames = LiveWallpaperFrames(File(dir, "live/frame.bin"))
+    private var liveActive = false
     private val updater = WallpaperUpdater(
         WallpaperComposer({ png }, WallpaperRenderer(), AlbumBaseCache(dir)),
         WallpaperApplier(port),
         settings,
+        LiveWallpaper(frames) { liveActive },
     ) { phone }
 
     private val airbag = NowPlaying(true, "t1", "a1", "https://i.scdn.co/image/a1", "Airbag", "Radiohead")
@@ -66,6 +69,49 @@ class WallpaperUpdaterTest {
         updater.show(airbag)
 
         assertEquals(listOf(WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK), port.flags)
+    }
+
+    @Test
+    fun smoothTransitionHandsTheImageToTheLiveWallpaperInsteadOfTheHomeScreen() = runTest {
+        settings.value = Settings(smoothTransition = true)
+        liveActive = true
+
+        updater.show(airbag)
+
+        assertTrue("no static home wallpaper: it would blink black", port.flags.isEmpty())
+        val frame = checkNotNull(frames.latest.value)
+        assertEquals(1080 to 2400, frame.width to frame.height)
+    }
+
+    @Test
+    fun smoothTransitionStillSetsTheLockScreenStatically() = runTest {
+        settings.value = Settings(smoothTransition = true, syncLockScreen = true)
+        liveActive = true
+
+        updater.show(airbag)
+
+        assertEquals(listOf(WallpaperManager.FLAG_LOCK), port.flags)
+    }
+
+    @Test
+    fun untilTheLiveWallpaperIsPickedTheHomeScreenIsStillUpdated() = runTest {
+        settings.value = Settings(smoothTransition = true)
+        liveActive = false
+
+        updater.show(airbag)
+
+        assertEquals(listOf(WallpaperManager.FLAG_SYSTEM), port.flags)
+        assertTrue("ready for when it is picked", frames.latest.value != null)
+    }
+
+    @Test
+    fun withoutSmoothTransitionTheLiveWallpaperIsLeftAlone() = runTest {
+        liveActive = true
+
+        updater.show(airbag)
+
+        assertEquals(listOf(WallpaperManager.FLAG_SYSTEM), port.flags)
+        assertTrue(frames.latest.value == null)
     }
 
     @Test

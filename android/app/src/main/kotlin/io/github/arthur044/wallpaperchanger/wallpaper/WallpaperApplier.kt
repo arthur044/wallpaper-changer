@@ -32,11 +32,16 @@ class WallpaperApplier(
     private val port: WallpaperPort,
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
-    suspend fun apply(bitmap: Bitmap, includeLockScreen: Boolean): ApplyResult {
+    suspend fun apply(bitmap: Bitmap, includeLockScreen: Boolean): ApplyResult =
+        applyTo(bitmap, if (includeLockScreen) HOME_AND_LOCK else HOME_ONLY)
+
+    /** The lock screen alone: the home screen shows the live wallpaper. */
+    suspend fun applyToLockScreenOnly(bitmap: Bitmap): ApplyResult = applyTo(bitmap, LOCK_ONLY)
+
+    private suspend fun applyTo(bitmap: Bitmap, which: Int): ApplyResult {
         if (!port.isSupported) return ApplyResult.Unsupported
         if (!port.isAllowed) return ApplyResult.NotAllowed
 
-        val which = if (includeLockScreen) HOME_AND_LOCK else HOME_ONLY
         // The image is already sized for this screen: show all of it, never a
         // zoomed-in part (some launchers want a wider wallpaper and would crop).
         val wholeImage = Rect(0, 0, bitmap.width, bitmap.height)
@@ -61,6 +66,7 @@ class WallpaperApplier(
     companion object {
         const val HOME_ONLY = WallpaperManager.FLAG_SYSTEM
         const val HOME_AND_LOCK = WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK
+        const val LOCK_ONLY = WallpaperManager.FLAG_LOCK
         private const val TAG = "WallpaperApplier"
     }
 }

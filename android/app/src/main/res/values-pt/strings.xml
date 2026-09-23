@@ -28,6 +28,7 @@
     <string name="main_art_glow">Brilho na cor da capa</string>
     <string name="main_glass_card">Cartão de vidro atrás do texto</string>
     <string name="main_show_track_info">Mostrar música e artista</string>
+    <string name="live_wallpaper_description">A capa da música tocando no Spotify, com transição suave de uma música para a outra.</string>
     <string name="main_sync_lock_screen">Também na tela de bloqueio</string>
     <string name="main_section_advanced">Avançado</string>
     <string name="main_poll_interval">Consultar o Spotify a cada</string>

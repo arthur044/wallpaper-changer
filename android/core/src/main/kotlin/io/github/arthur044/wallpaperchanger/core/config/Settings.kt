@@ -44,6 +44,9 @@ data class Settings(
     // The art's shadow in its most vivid color instead of black.
     @SerialName("art_glow") val artGlow: Boolean = false,
     @SerialName("text_card") val textCard: TextCard = TextCard.NONE,
+    // Android only: show the wallpaper through the app's own live wallpaper,
+    // which fades between images; a static wallpaper blinks black on every change.
+    @SerialName("smooth_transition") val smoothTransition: Boolean = false,
 ) {
     val webApiPollInterval: Duration get() = webApiPollIntervalSeconds.seconds
 

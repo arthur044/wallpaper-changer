@@ -30,6 +30,7 @@
     <string name="main_art_glow">Glow in the cover’s color</string>
     <string name="main_glass_card">Frosted card behind the text</string>
     <string name="main_show_track_info">Show song and artist</string>
+    <string name="live_wallpaper_description">The album art of the song playing on Spotify, fading smoothly from one song to the next.</string>
     <string name="main_sync_lock_screen">Also on the lock screen</string>
     <string name="main_section_advanced">Advanced</string>
     <string name="main_poll_interval">Check Spotify every</string>

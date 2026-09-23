@@ -32,6 +32,7 @@ class SettingsSerializerTest {
             backgroundStyle = BackgroundStyle.MESH,
             artGlow = true,
             textCard = TextCard.GLASS,
+            smoothTransition = true,
         )
         assertEquals(s, decode(encode(s)))
     }
