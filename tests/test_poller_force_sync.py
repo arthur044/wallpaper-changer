@@ -118,3 +118,52 @@ def test_force_sync_still_respects_a_rate_limit(monkeypatch):
 
     assert calls == [1], "a 429 must not be answered with another request"
     assert rendered == []
+
+
+def _paused(title="Home"):
+    return SmtcNowPlaying(
+        title=title, artist="Dream Theater", album_title="Metropolis", album_artist="Dream Theater", is_playing=False
+    )
+
+
+def test_force_sync_while_paused_redraws_the_wallpaper_on_screen(monkeypatch):
+    # The tray's style menu goes through Force Sync: with the music paused it
+    # must still redraw, or a style change shows nothing until the next play.
+    poller, app_state, rendered, _ = _poller(monkeypatch, lambda n: _resolved())
+    poller._run_one_cycle()
+    poller._smtc.snapshot = _paused()
+
+    _force(poller, app_state)
+    poller._run_one_cycle()
+
+    assert len(rendered) == 2
+    assert rendered[1] == rendered[0]
+
+
+def test_force_sync_with_nothing_ever_drawn_does_nothing(monkeypatch):
+    poller, app_state, rendered, _ = _poller(monkeypatch, lambda n: None)
+    poller._smtc.snapshot = None
+
+    _force(poller, app_state)
+    poller._run_one_cycle()
+
+    assert rendered == []
+
+
+def test_force_sync_on_a_new_track_draws_it_once(monkeypatch):
+    poller, app_state, rendered, _ = _poller(monkeypatch, lambda n: _resolved())
+
+    _force(poller, app_state)
+    poller._run_one_cycle()
+
+    assert len(rendered) == 1
+
+
+def test_paused_without_force_leaves_the_wallpaper_alone(monkeypatch):
+    poller, app_state, rendered, _ = _poller(monkeypatch, lambda n: _resolved())
+    poller._run_one_cycle()
+    poller._smtc.snapshot = _paused()
+
+    poller._run_one_cycle()
+
+    assert len(rendered) == 1

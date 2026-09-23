@@ -78,6 +78,10 @@ class Poller:
         self._unresolved_logged_key: Optional[str] = None
         # Set when the tray's Force Sync woke the loop; consumed by the next cycle.
         self._force_pending = False
+        # What is on screen, so a forced cycle with nothing playing can redraw
+        # it (a style change from the tray while the music is paused).
+        self._last_rendered: Optional[NowPlaying] = None
+        self._render_attempts = 0
         # A 429 from any path blocks every Web API call until this (monotonic),
         # Force Sync included: answering a rate limit with another request
         # only extends it.
@@ -103,13 +107,28 @@ class Poller:
             return self._settings.poll_interval_seconds
 
         forced, self._force_pending = self._force_pending, False
-        if forced:
-            # Force Sync means "redraw now": the same track counts as new (also
-            # how a style change from the tray reaches the screen), and the Web
-            # API throttle is skipped once so a pending art lookup retries.
-            logger.info("Force sync: redrawing the current track")
-            self._last_rendered_track_id = None
+        if not forced:
+            return self._poll_once(forced=False)
 
+        # Force Sync means "redraw now": the same track counts as new (also how
+        # a style change from the tray reaches the screen), and the Web API
+        # throttle is skipped once so a pending art lookup retries.
+        logger.info("Force sync: redrawing the current track")
+        self._last_rendered_track_id = None
+        attempts_before = self._render_attempts
+        interval = self._poll_once(forced=True)
+        if self._render_attempts == attempts_before:
+            self._redraw_last()
+        return interval
+
+    def _redraw_last(self) -> None:
+        if self._last_rendered is None:
+            logger.info("Force sync: nothing playing and nothing drawn yet, nothing to redraw")
+            return
+        logger.info("Force sync: nothing playing, redrawing the wallpaper on screen")
+        self._render(self._last_rendered)
+
+    def _poll_once(self, forced: bool) -> float:
         locked = self._is_locked_fn()
 
         smtc_snapshot = self._smtc.get_snapshot() if self._smtc is not None else None
@@ -248,13 +267,17 @@ class Poller:
             return interval
 
         self._app_state.set_playing(now_playing.track_id, now_playing.album_id)
+        self._render(now_playing)
+        return interval
+
+    def _render(self, now_playing: NowPlaying) -> None:
+        self._render_attempts += 1
         try:
             self._render_fn(now_playing)
             self._last_rendered_track_id = now_playing.track_id
+            self._last_rendered = now_playing
         except Exception as exc:  # noqa: BLE001 - a render failure must not kill the polling loop
             logger.exception("Render pipeline failed: %s", exc)
-
-        return interval
 
     def _bump_backoff(self) -> float:
         self._backoff_seconds = next_backoff(self._backoff_seconds)
