@@ -56,6 +56,17 @@ assinados com chaves diferentes, e atualizar um pelo outro exigiria desinstalar 
 release, perdendo login e configurações. Os dois usam o mesmo esquema de callback,
 então um login feito pelo debug pode perguntar qual app abrir.
 
+### Gerar o APK sozinho
+
+Dê um duplo clique em `android/build-apk.cmd` (ou rode `.uild-apk.ps1` no PowerShell). Ele:
+
+1. confere os pré-requisitos: `keystore.properties`, a chave de assinatura e o SDK;
+2. gera o APK de release e confere que saiu assinado com a sua chave;
+3. guarda uma cópia em `android/dist/`, com versão, data e commit no nome (e `-alterado` se havia mudanças não commitadas);
+4. com o celular conectado por USB, pergunta se deve instalar por cima, mantendo login e configurações.
+
+`-Install` instala sem perguntar; `-NoInstall` só gera o APK.
+
 `local.properties` precisa de `sdk.dir`, com o dois-pontos escapado no Windows:
 `sdk.dir=C\:/Users/<voce>/AppData/Local/Android/Sdk`.
 
