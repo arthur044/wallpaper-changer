@@ -26,7 +26,14 @@
     <string name="main_corner_radius">Rounded corners</string>
     <string name="main_shadow">Shadow</string>
     <string name="main_offset">Vertical position</string>
-    <string name="main_mesh_background">Gradient background in the cover’s colors</string>
+    <string name="main_background">Background</string>
+    <string name="main_background_solid">Solid</string>
+    <string name="main_background_mesh">Gradient</string>
+    <string name="main_background_blur">Blurred cover</string>
+    <string name="main_frame">Glass frame</string>
+    <string name="main_frame_none">None</string>
+    <string name="main_frame_single">Single</string>
+    <string name="main_frame_double">Double</string>
     <string name="main_art_glow">Glow in the cover’s color</string>
     <string name="main_glass_card">Frosted card behind the text</string>
     <string name="main_smooth_transition">Smooth transition between songs</string>

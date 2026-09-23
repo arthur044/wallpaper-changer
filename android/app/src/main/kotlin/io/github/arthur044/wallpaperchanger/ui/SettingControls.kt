@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -72,5 +75,30 @@ internal fun SwitchRow(
         Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         // The row handles the toggle; the switch only shows it.
         Switch(checked = checked, onCheckedChange = null, enabled = enabled)
+    }
+}
+
+/** A labelled one-of-a-few choice: segmented buttons, one tagged "$tagPrefix_<index>" each. */
+@Composable
+internal fun <T> ChoiceRow(
+    label: String,
+    options: List<Pair<T, String>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+    tagPrefix: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(bottom = 8.dp))
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            options.forEachIndexed { index, (value, text) ->
+                SegmentedButton(
+                    selected = value == selected,
+                    onClick = { if (value != selected) onSelect(value) },
+                    shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                    modifier = Modifier.testTag("${tagPrefix}_$index"),
+                ) { Text(text, maxLines = 1) }
+            }
+        }
     }
 }

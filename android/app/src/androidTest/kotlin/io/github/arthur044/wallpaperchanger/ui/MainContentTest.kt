@@ -13,6 +13,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.arthur044.wallpaperchanger.R
 import io.github.arthur044.wallpaperchanger.core.NowPlaying
+import io.github.arthur044.wallpaperchanger.core.config.ArtFrame
 import io.github.arthur044.wallpaperchanger.core.config.BackgroundStyle
 import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.config.TextCard
@@ -83,7 +84,7 @@ class MainContentTest {
         var changed: Settings? = null
         show(state(), MainCallbacks(onLookChange = { changed = it(changed ?: Settings()) }))
 
-        rule.onNodeWithTag(TAG_MESH).performScrollTo().performClick()
+        rule.onNodeWithTag("${TAG_BACKGROUND}_1").performScrollTo().performClick()
         rule.onNodeWithTag(TAG_GLOW).performScrollTo().performClick()
         rule.onNodeWithTag(TAG_GLASS).performScrollTo().performClick()
 
@@ -121,6 +122,28 @@ class MainContentTest {
 
         rule.onNodeWithTag(TAG_SMOOTH).performScrollTo().assertExists()
         rule.onNodeWithTag(TAG_PICK_LIVE).assertDoesNotExist()
+    }
+
+    @Test
+    fun theBlurredBackgroundAndTheFrameArePicked() {
+        var changed: Settings? = null
+        show(state(), MainCallbacks(onLookChange = { changed = it(changed ?: Settings()) }))
+
+        rule.onNodeWithTag("${TAG_BACKGROUND}_2").performScrollTo().performClick()
+        rule.onNodeWithTag("${TAG_FRAME}_1").performScrollTo().performClick()
+
+        assertEquals(BackgroundStyle.BLUR, changed?.backgroundStyle)
+        assertEquals(ArtFrame.SINGLE, changed?.artFrame)
+    }
+
+    @Test
+    fun pickingTheCurrentChoiceChangesNothing() {
+        var changed: Settings? = null
+        show(state(), MainCallbacks(onLookChange = { changed = it(Settings()) }))
+
+        rule.onNodeWithTag("${TAG_FRAME}_0").performScrollTo().performClick()
+
+        assertNull(changed)
     }
 
     @Test

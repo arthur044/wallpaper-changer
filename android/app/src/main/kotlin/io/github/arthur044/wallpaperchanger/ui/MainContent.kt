@@ -36,6 +36,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.arthur044.wallpaperchanger.R
+import io.github.arthur044.wallpaperchanger.core.config.ArtFrame
 import io.github.arthur044.wallpaperchanger.core.config.BackgroundStyle
 import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.config.TextCard
@@ -190,13 +191,27 @@ private fun LookSection(state: MainUiState, callbacks: MainCallbacks) {
             onCommit = { b -> onLookChange { it.copy(shadowBlurRadius = b.roundToInt()) } },
             tag = TAG_SHADOW,
         )
-        SwitchRow(
-            label = stringResource(R.string.main_mesh_background),
-            checked = settings.backgroundStyle == BackgroundStyle.MESH,
-            onCheckedChange = { on ->
-                onLookChange { it.copy(backgroundStyle = if (on) BackgroundStyle.MESH else BackgroundStyle.SOLID) }
-            },
-            modifier = Modifier.testTag(TAG_MESH),
+        ChoiceRow(
+            label = stringResource(R.string.main_background),
+            options = listOf(
+                BackgroundStyle.SOLID to stringResource(R.string.main_background_solid),
+                BackgroundStyle.MESH to stringResource(R.string.main_background_mesh),
+                BackgroundStyle.BLUR to stringResource(R.string.main_background_blur),
+            ),
+            selected = settings.backgroundStyle,
+            onSelect = { style -> onLookChange { it.copy(backgroundStyle = style) } },
+            tagPrefix = TAG_BACKGROUND,
+        )
+        ChoiceRow(
+            label = stringResource(R.string.main_frame),
+            options = listOf(
+                ArtFrame.NONE to stringResource(R.string.main_frame_none),
+                ArtFrame.SINGLE to stringResource(R.string.main_frame_single),
+                ArtFrame.DOUBLE to stringResource(R.string.main_frame_double),
+            ),
+            selected = settings.artFrame,
+            onSelect = { frame -> onLookChange { it.copy(artFrame = frame) } },
+            tagPrefix = TAG_FRAME,
         )
         SwitchRow(
             label = stringResource(R.string.main_art_glow),
@@ -332,7 +347,8 @@ internal const val TAG_ART_SIZE = "artSize"
 internal const val TAG_CORNERS = "corners"
 internal const val TAG_SHADOW = "shadow"
 internal const val TAG_OFFSET = "offset"
-internal const val TAG_MESH = "meshBackground"
+internal const val TAG_BACKGROUND = "background"
+internal const val TAG_FRAME = "frame"
 internal const val TAG_GLOW = "artGlow"
 internal const val TAG_GLASS = "glassCard"
 internal const val TAG_SMOOTH = "smoothTransition"
