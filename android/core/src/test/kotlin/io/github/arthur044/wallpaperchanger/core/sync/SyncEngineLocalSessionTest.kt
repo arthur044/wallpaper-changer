@@ -195,6 +195,23 @@ class SyncEngineLocalSessionTest {
     }
 
     @Test
+    fun `the wallpaper is drawn before the album's tracklist is fetched`() = runTest {
+        // The tracklist only saves calls for the album's other songs; the
+        // wallpaper shouldn't wait on it.
+        val engine = engine()
+        val order = mutableListOf<String>()
+        source.playing = { apiSaysAirbag }
+        tracks.byAlbum = mapOf("a1" to listOf(AlbumTrack("Airbag", "Radiohead"), AlbumTrack("Lucky", "Radiohead")))
+        tracks.onCall = { order += "tracklist" }
+        sink.onShow = { order += "drawn" }
+
+        engine.onLocalTrack(airbagLocally)
+        engine.runOnce()
+
+        assertEquals(listOf("drawn", "tracklist"), order)
+    }
+
+    @Test
     fun `a failed tracklist prefetch still draws the current track`() = runTest {
         val engine = engine()
         source.playing = { apiSaysAirbag }
@@ -224,11 +241,13 @@ class SyncEngineLocalSessionTest {
     private class FakeAlbumTracks : AlbumTracksSource {
         var byAlbum: Map<String, List<AlbumTrack>> = emptyMap()
         var fail = false
+        var onCall: () -> Unit = {}
         var calls = 0
             private set
 
         override suspend fun albumTracks(albumId: String): List<AlbumTrack> {
             calls++
+            onCall()
             if (fail) throw TransientNetworkException("tracklist failed")
             return byAlbum[albumId].orEmpty()
         }
@@ -236,8 +255,10 @@ class SyncEngineLocalSessionTest {
 
     private class FakeSink : WallpaperSink {
         val shown = mutableListOf<String?>()
+        var onShow: () -> Unit = {}
 
         override suspend fun show(nowPlaying: NowPlaying) {
+            onShow()
             shown += nowPlaying.trackId
         }
     }

@@ -58,6 +58,8 @@ class SyncEngine(
     // The track on the wallpaper, in memory only (a restart forgets it, like
     // the desktop): what redraw() repaints when nothing is playing.
     private var lastDrawn: NowPlaying? = null
+    // An album whose tracklist is fetched right after the render, not before it.
+    private var pendingTracklist: ResolvedAlbum? = null
     private val latestLocal = AtomicReference<LocalTrack?>(null)
     private var backoff = Duration.ZERO
     private var resolveBackoff = Duration.ZERO
@@ -218,7 +220,25 @@ class SyncEngine(
             PollDecision.NOOP -> mutableStatus.value = SyncStatus.Showing(nowPlaying)
             PollDecision.RENDER -> if (!render(nowPlaying)) return null
         }
+        fetchPendingTracklist()
         return interval
+    }
+
+    /** Best-effort: a failed tracklist only means the album's next song costs a lookup. */
+    private suspend fun fetchPendingTracklist() {
+        val album = pendingTracklist ?: return
+        pendingTracklist = null
+        val tracks = try {
+            albumTracks?.albumTracks(album.albumId).orEmpty()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: RateLimitedException) {
+            throttle.deferFor(e.retryAfter)
+            return
+        } catch (e: Exception) {
+            return
+        }
+        index.record(album, tracks.map { trackKey(it.artistName, it.name) })
     }
 
     /**
@@ -240,7 +260,17 @@ class SyncEngine(
         backoff = Duration.ZERO
         val albumId = playing?.albumId ?: return Resolution.Unknown
         val album = ResolvedAlbum(albumId, playing.artUrl)
-        val keys = mutableListOf(trackKey(playing.artistName, playing.trackName))
+        val playingKey = trackKey(playing.artistName, playing.trackName)
+        if (playingKey == wantedKey) {
+            // The API names this very track: draw it now, and let the tracklist
+            // (which only saves calls for the album's other songs) follow.
+            index.record(album, listOf(playingKey))
+            pendingTracklist = album
+            return Resolution.Found(album)
+        }
+        // The API names another track: the tracklist may still place this one
+        // (the artist can be spelled differently locally), so it can't wait.
+        val keys = mutableListOf(playingKey)
         // Best-effort: a failed prefetch only costs one call on the next track.
         runCatching { albumTracks?.albumTracks(albumId).orEmpty() }
             .getOrDefault(emptyList())
