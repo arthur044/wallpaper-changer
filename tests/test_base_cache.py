@@ -22,13 +22,21 @@ def test_same_inputs_give_the_same_key():
         {"background_style": "mesh"},
         {"art_glow": True},
         {"background_style": "blur"},
-        {"art_frame": True},
+        {"art_frame": "single"},
+        {"art_frame": "double"},
     ],
 )
 def test_pixel_affecting_settings_change_the_key(change):
     changed = dataclasses.replace(Settings(), **change)
 
     assert base_cache_key("abc123", _CANVAS, changed) != base_cache_key("abc123", _CANVAS, Settings())
+
+
+def test_single_and_double_frames_are_different_bases():
+    single = dataclasses.replace(Settings(), art_frame="single")
+    double = dataclasses.replace(Settings(), art_frame="double")
+
+    assert base_cache_key("abc123", _CANVAS, single) != base_cache_key("abc123", _CANVAS, double)
 
 
 def test_resolution_changes_the_key():

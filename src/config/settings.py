@@ -12,6 +12,7 @@ DEFAULT_REDIRECT_URI = "http://127.0.0.1:8888/callback"
 DEFAULT_SCOPE = "user-read-currently-playing user-read-playback-state"
 
 BACKGROUND_STYLES = ("solid", "mesh", "blur")
+ART_FRAMES = ("none", "single", "double")
 TEXT_CARDS = ("none", "glass")
 
 
@@ -62,9 +63,10 @@ class Settings:
     art_glow: bool = False
     # Cartão atrás do título/artista: "none" ou "glass" (vidro fosco).
     text_card: str = "none"
-    # Duas molduras de vidro em volta da arte. A arte encolhe para caber nelas,
-    # então o conjunto ocupa o mesmo espaço e o texto não se mexe.
-    art_frame: bool = False
+    # Moldura de vidro em volta da arte: "none", "single" (uma borda) ou
+    # "double" (duas). A arte encolhe para caber nela, então o conjunto ocupa
+    # o mesmo espaço e o texto não se mexe.
+    art_frame: str = "none"
     fallback_resolution: List[int] = field(default_factory=lambda: [1920, 1080])
     log_level: str = "INFO"
     sync_lock_screen: bool = False
@@ -73,6 +75,9 @@ class Settings:
     def from_dict(cls, data: dict) -> "Settings":
         known_fields = {f.name for f in dataclasses.fields(cls)}
         filtered = {k: v for k, v in data.items() if k in known_fields}
+        frame = filtered.get("art_frame")
+        if isinstance(frame, bool):
+            filtered["art_frame"] = _LEGACY_FRAME[frame]
         return cls(**_drop_invalid_choices(filtered))
 
 
@@ -82,8 +87,11 @@ _CHOICES = {
     "background_style": BACKGROUND_STYLES,
     "text_card": TEXT_CARDS,
     "art_glow": (True, False),
-    "art_frame": (True, False),
+    "art_frame": ART_FRAMES,
 }
+
+# A moldura já foi uma chave liga/desliga; configs dessa época continuam valendo.
+_LEGACY_FRAME = {True: "double", False: "none"}
 
 
 def _drop_invalid_choices(data: dict) -> dict:

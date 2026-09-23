@@ -95,7 +95,26 @@ class TrayApp:
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Art glow", self._toggle_glow, checked=lambda item: self._settings.art_glow),
-            pystray.MenuItem("Glass frame", self._toggle_frame, checked=lambda item: self._settings.art_frame),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem(
+                "No frame",
+                lambda icon, item: self._set_frame("none"),
+                checked=lambda item: self._settings.art_frame == "none",
+                radio=True,
+            ),
+            pystray.MenuItem(
+                "Single glass frame",
+                lambda icon, item: self._set_frame("single"),
+                checked=lambda item: self._settings.art_frame == "single",
+                radio=True,
+            ),
+            pystray.MenuItem(
+                "Double glass frame",
+                lambda icon, item: self._set_frame("double"),
+                checked=lambda item: self._settings.art_frame == "double",
+                radio=True,
+            ),
+            pystray.Menu.SEPARATOR,
             pystray.MenuItem("Glass card", self._toggle_glass, checked=lambda item: self._settings.text_card == "glass"),
         )
 
@@ -119,8 +138,10 @@ class TrayApp:
         self._settings.art_glow = not self._settings.art_glow
         self._apply_style_change()
 
-    def _toggle_frame(self, icon, item) -> None:
-        self._settings.art_frame = not self._settings.art_frame
+    def _set_frame(self, frame: str) -> None:
+        if self._settings.art_frame == frame:
+            return
+        self._settings.art_frame = frame
         self._apply_style_change()
 
     def _toggle_glass(self, icon, item) -> None:

@@ -154,14 +154,23 @@ def test_blurred_background_is_a_background_choice(monkeypatch):
     assert saved == [settings]
 
 
-def test_glass_frame_toggles_on_and_off(monkeypatch):
+def test_the_frame_is_a_three_way_choice(monkeypatch):
     settings = Settings()
     tray, saved = _style_tray(monkeypatch, settings)
 
-    tray._toggle_frame(tray._icon, None)
-    assert settings.art_frame is True
+    tray._set_frame("single")
+    assert settings.art_frame == "single"
     assert tray._app_state.force_sync_event.is_set()
 
-    tray._toggle_frame(tray._icon, None)
-    assert settings.art_frame is False
-    assert len(saved) == 2
+    tray._set_frame("double")
+    tray._set_frame("none")
+    assert settings.art_frame == "none"
+    assert len(saved) == 3
+
+
+def test_picking_the_current_frame_again_does_nothing(monkeypatch):
+    tray, saved = _style_tray(monkeypatch, Settings())
+
+    tray._set_frame("none")
+
+    assert saved == []

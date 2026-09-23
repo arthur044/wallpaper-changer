@@ -41,10 +41,12 @@ _BLUR_BG_SIGMA_PCT = 0.026  # of the canvas short side
 _BLUR_BG_DOWNSCALE = 4
 _VIGNETTE_MIN_ALPHA = 50  # black over the centre...
 _VIGNETTE_GAIN = 0.5  # ...rising toward the edges, up to ~177 in the corners
-# Glass frame: two rims around the art, as fractions of the (shrunken) art side.
-_FRAME_OUTER_PCT = 0.075
-_FRAME_INNER_PCT = 0.035
-_FRAME_RIMS = ((_FRAME_OUTER_PCT, 24, 90), (_FRAME_INNER_PCT, 28, 110))  # (gap, veil alpha, edge alpha)
+# Glass frame rims, outermost first: (gap as a fraction of the shrunken art
+# side, veil alpha, edge alpha). The outermost gap sets how much the art shrinks.
+_FRAME_RIMS = {
+    "single": ((0.05, 28, 110),),
+    "double": ((0.075, 24, 90), (0.035, 28, 110)),
+}
 # Big blurs run on a downscaled layer: same look (the result is smooth), about
 # half the time on a full-screen canvas.
 _MAX_BLUR_DOWNSCALE = 4
@@ -128,22 +130,23 @@ def _blurred_art_background(art: Image.Image, size: Tuple[int, int]) -> Image.Im
     return Image.alpha_composite(background, shade).convert("RGB")
 
 
-def _framed_art(layout: ArtLayout) -> ArtLayout:
+def _framed_art(layout: ArtLayout, frame: str) -> ArtLayout:
     """The art shrunk so that it plus its outer glass rim fill the art's original box."""
-    inner = round(layout.art_size / (1 + 2 * _FRAME_OUTER_PCT))
+    outer_gap = _FRAME_RIMS[frame][0][0]
+    inner = round(layout.art_size / (1 + 2 * outer_gap))
     offset = (layout.art_size - inner) // 2
     x, y = layout.art_position
     return ArtLayout(canvas_size=layout.canvas_size, art_size=inner, art_position=(x + offset, y + offset))
 
 
 def _glass_frame_layer(art: ArtLayout, settings: Settings) -> Image.Image:
-    """Two nested rims around [art]: a light veil and a hairline edge each, the
+    """The frame's rims around [art]: a light veil and a hairline edge each, an
     outer one fainter. The background shows through, blurred or not."""
     layer = Image.new("RGBA", art.canvas_size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer)
     edge_width = max(1, round(art.canvas_size[1] / 540))
     x, y = art.art_position
-    for gap_pct, veil, edge in _FRAME_RIMS:
+    for gap_pct, veil, edge in _FRAME_RIMS[settings.art_frame]:
         gap = round(art.art_size * gap_pct)
         box = [x - gap, y - gap, x + art.art_size + gap - 1, y + art.art_size + gap - 1]
         draw.rounded_rectangle(
@@ -182,8 +185,8 @@ def _build_base_canvas(art_bytes: bytes, settings: Settings, layout: ArtLayout) 
     # The shadow or glow keeps the art's original box: with a frame, that is
     # the outer rim, and the art itself sits inside it.
     art_box = layout
-    if settings.art_frame:
-        art_box = _framed_art(layout)
+    if settings.art_frame in _FRAME_RIMS:
+        art_box = _framed_art(layout, settings.art_frame)
         canvas = Image.alpha_composite(canvas, _glass_frame_layer(art_box, settings))
 
     art = art_image.resize((art_box.art_size, art_box.art_size), Image.LANCZOS)

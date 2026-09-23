@@ -361,7 +361,7 @@ def test_glass_frame_takes_the_arts_place_and_shrinks_the_art(tmp_path, monkeypa
     (tmp_path / "plain").mkdir()
     (tmp_path / "frame").mkdir()
     plain = _render_base_only(tmp_path / "plain", monkeypatch, black_fill, white)
-    framed = _render_base_only(tmp_path / "frame", monkeypatch, dataclasses.replace(black_fill, art_frame=True), white)
+    framed = _render_base_only(tmp_path / "frame", monkeypatch, dataclasses.replace(black_fill, art_frame="double"), white)
 
     x, y = _LAYOUT.art_position
     near_edge = (x + 3, y + _LAYOUT.art_size // 2)  # inside the art's footprint, by its left edge
@@ -372,3 +372,19 @@ def test_glass_frame_takes_the_arts_place_and_shrinks_the_art(tmp_path, monkeypa
     assert framed.getpixel(centre) == (255, 255, 255), "the art is still in the middle"
     outside = (x - 3, y + _LAYOUT.art_size // 2)
     assert framed.getpixel(outside) == (0, 0, 0), "nothing grows past the art's old footprint"
+
+
+
+def test_a_single_frame_leaves_the_art_bigger_than_a_double_one(tmp_path, monkeypatch):
+    white = _png_bytes(Image.new("RGB", (64, 64), (255, 255, 255)))
+    black_fill = Settings(shadow_blur_radius=0)
+    monkeypatch.setattr("src.graphics.renderer.extract_dominant_color", lambda b: (0, 0, 0))
+
+    def art_width(style):
+        (tmp_path / style).mkdir()
+        image = _render_base_only(tmp_path / style, monkeypatch, dataclasses.replace(black_fill, art_frame=style), white)
+        row = _LAYOUT.art_position[1] + _LAYOUT.art_size // 2
+        return sum(1 for x in range(image.width) if image.getpixel((x, row)) == (255, 255, 255))
+
+    none, single, double = art_width("none"), art_width("single"), art_width("double")
+    assert none > single > double > 0

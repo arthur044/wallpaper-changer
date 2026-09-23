@@ -7,18 +7,24 @@ def test_background_options_default_to_the_current_look():
     assert settings.background_style == "solid"
     assert settings.art_glow is False
     assert settings.text_card == "none"
-    assert settings.art_frame is False
+    assert settings.art_frame == "none"
 
 
-def test_blurred_art_background_and_frame_are_valid_choices():
-    settings = Settings.from_dict({"background_style": "blur", "art_frame": True})
+def test_blurred_art_background_and_frames_are_valid_choices():
+    assert Settings.from_dict({"background_style": "blur"}).background_style == "blur"
+    assert Settings.from_dict({"art_frame": "single"}).art_frame == "single"
+    assert Settings.from_dict({"art_frame": "double"}).art_frame == "double"
 
-    assert settings.background_style == "blur"
-    assert settings.art_frame is True
+
+def test_the_old_on_off_frame_value_still_reads():
+    # config.json files written while the frame was a plain switch.
+    assert Settings.from_dict({"art_frame": True}).art_frame == "double"
+    assert Settings.from_dict({"art_frame": False}).art_frame == "none"
 
 
-def test_an_invalid_art_frame_value_resets_to_off():
-    assert Settings.from_dict({"art_frame": "yes"}).art_frame is False
+def test_an_invalid_art_frame_value_resets_to_none():
+    assert Settings.from_dict({"art_frame": "triple"}).art_frame == "none"
+    assert Settings.from_dict({"art_frame": 1}).art_frame == "none"
 
 
 def test_from_dict_keeps_valid_background_options():
