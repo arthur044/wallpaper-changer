@@ -4,7 +4,7 @@ import logging
 import sys
 import threading
 
-from src.config.paths import album_base_path
+from src.config.paths import album_base_path, track_index_file
 from src.config.settings import load_settings
 from src.graphics.base_cache import base_cache_key
 from src.graphics.layout import compute_layout
@@ -21,6 +21,7 @@ from src.os_integration.wallpaper import next_output_path, set_wallpaper
 from src.spotify.auth import build_auth_manager, reauthenticate
 from src.spotify.client import NowPlaying
 from src.spotify.poller import Poller
+from src.spotify.track_index import TrackAlbumStore
 from src.utils.app_state import AppState
 from src.utils.logger import setup_logging
 
@@ -117,6 +118,7 @@ def main() -> int:
         reauth_fn=reauth,
         smtc_watcher=smtc_watcher,
         is_locked_fn=is_workstation_locked,
+        track_index=TrackAlbumStore(track_index_file()),
     )
 
     if smtc_watcher is not None:

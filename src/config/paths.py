@@ -35,6 +35,11 @@ def config_file() -> Path:
     return config_dir() / "config.json"
 
 
+def track_index_file() -> Path:
+    """The "artist::title" -> album map, kept across restarts (spotify.track_index)."""
+    return data_dir() / "track_index.json"
+
+
 def album_base_path(key: str) -> Path:
     """Permanent per-album base composite (background + art + shadow, no track text),
     named by graphics.base_cache.base_cache_key. Written once per key and never

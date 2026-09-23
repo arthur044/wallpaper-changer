@@ -15,6 +15,7 @@ from src.spotify.client import (
     fetch_now_playing,
 )
 from src.spotify.state_machine import PollDecision, decide, next_backoff
+from src.spotify.track_index import TrackAlbumStore
 from src.utils.app_state import AppState
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,7 @@ class Poller:
         reauth_fn: ReauthFn,
         smtc_watcher: Optional[SmtcWatcher] = None,
         is_locked_fn: Callable[[], bool] = lambda: False,
+        track_index: Optional[TrackAlbumStore] = None,
     ) -> None:
         self._client = client
         self._settings = settings
@@ -84,7 +86,12 @@ class Poller:
         # any further API call. Only Spotify-sourced art is ever rendered:
         # until a track's entry appears here, nothing gets rendered for it.
         # In-memory only, cleared on restart.
-        self._track_to_album: Dict[str, Tuple[str, Optional[str]]] = {}
+        # Saved to disk when the app has a path for it (see TrackAlbumStore),
+        # so songs of albums seen before need no lookup after a restart.
+        self._track_to_album = track_index if track_index is not None else TrackAlbumStore(None)
+        # Track keys already forgotten once after failing to draw (see below).
+        self._forgotten_after_failure: set = set()
+        self._last_render_failed = False
         # Track key whose "still unresolved" state has already been logged.
         # Without it the message below would repeat every poll_interval_seconds
         # for as long as the track plays; with it, a frozen wallpaper leaves
@@ -127,6 +134,13 @@ class Poller:
             return self._settings.poll_interval_seconds
 
         forced, self._force_pending = self._force_pending, False
+        try:
+            return self._cycle(forced)
+        finally:
+            # Written once per change (a new album), never per song.
+            self._track_to_album.flush()
+
+    def _cycle(self, forced: bool) -> float:
         if not forced:
             return self._poll_once(forced=False)
 
@@ -215,6 +229,11 @@ class Poller:
         album_id, art_url = resolved
         now_playing = _smtc_to_now_playing(snapshot, album_id=album_id, art_url=art_url)
         interval = self._handle_now_playing(now_playing)
+        if self._last_render_failed and track_key not in self._forgotten_after_failure:
+            # Maybe the saved art link stopped working: forget it once, so the
+            # next cycle asks Spotify again instead of failing on it forever.
+            self._forgotten_after_failure.add(track_key)
+            self._track_to_album.pop(track_key)
         # After the render, not before: the wallpaper shouldn't wait on a call
         # that only speeds up the album's other songs.
         self._fetch_pending_tracklist()
@@ -331,11 +350,13 @@ class Poller:
 
     def _render(self, now_playing: NowPlaying) -> None:
         self._render_attempts += 1
+        self._last_render_failed = False
         try:
             self._render_fn(now_playing)
             self._last_rendered_track_id = now_playing.track_id
             self._last_rendered = now_playing
         except Exception as exc:  # noqa: BLE001 - a render failure must not kill the polling loop
+            self._last_render_failed = True
             logger.exception("Render pipeline failed: %s", exc)
 
     def _bump_backoff(self) -> float:
