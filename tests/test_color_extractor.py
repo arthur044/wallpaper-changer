@@ -2,7 +2,13 @@ import io
 
 from PIL import Image
 
-from src.graphics.color_extractor import extract_accent_palette, extract_dominant_color, pick_glow_color, to_hex
+from src.graphics.color_extractor import (
+    extract_accent_palette,
+    extract_dominant_color,
+    pick_glow_color,
+    pick_mesh_colors,
+    to_hex,
+)
 
 
 def _solid_color_png(rgb) -> bytes:
@@ -81,3 +87,35 @@ def test_extract_accent_palette_finds_a_small_vivid_accent():
 
 def test_extract_accent_palette_is_empty_on_invalid_bytes():
     assert extract_accent_palette(b"not an image") == []
+
+
+
+def _min_pairwise_distance(colors):
+    return min(_distance(a, b) for i, a in enumerate(colors) for b in colors[i + 1 :])
+
+
+def test_pick_mesh_colors_starts_with_the_dominant_and_keeps_distinct_colors():
+    dominant = (30, 40, 90)
+    palette = [(30, 40, 90), (32, 42, 88), (220, 120, 40), (200, 30, 80), (40, 180, 160), (90, 90, 90)]
+
+    colors = pick_mesh_colors(dominant, palette)
+
+    assert colors[0] == dominant
+    assert 3 <= len(colors) <= 4
+    assert (32, 42, 88) not in colors, "a near-duplicate of the dominant adds nothing"
+    assert _min_pairwise_distance(colors) >= 48
+
+
+def test_pick_mesh_colors_fills_a_monochrome_cover_with_tones():
+    colors = pick_mesh_colors((8, 8, 8), [(8, 8, 8), (12, 12, 12)])
+
+    assert len(colors) >= 3
+    assert colors[0] == (8, 8, 8)
+    assert _min_pairwise_distance(colors) >= 20
+
+
+def test_pick_mesh_colors_without_palette_still_gives_a_gradient():
+    colors = pick_mesh_colors((200, 60, 60), [])
+
+    assert len(colors) >= 3
+    assert _min_pairwise_distance(colors) >= 20

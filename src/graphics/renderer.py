@@ -2,14 +2,20 @@ import logging
 import os
 from io import BytesIO
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import requests
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageStat
 
 from src.config.settings import Settings
-from src.graphics.color_extractor import extract_accent_palette, extract_dominant_color, pick_glow_color
+from src.graphics.color_extractor import (
+    extract_accent_palette,
+    extract_dominant_color,
+    pick_glow_color,
+    pick_mesh_colors,
+)
 from src.graphics.layout import ArtLayout
+from src.graphics.mesh import mesh_background
 from src.spotify.client import NowPlaying
 
 logger = logging.getLogger(__name__)
@@ -71,9 +77,11 @@ def _shadow_layer(layout: ArtLayout, settings: Settings) -> Image.Image:
     )
 
 
-def _glow_layer(layout: ArtLayout, settings: Settings, art_bytes: bytes, background: Tuple[int, int, int]) -> Image.Image:
+def _glow_layer(
+    layout: ArtLayout, settings: Settings, palette: List[Tuple[int, int, int]], background: Tuple[int, int, int]
+) -> Image.Image:
     """The art as a light source: its most vivid color, spread wider than a shadow and centered."""
-    color = pick_glow_color(extract_accent_palette(art_bytes), background)
+    color = pick_glow_color(palette, background)
     blur = max(settings.shadow_blur_radius * 2, int(layout.art_size * _GLOW_BLUR_PCT))
     spread = int(layout.art_size * _GLOW_SPREAD_PCT)
     return _halo_layer(layout, color + (_GLOW_ALPHA,), blur, spread, 0, settings.corner_radius)
@@ -83,11 +91,18 @@ def _build_base_canvas(art_bytes: bytes, settings: Settings, layout: ArtLayout) 
     """Background fill + shadow + centered rounded art. No track text — this is the
     part that's identical for every track on the same album, so it's safe to cache."""
     dominant_rgb = extract_dominant_color(art_bytes)
+    use_mesh = settings.background_style == "mesh"
+    # One extraction shared by every effect that needs accents; none without them.
+    palette = extract_accent_palette(art_bytes) if (use_mesh or settings.art_glow) else []
 
-    canvas = Image.new("RGB", layout.canvas_size, dominant_rgb).convert("RGBA")
+    if use_mesh:
+        background = mesh_background(layout.canvas_size, pick_mesh_colors(dominant_rgb, palette))
+    else:
+        background = Image.new("RGB", layout.canvas_size, dominant_rgb)
+    canvas = background.convert("RGBA")
 
     if settings.art_glow:
-        halo = _glow_layer(layout, settings, art_bytes, dominant_rgb)
+        halo = _glow_layer(layout, settings, palette, dominant_rgb)
     else:
         halo = _shadow_layer(layout, settings)
     canvas = Image.alpha_composite(canvas, halo)
@@ -209,5 +224,8 @@ def render_for_now_playing(
         background_rgb = _average_color(base_image, _text_band(layout))
         _draw_track_info(final_image, layout, background_rgb, now_playing.track_name, now_playing.artist_name)
 
-    final_image.save(output_path, format="PNG")
+    # Rewritten on every track change, to one of two alternating files, so speed
+    # beats size: at level 6 a dithered mesh takes ~0.2 s (1080p) / ~0.7 s (4K)
+    # to encode, at level 1 well under half. The cached base stays at the default.
+    final_image.save(output_path, format="PNG", compress_level=1)
     logger.info("Rendered wallpaper to %s", output_path)

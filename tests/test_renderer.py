@@ -180,3 +180,52 @@ def test_accent_palette_is_only_computed_when_an_effect_needs_it(tmp_path, monke
     _render_new_album(tmp_path, monkeypatch, Settings(show_track_info=False))
 
     assert calls == []
+
+
+def _corners(image: Image.Image):
+    w, h = image.size
+    return [image.getpixel(p) for p in [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)]]
+
+
+def _art_with_colors() -> bytes:
+    art = Image.new("RGB", (64, 64), (30, 40, 90))
+    art.paste((230, 140, 30), (0, 0, 24, 24))
+    art.paste((40, 190, 150), (40, 40, 64, 64))
+    return _png_bytes(art)
+
+
+def test_mesh_style_varies_across_the_background(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.graphics.renderer.download_art", lambda url: _art_with_colors())
+    out = tmp_path / "out.png"
+
+    render_for_now_playing(
+        _now_playing(), Settings(show_track_info=False, background_style="mesh"), _LAYOUT, tmp_path / "b.png", out
+    )
+
+    corners = _corners(Image.open(out).convert("RGB"))
+    assert len(set(corners)) > 1, "a mesh background can't be one flat color"
+
+
+def test_solid_style_keeps_one_flat_color_in_the_corners(tmp_path, monkeypatch):
+    monkeypatch.setattr("src.graphics.renderer.download_art", lambda url: _art_with_colors())
+    out = tmp_path / "out.png"
+
+    render_for_now_playing(_now_playing(), Settings(show_track_info=False), _LAYOUT, tmp_path / "b.png", out)
+
+    assert len(set(_corners(Image.open(out).convert("RGB")))) == 1
+
+
+def test_glow_and_mesh_share_one_palette_extraction(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr("src.graphics.renderer.download_art", lambda url: _art_with_colors())
+    monkeypatch.setattr("src.graphics.renderer.extract_accent_palette", lambda b: calls.append(1) or [])
+
+    render_for_now_playing(
+        _now_playing(),
+        Settings(show_track_info=False, background_style="mesh", art_glow=True),
+        _LAYOUT,
+        tmp_path / "b.png",
+        tmp_path / "out.png",
+    )
+
+    assert calls == [1]

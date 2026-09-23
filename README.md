@@ -55,6 +55,7 @@ Pra rodar de novo depois (trocar de conta, token revogado): `python main.py --se
 | `corner_radius` | `16` | Arredondamento dos cantos da arte, px |
 | `shadow_blur_radius` | `24` | Blur da sombra, px |
 | `show_track_info` | `true` | Desenha texto de faixa/artista embaixo da arte |
+| `background_style` | `"solid"` | Fundo: `"solid"` (cor predominante da capa) ou `"mesh"` (gradiente suave com 2 a 4 cores da capa) |
 | `art_glow` | `false` | Troca a sombra preta da arte por um brilho na cor mais vibrante da capa |
 | `sync_lock_screen` | `false` | Também aplica o wallpaper na tela de bloqueio real do Windows (exige uma Scheduled Task elevada via UAC, uma vez só) |
 | `log_level` | `"INFO"` | Nível de log |

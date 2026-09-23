@@ -22,6 +22,15 @@ _ACCENT_QUALITY = 10
 _MIN_GLOW_DISTANCE = 80
 _LIFT_STEP = 0.15
 
+_MESH_MAX_COLORS = 4
+_MESH_MIN_COLORS = 3
+# Palette colors closer than this to one already picked add nothing to the mesh.
+_MESH_MIN_DISTANCE = 48
+# Tones of the dominant that fill in a monochrome cover: toward white (+) or
+# black (-). Kept small so an all-black cover stays a dark, charcoal gradient.
+_MESH_TONES = (0.18, -0.4, 0.32)
+_MESH_MIN_TONE_DISTANCE = 20
+
 
 def extract_dominant_color(image_bytes: bytes) -> Tuple[int, int, int]:
     try:
@@ -72,6 +81,25 @@ def pick_glow_color(palette: Sequence[RGB], background: RGB) -> RGB:
         t = min(1.0, t + _LIFT_STEP)
         lifted = _mix(color, target, t)
     return lifted
+
+
+def pick_mesh_colors(dominant: RGB, palette: Sequence[RGB]) -> List[RGB]:
+    """The dominant first, then the most populous palette colors that are
+    clearly different from everything picked so far (up to 4 in all). A cover
+    too uniform for 3 gets tones of its dominant instead."""
+    chosen = [dominant]
+    for color in palette:
+        if len(chosen) == _MESH_MAX_COLORS:
+            break
+        if all(_distance(color, c) >= _MESH_MIN_DISTANCE for c in chosen):
+            chosen.append(color)
+    for step in _MESH_TONES:
+        if len(chosen) >= _MESH_MIN_COLORS:
+            break
+        tone = _mix(dominant, (255, 255, 255) if step > 0 else (0, 0, 0), abs(step))
+        if all(_distance(tone, c) >= _MESH_MIN_TONE_DISTANCE for c in chosen):
+            chosen.append(tone)
+    return chosen
 
 
 def to_hex(rgb: Tuple[int, int, int]) -> str:
