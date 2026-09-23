@@ -1,8 +1,15 @@
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageStat
 
 from src.config.settings import Settings
 from src.graphics.layout import ArtLayout
-from src.graphics.renderer import _text_color_for_background, _truncate_to_width, render_for_now_playing
+from src.graphics.renderer import (
+    _card_box,
+    _ink_bounds,
+    _layout_track_info,
+    _text_color_for_background,
+    _truncate_to_width,
+    render_for_now_playing,
+)
 from src.spotify.client import NowPlaying
 
 _LAYOUT = ArtLayout(canvas_size=(400, 300), art_size=100, art_position=(150, 40))
@@ -229,3 +236,71 @@ def test_glow_and_mesh_share_one_palette_extraction(tmp_path, monkeypatch):
     )
 
     assert calls == [1]
+
+
+
+def _checkerboard(size, cell=4) -> Image.Image:
+    image = Image.new("RGB", size, (0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    for x in range(0, size[0], cell):
+        for y in range(0, size[1], cell):
+            if (x // cell + y // cell) % 2 == 0:
+                draw.rectangle([x, y, x + cell - 1, y + cell - 1], fill=(255, 255, 255))
+    return image
+
+
+def test_card_box_pads_the_text_and_stays_on_the_canvas():
+    box = _card_box((100, 200, 300, 255), canvas_size=(400, 260))
+
+    left, top, right, bottom = box
+    assert left < 100 and top < 200 and right > 300
+    assert bottom == 260, "clamped to the canvas edge"
+    assert left >= 0 and top >= 0
+
+
+def test_glass_card_frosts_what_is_behind_the_text(tmp_path):
+    base = _checkerboard(_LAYOUT.canvas_size)
+    base_path = tmp_path / "base.png"
+    base.save(base_path)
+    out = tmp_path / "out.png"
+
+    render_for_now_playing(_now_playing(), Settings(text_card="glass"), _LAYOUT, base_path, out)
+
+    result = Image.open(out).convert("RGB")
+    # The card's top padding: inside the card, above the glyphs.
+    draw = ImageDraw.Draw(base.copy())
+    ink = _ink_bounds(draw, _layout_track_info(draw, _LAYOUT, "WWWWWW", "MMMMMM"))
+    card = _card_box(ink, _LAYOUT.canvas_size)
+    strip = (ink[0], card[1] + 2, ink[2], ink[1] - 1)
+    assert strip[3] - strip[1] >= 3
+    assert ImageStat.Stat(result.crop(strip)).stddev[0] < 20, "the checkerboard should be blurred away"
+    assert ImageStat.Stat(base.crop(strip)).stddev[0] > 100
+
+
+def test_text_color_is_judged_on_the_card(tmp_path):
+    # Mid-gray reads as "dark" (light text) on its own; the frosted card's
+    # white tint lifts it past the threshold, so the text over it turns dark.
+    base = Image.new("RGB", _LAYOUT.canvas_size, (128, 128, 128))
+    base_path = tmp_path / "base.png"
+    base.save(base_path)
+
+    plain = tmp_path / "plain.png"
+    glass = tmp_path / "glass.png"
+    render_for_now_playing(_now_playing(), Settings(), _LAYOUT, base_path, plain)
+    render_for_now_playing(_now_playing(), Settings(text_card="glass"), _LAYOUT, base_path, glass)
+
+    assert max(_text_band_sums(Image.open(plain).convert("RGB"))) > 3 * 200
+    assert min(_text_band_sums(Image.open(glass).convert("RGB"))) < 3 * 100
+
+
+def test_no_card_without_track_info(tmp_path):
+    base = _checkerboard(_LAYOUT.canvas_size)
+    base_path = tmp_path / "base.png"
+    base.save(base_path)
+    out = tmp_path / "out.png"
+
+    render_for_now_playing(
+        _now_playing(), Settings(text_card="glass", show_track_info=False), _LAYOUT, base_path, out
+    )
+
+    assert Image.open(out).convert("RGB").tobytes() == base.tobytes()

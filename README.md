@@ -57,6 +57,7 @@ Pra rodar de novo depois (trocar de conta, token revogado): `python main.py --se
 | `show_track_info` | `true` | Desenha texto de faixa/artista embaixo da arte |
 | `background_style` | `"solid"` | Fundo: `"solid"` (cor predominante da capa) ou `"mesh"` (gradiente suave com 2 a 4 cores da capa) |
 | `art_glow` | `false` | Troca a sombra preta da arte por um brilho na cor mais vibrante da capa |
+| `text_card` | `"none"` | Cartão atrás do título/artista: `"none"` ou `"glass"` (vidro fosco sobre o fundo). Só com `show_track_info` |
 | `sync_lock_screen` | `false` | Também aplica o wallpaper na tela de bloqueio real do Windows (exige uma Scheduled Task elevada via UAC, uma vez só) |
 | `log_level` | `"INFO"` | Nível de log |
 

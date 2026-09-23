@@ -1,5 +1,6 @@
 import logging
 import os
+from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -14,6 +15,7 @@ from src.graphics.color_extractor import (
     pick_glow_color,
     pick_mesh_colors,
 )
+from src.graphics.glass import frost
 from src.graphics.layout import ArtLayout
 from src.graphics.mesh import mesh_background
 from src.spotify.client import NowPlaying
@@ -28,6 +30,11 @@ _SHADOW_OFFSET_Y = 8
 _GLOW_ALPHA = 200
 _GLOW_BLUR_PCT = 0.08  # of the art side
 _GLOW_SPREAD_PCT = 0.03
+# Glass card around the track text, as fractions of the canvas height.
+_CARD_PAD_X_PCT = 0.03
+_CARD_PAD_Y_PCT = 0.018
+_CARD_RADIUS_PCT = 0.02
+_CARD_BLUR_PCT = 0.02
 # Big blurs run on a downscaled layer: same look (the result is smooth), about
 # half the time on a full-screen canvas.
 _MAX_BLUR_DOWNSCALE = 4
@@ -171,38 +178,94 @@ def _average_color(image: Image.Image, box: Tuple[int, int, int, int]) -> Tuple[
     return (round(mean[0]), round(mean[1]), round(mean[2]))
 
 
-def _draw_track_info(
-    canvas: Image.Image,
-    layout: ArtLayout,
-    background_rgb: Tuple[int, int, int],
-    track_name: Optional[str],
-    artist_name: Optional[str],
-) -> None:
-    if not track_name and not artist_name:
-        return
+@dataclass(frozen=True)
+class _TextLine:
+    text: str
+    font: ImageFont.ImageFont
+    position: Tuple[int, int]
 
-    draw = ImageDraw.Draw(canvas)
-    color = _text_color_for_background(background_rgb)
+
+def _layout_track_info(
+    draw: ImageDraw.ImageDraw, layout: ArtLayout, track_name: Optional[str], artist_name: Optional[str]
+) -> List[_TextLine]:
+    """Title and artist, truncated and centered below the art; [] if there's no text."""
     canvas_width, canvas_height = layout.canvas_size
     max_width = int(canvas_width * _TEXT_MAX_WIDTH_PCT)
     center_x = layout.art_position[0] + layout.art_size // 2
 
     title_size, artist_size = _font_sizes(canvas_height)
-    title_font = _load_font(title_size, bold=True)
-    artist_font = _load_font(artist_size, bold=False)
-
     y = layout.art_position[1] + layout.art_size + int(canvas_height * 0.035)
 
+    lines = []
     if track_name:
-        text = _truncate_to_width(draw, track_name, title_font, max_width)
-        bbox = draw.textbbox((0, 0), text, font=title_font)
-        draw.text((center_x - (bbox[2] - bbox[0]) // 2, y), text, font=title_font, fill=color)
+        font = _load_font(title_size, bold=True)
+        text = _truncate_to_width(draw, track_name, font, max_width)
+        bbox = draw.textbbox((0, 0), text, font=font)
+        lines.append(_TextLine(text, font, (center_x - (bbox[2] - bbox[0]) // 2, y)))
         y += (bbox[3] - bbox[1]) + int(canvas_height * 0.012)
 
     if artist_name:
-        text = _truncate_to_width(draw, artist_name, artist_font, max_width)
-        bbox = draw.textbbox((0, 0), text, font=artist_font)
-        draw.text((center_x - (bbox[2] - bbox[0]) // 2, y), text, font=artist_font, fill=color)
+        font = _load_font(artist_size, bold=False)
+        text = _truncate_to_width(draw, artist_name, font, max_width)
+        bbox = draw.textbbox((0, 0), text, font=font)
+        lines.append(_TextLine(text, font, (center_x - (bbox[2] - bbox[0]) // 2, y)))
+    return lines
+
+
+def _ink_bounds(draw: ImageDraw.ImageDraw, lines: List[_TextLine]) -> Tuple[int, int, int, int]:
+    """The box the glyphs actually cover (textbbox includes each font's top offset)."""
+    boxes = [draw.textbbox(line.position, line.text, font=line.font) for line in lines]
+    return (
+        min(b[0] for b in boxes),
+        min(b[1] for b in boxes),
+        max(b[2] for b in boxes),
+        max(b[3] for b in boxes),
+    )
+
+
+def _card_box(ink: Tuple[int, int, int, int], canvas_size: Tuple[int, int]) -> Tuple[int, int, int, int]:
+    """The glass card: the text's ink box plus padding, kept on the canvas."""
+    width, height = canvas_size
+    pad_x = max(12, int(height * _CARD_PAD_X_PCT))
+    pad_y = max(8, int(height * _CARD_PAD_Y_PCT))
+    return (
+        max(0, ink[0] - pad_x),
+        max(0, ink[1] - pad_y),
+        min(width, ink[2] + pad_x),
+        min(height, ink[3] + pad_y),
+    )
+
+
+def _draw_track_info(
+    canvas: Image.Image,
+    layout: ArtLayout,
+    text_card: str,
+    track_name: Optional[str],
+    artist_name: Optional[str],
+) -> None:
+    draw = ImageDraw.Draw(canvas)
+    lines = _layout_track_info(draw, layout, track_name, artist_name)
+    if not lines:
+        return
+
+    if text_card == "glass":
+        canvas_height = layout.canvas_size[1]
+        card = _card_box(_ink_bounds(draw, lines), layout.canvas_size)
+        frost(
+            canvas,
+            card,
+            blur=max(6, int(canvas_height * _CARD_BLUR_PCT)),
+            radius=max(6, int(canvas_height * _CARD_RADIUS_PCT)),
+        )
+        behind_text = card
+    else:
+        behind_text = _text_band(layout)
+    # Sampled from what is actually behind the text: a gradient background
+    # has no single color, and a card changes what the text sits on.
+    color = _text_color_for_background(_average_color(canvas, behind_text))
+
+    for line in lines:
+        draw.text(line.position, line.text, font=line.font, fill=color)
 
 
 def render_for_now_playing(
@@ -219,10 +282,7 @@ def render_for_now_playing(
 
     final_image = base_image.copy()
     if settings.show_track_info:
-        # Sampled from what is actually behind the text: a gradient background
-        # has no single color, and its corners say nothing about the text band.
-        background_rgb = _average_color(base_image, _text_band(layout))
-        _draw_track_info(final_image, layout, background_rgb, now_playing.track_name, now_playing.artist_name)
+        _draw_track_info(final_image, layout, settings.text_card, now_playing.track_name, now_playing.artist_name)
 
     # Rewritten on every track change, to one of two alternating files, so speed
     # beats size: at level 6 a dithered mesh takes ~0.2 s (1080p) / ~0.7 s (4K)
