@@ -11,6 +11,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_REDIRECT_URI = "http://127.0.0.1:8888/callback"
 DEFAULT_SCOPE = "user-read-currently-playing user-read-playback-state"
 
+BACKGROUND_STYLES = ("solid", "mesh")
+TEXT_CARDS = ("none", "glass")
+
 
 @dataclass
 class Settings:
@@ -51,6 +54,13 @@ class Settings:
     corner_radius: int = 16
     shadow_blur_radius: int = 24
     show_track_info: bool = True
+    # Fundo atrás da arte: "solid" (cor predominante, o visual original) ou
+    # "mesh" (gradiente suave com 2 a 4 cores da capa).
+    background_style: str = "solid"
+    # Sombra da arte na cor mais vibrante da capa, em vez de preta.
+    art_glow: bool = False
+    # Cartão atrás do título/artista: "none" ou "glass" (vidro fosco).
+    text_card: str = "none"
     fallback_resolution: List[int] = field(default_factory=lambda: [1920, 1080])
     log_level: str = "INFO"
     sync_lock_screen: bool = False
@@ -59,7 +69,28 @@ class Settings:
     def from_dict(cls, data: dict) -> "Settings":
         known_fields = {f.name for f in dataclasses.fields(cls)}
         filtered = {k: v for k, v in data.items() if k in known_fields}
-        return cls(**filtered)
+        return cls(**_drop_invalid_choices(filtered))
+
+
+# Campos de escolha fechada: um valor fora da lista é descartado (volta ao
+# padrão) em vez de chegar ao renderer. Só o campo inválido é afetado.
+_CHOICES = {
+    "background_style": BACKGROUND_STYLES,
+    "text_card": TEXT_CARDS,
+    "art_glow": (True, False),
+}
+
+
+def _drop_invalid_choices(data: dict) -> dict:
+    valid = {}
+    for key, value in data.items():
+        allowed = _CHOICES.get(key)
+        # type() e não "in": 1 == True, e "1" não é um bool válido.
+        if allowed is not None and not any(type(value) is type(a) and value == a for a in allowed):
+            logger.warning("Invalid %s=%r in config, using default", key, value)
+            continue
+        valid[key] = value
+    return valid
 
 
 def load_settings() -> Settings:

@@ -5,6 +5,8 @@ import threading
 
 from src.config.paths import album_base_path
 from src.config.settings import load_settings
+from src.graphics.base_cache import base_cache_key
+from src.graphics.layout import compute_layout
 from src.graphics.renderer import render_for_now_playing
 from src.os_integration import lockscreen
 from src.os_integration.autostart import install_autostart, uninstall_autostart
@@ -36,9 +38,10 @@ def _make_render_fn(settings):
             logger.warning("No album art URL for track %s, skipping render", now_playing.track_id)
             return
 
-        base_path = album_base_path(now_playing.album_id)
+        layout = compute_layout(settings)
+        base_path = album_base_path(base_cache_key(now_playing.album_id, layout.canvas_size, settings))
         output_path = next_output_path()
-        render_for_now_playing(now_playing, settings, base_path, output_path)
+        render_for_now_playing(now_playing, settings, layout, base_path, output_path)
         set_wallpaper(output_path)
         if settings.sync_lock_screen:
             lockscreen.request_update(output_path)

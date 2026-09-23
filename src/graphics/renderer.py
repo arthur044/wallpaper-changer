@@ -5,11 +5,11 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 import requests
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageStat
 
 from src.config.settings import Settings
 from src.graphics.color_extractor import extract_dominant_color
-from src.graphics.layout import ArtLayout, compute_layout
+from src.graphics.layout import ArtLayout
 from src.spotify.client import NowPlaying
 
 logger = logging.getLogger(__name__)
@@ -44,7 +44,7 @@ def _shadow_layer(canvas_size: Tuple[int, int], layout: ArtLayout, settings: Set
     return shadow.filter(ImageFilter.GaussianBlur(settings.shadow_blur_radius))
 
 
-def _build_base_canvas(art_bytes: bytes, settings: Settings, layout: ArtLayout) -> Tuple[Image.Image, Tuple[int, int, int]]:
+def _build_base_canvas(art_bytes: bytes, settings: Settings, layout: ArtLayout) -> Image.Image:
     """Background fill + shadow + centered rounded art. No track text — this is the
     part that's identical for every track on the same album, so it's safe to cache."""
     dominant_rgb = extract_dominant_color(art_bytes)
@@ -60,7 +60,7 @@ def _build_base_canvas(art_bytes: bytes, settings: Settings, layout: ArtLayout) 
 
     canvas.paste(art, layout.art_position, mask)
 
-    return canvas.convert("RGB"), dominant_rgb
+    return canvas.convert("RGB")
 
 
 def _load_font(size: int, bold: bool) -> ImageFont.ImageFont:
@@ -92,10 +92,36 @@ def _truncate_to_width(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.Ima
     return (truncated + ellipsis) if truncated else ellipsis
 
 
+def _font_sizes(canvas_height: int) -> Tuple[int, int]:
+    """(title, artist) font sizes in px."""
+    return max(24, int(canvas_height * 0.035)), max(18, int(canvas_height * 0.024))
+
+
+def _text_band(layout: ArtLayout) -> Tuple[int, int, int, int]:
+    """The box the track text can occupy: below the art, _TEXT_MAX_WIDTH_PCT wide."""
+    canvas_width, canvas_height = layout.canvas_size
+    title_size, artist_size = _font_sizes(canvas_height)
+    half_width = int(canvas_width * _TEXT_MAX_WIDTH_PCT) // 2
+    center_x = layout.art_position[0] + layout.art_size // 2
+    top = layout.art_position[1] + layout.art_size + int(canvas_height * 0.035)
+    bottom = top + title_size + int(canvas_height * 0.012) + artist_size
+    return (
+        max(0, center_x - half_width),
+        min(top, canvas_height - 1),
+        min(canvas_width, center_x + half_width),
+        min(canvas_height, max(bottom, top + 1)),
+    )
+
+
+def _average_color(image: Image.Image, box: Tuple[int, int, int, int]) -> Tuple[int, int, int]:
+    mean = ImageStat.Stat(image.crop(box)).mean
+    return (round(mean[0]), round(mean[1]), round(mean[2]))
+
+
 def _draw_track_info(
     canvas: Image.Image,
     layout: ArtLayout,
-    dominant_rgb: Tuple[int, int, int],
+    background_rgb: Tuple[int, int, int],
     track_name: Optional[str],
     artist_name: Optional[str],
 ) -> None:
@@ -103,13 +129,14 @@ def _draw_track_info(
         return
 
     draw = ImageDraw.Draw(canvas)
-    color = _text_color_for_background(dominant_rgb)
+    color = _text_color_for_background(background_rgb)
     canvas_width, canvas_height = layout.canvas_size
     max_width = int(canvas_width * _TEXT_MAX_WIDTH_PCT)
     center_x = layout.art_position[0] + layout.art_size // 2
 
-    title_font = _load_font(max(24, int(canvas_height * 0.035)), bold=True)
-    artist_font = _load_font(max(18, int(canvas_height * 0.024)), bold=False)
+    title_size, artist_size = _font_sizes(canvas_height)
+    title_font = _load_font(title_size, bold=True)
+    artist_font = _load_font(artist_size, bold=False)
 
     y = layout.art_position[1] + layout.art_size + int(canvas_height * 0.035)
 
@@ -125,25 +152,24 @@ def _draw_track_info(
         draw.text((center_x - (bbox[2] - bbox[0]) // 2, y), text, font=artist_font, fill=color)
 
 
-def render_for_now_playing(now_playing: NowPlaying, settings: Settings, base_path: Path, output_path: Path) -> None:
-    layout = compute_layout(settings)
-
+def render_for_now_playing(
+    now_playing: NowPlaying, settings: Settings, layout: ArtLayout, base_path: Path, output_path: Path
+) -> None:
     if base_path.exists():
         base_image = Image.open(base_path).convert("RGB")
-        # Canvas corners are always plain background fill (shadow/art never reach
-        # them under realistic art_size_pct values), so this recovers the exact
-        # dominant color used originally without re-downloading or re-analyzing the art.
-        dominant_rgb = base_image.getpixel((0, 0))
         logger.info("Reusing cached base art for album %s", now_playing.album_id)
     else:
         art_bytes = download_art(now_playing.art_url)
-        base_image, dominant_rgb = _build_base_canvas(art_bytes, settings, layout)
+        base_image = _build_base_canvas(art_bytes, settings, layout)
         base_image.save(base_path, format="PNG")
         logger.info("Rendered new base art for album %s", now_playing.album_id)
 
     final_image = base_image.copy()
     if settings.show_track_info:
-        _draw_track_info(final_image, layout, dominant_rgb, now_playing.track_name, now_playing.artist_name)
+        # Sampled from what is actually behind the text: a gradient background
+        # has no single color, and its corners say nothing about the text band.
+        background_rgb = _average_color(base_image, _text_band(layout))
+        _draw_track_info(final_image, layout, background_rgb, now_playing.track_name, now_playing.artist_name)
 
     final_image.save(output_path, format="PNG")
     logger.info("Rendered wallpaper to %s", output_path)
