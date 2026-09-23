@@ -51,6 +51,8 @@ data class MainUiState(
     val art: ImageBitmap? = null,
     /** Whether the user granted notification access, which "react instantly" needs. */
     val notificationAccess: Boolean = false,
+    /** Whether the home screen shows this app's live wallpaper, which the smooth transition needs. */
+    val liveWallpaperActive: Boolean = false,
     /** Debug builds only: the link to the debug and spike screens. */
     val showDebugTools: Boolean = false,
 )
@@ -65,6 +67,9 @@ class MainCallbacks(
     val onInstantChange: (Boolean) -> Unit = {},
     val onLocalOnlyChange: (Boolean) -> Unit = {},
     val onGrantNotificationAccess: () -> Unit = {},
+    /** Saved and redrawn like a look change; turning it on also opens the live wallpaper picker. */
+    val onSmoothTransitionChange: (Boolean) -> Unit = {},
+    val onPickLiveWallpaper: () -> Unit = {},
     val onConnect: () -> Unit = {},
     val onOpenDebug: () -> Unit = {},
 )
@@ -85,7 +90,7 @@ fun MainContent(state: MainUiState, callbacks: MainCallbacks, modifier: Modifier
             Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmall)
             if (!state.signedIn) SignedOutCard(callbacks.onConnect)
             StatusCard(state, callbacks)
-            LookSection(state.settings, callbacks.onLookChange)
+            LookSection(state, callbacks)
             InstantSection(state, callbacks)
             AdvancedSection(state.settings, callbacks.onSettingsChange)
             // Kept in the code, but only reachable from a debug build.
@@ -157,7 +162,9 @@ private fun AlbumArt(art: ImageBitmap?) {
 }
 
 @Composable
-private fun LookSection(settings: Settings, onLookChange: ((Settings) -> Settings) -> Unit) {
+private fun LookSection(state: MainUiState, callbacks: MainCallbacks) {
+    val settings = state.settings
+    val onLookChange = callbacks.onLookChange
     Section(stringResource(R.string.main_section_look)) {
         SettingSlider(
             label = stringResource(R.string.main_art_size),
@@ -205,6 +212,23 @@ private fun LookSection(settings: Settings, onLookChange: ((Settings) -> Setting
             enabled = settings.showTrackInfo,
             modifier = Modifier.testTag(TAG_GLASS),
         )
+        SwitchRow(
+            label = stringResource(R.string.main_smooth_transition),
+            checked = settings.smoothTransition,
+            onCheckedChange = callbacks.onSmoothTransitionChange,
+            modifier = Modifier.testTag(TAG_SMOOTH),
+        )
+        if (settings.smoothTransition && !state.liveWallpaperActive) {
+            // Until it is picked, the wallpaper still changes the old way.
+            Text(
+                stringResource(R.string.main_smooth_transition_pick_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(onClick = callbacks.onPickLiveWallpaper, modifier = Modifier.testTag(TAG_PICK_LIVE)) {
+                Text(stringResource(R.string.main_pick_live_wallpaper))
+            }
+        }
         SettingSlider(
             label = stringResource(R.string.main_offset),
             value = (settings.artOffsetYPct * 100).toFloat(),
@@ -311,6 +335,8 @@ internal const val TAG_OFFSET = "offset"
 internal const val TAG_MESH = "meshBackground"
 internal const val TAG_GLOW = "artGlow"
 internal const val TAG_GLASS = "glassCard"
+internal const val TAG_SMOOTH = "smoothTransition"
+internal const val TAG_PICK_LIVE = "pickLiveWallpaper"
 internal const val TAG_TRACK_INFO = "trackInfo"
 internal const val TAG_LOCK_SCREEN = "lockScreen"
 internal const val TAG_POLL = "pollInterval"

@@ -27,6 +27,9 @@
     <string name="main_mesh_background">Fundo em gradiente com as cores da capa</string>
     <string name="main_art_glow">Brilho na cor da capa</string>
     <string name="main_glass_card">Cartão de vidro atrás do texto</string>
+    <string name="main_smooth_transition">Transição suave entre as músicas</string>
+    <string name="main_smooth_transition_pick_hint">Para ligar, escolha o Wallpaper Changer como papel de parede animado. Até lá, o wallpaper continua mudando do jeito de sempre.</string>
+    <string name="main_pick_live_wallpaper">Escolher papel de parede animado</string>
     <string name="main_show_track_info">Mostrar música e artista</string>
     <string name="live_wallpaper_description">A capa da música tocando no Spotify, com transição suave de uma música para a outra.</string>
     <string name="main_sync_lock_screen">Também na tela de bloqueio</string>

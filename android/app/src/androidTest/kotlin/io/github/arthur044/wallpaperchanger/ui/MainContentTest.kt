@@ -19,6 +19,7 @@ import io.github.arthur044.wallpaperchanger.core.config.TextCard
 import io.github.arthur044.wallpaperchanger.core.sync.SyncStatus
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -38,7 +39,8 @@ class MainContentTest {
         status: SyncStatus = SyncStatus.Showing(airbag),
         signedIn: Boolean = true,
         settings: Settings = Settings(),
-    ) = MainUiState(syncEnabled, status, signedIn, settings)
+        liveWallpaperActive: Boolean = false,
+    ) = MainUiState(syncEnabled, status, signedIn, settings, liveWallpaperActive = liveWallpaperActive)
 
     private fun show(state: MainUiState, callbacks: MainCallbacks = MainCallbacks()) {
         rule.setContent { AppTheme { MainContent(state, callbacks) } }
@@ -88,6 +90,37 @@ class MainContentTest {
         assertEquals(BackgroundStyle.MESH, changed?.backgroundStyle)
         assertEquals(true, changed?.artGlow)
         assertEquals(TextCard.GLASS, changed?.textCard)
+    }
+
+    @Test
+    fun theSmoothTransitionSwitchReportsItsNewValue() {
+        var requested: Boolean? = null
+        show(state(), MainCallbacks(onSmoothTransitionChange = { requested = it }))
+
+        rule.onNodeWithTag(TAG_SMOOTH).performScrollTo().performClick()
+
+        assertEquals(true, requested)
+    }
+
+    @Test
+    fun onButNotPickedOffersThePicker() {
+        var picked = false
+        show(
+            state(settings = Settings(smoothTransition = true), liveWallpaperActive = false),
+            MainCallbacks(onPickLiveWallpaper = { picked = true }),
+        )
+
+        rule.onNodeWithTag(TAG_PICK_LIVE).performScrollTo().performClick()
+
+        assertTrue(picked)
+    }
+
+    @Test
+    fun oncePickedThereIsNothingToAsk() {
+        show(state(settings = Settings(smoothTransition = true), liveWallpaperActive = true))
+
+        rule.onNodeWithTag(TAG_SMOOTH).performScrollTo().assertExists()
+        rule.onNodeWithTag(TAG_PICK_LIVE).assertDoesNotExist()
     }
 
     @Test

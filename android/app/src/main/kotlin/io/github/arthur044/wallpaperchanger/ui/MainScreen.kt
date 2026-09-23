@@ -1,6 +1,10 @@
 package io.github.arthur044.wallpaperchanger.ui
 
 import android.Manifest
+import android.app.WallpaperManager
+import android.content.ActivityNotFoundException
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
@@ -26,6 +30,7 @@ import io.github.arthur044.wallpaperchanger.BuildConfig
 import io.github.arthur044.wallpaperchanger.core.spotify.ArtSource
 import io.github.arthur044.wallpaperchanger.core.sync.SyncStatus
 import io.github.arthur044.wallpaperchanger.media.notificationAccessGranted
+import io.github.arthur044.wallpaperchanger.wallpaper.LiveWallpaperService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -67,10 +72,12 @@ fun MainScreen(
         }
     }
 
-    // Granted outside the app, so re-read it every time the screen comes back.
+    // Both are granted or picked outside the app, so re-read them every time the screen comes back.
     var notificationAccess by remember { mutableStateOf(context.notificationAccessGranted()) }
+    var liveWallpaperActive by remember { mutableStateOf(container.liveWallpaperStatus.isActive()) }
     LifecycleResumeEffect(Unit) {
         notificationAccess = context.notificationAccessGranted()
+        liveWallpaperActive = container.liveWallpaperStatus.isActive()
         onPauseOrDispose { }
     }
 
@@ -83,6 +90,7 @@ fun MainScreen(
             settings = current,
             art = art,
             notificationAccess = notificationAccess,
+            liveWallpaperActive = liveWallpaperActive,
             showDebugTools = BuildConfig.DEBUG,
         ),
         callbacks = MainCallbacks(
@@ -116,11 +124,35 @@ fun MainScreen(
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                 )
             },
+            onSmoothTransitionChange = { on ->
+                scope.launch {
+                    container.settings.update { it.copy(smoothTransition = on) }
+                    // On: hands the current image to the live wallpaper before it is
+                    // picked. Off: sets it statically, which replaces the live one.
+                    container.syncEngine.redraw()
+                }
+                if (on && !liveWallpaperActive) context.pickLiveWallpaper()
+            },
+            onPickLiveWallpaper = { context.pickLiveWallpaper() },
             onConnect = onConnect,
             onOpenDebug = onOpenDebug,
         ),
         modifier = modifier,
     )
+}
+
+// The system picker, opened on this app's live wallpaper; the generic
+// chooser where a launcher lacks the direct one.
+private fun Context.pickLiveWallpaper() {
+    val direct = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).putExtra(
+        WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT,
+        ComponentName(this, LiveWallpaperService::class.java),
+    )
+    try {
+        startActivity(direct)
+    } catch (e: ActivityNotFoundException) {
+        runCatching { startActivity(Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER)) }
+    }
 }
 
 // A small copy of the art for the status card; null if it can't be fetched now.
