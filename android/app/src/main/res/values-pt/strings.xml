@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sync_channel_name">Status da sincronização</string>
+    <string name="sync_channel_description">Aparece enquanto o wallpaper acompanha o que toca no Spotify</string>
+    <string name="sync_action_stop">Parar</string>
+    <string name="sync_status_starting">Iniciando…</string>
+    <string name="sync_status_paused">Pausado</string>
+    <string name="sync_status_idle">Nada tocando</string>
+    <string name="sync_status_showing">%1$s — %2$s</string>
+    <string name="sync_status_render_failed">Não foi possível atualizar o wallpaper de %1$s</string>
+    <string name="sync_status_retrying">Spotify inacessível, tentando de novo em %1$d s</string>
+    <string name="sync_status_signed_out">Sessão do Spotify expirou, entre de novo</string>
+    <string name="sync_status_blocked">Este aparelho não permite trocar o wallpaper</string>
+    <string name="sync_status_failing">Algo deu errado aqui, tentando de novo em %1$d s</string>
+    <string name="sync_status_off">Sincronização desligada</string>
+
+    <string name="main_sync_switch">Acompanhar o Spotify</string>
+    <string name="main_sync_now">Sincronizar agora</string>
+    <string name="main_art_description">Capa no wallpaper</string>
+    <string name="main_signed_out_title">Não conectado ao Spotify</string>
+    <string name="main_signed_out_action">Conectar</string>
+    <string name="main_section_look">Aparência</string>
+    <string name="main_art_size">Tamanho da capa</string>
+    <string name="main_corner_radius">Cantos arredondados</string>
+    <string name="main_shadow">Sombra</string>
+    <string name="main_offset">Posição vertical</string>
+    <string name="main_show_track_info">Mostrar música e artista</string>
+    <string name="main_sync_lock_screen">Também na tela de bloqueio</string>
+    <string name="main_section_advanced">Avançado</string>
+    <string name="main_poll_interval">Consultar o Spotify a cada</string>
+    <string name="main_poll_interval_hint">Menor reage mais rápido, mas abaixo de 20 s o Spotify pode limitar.</string>
+    <string name="main_media_session">Reagir na hora</string>
+    <string name="main_media_session_hint">Usa a sessão do próprio Spotify neste celular, então o wallpaper muda junto com a música em vez de esperar a próxima consulta, e consulta o Spotify bem menos. Precisa de acesso a notificações e só enxerga o que toca neste celular: em outro aparelho, volta a consultar o Spotify.</string>
+    <string name="main_media_session_grant">Dar acesso a notificações</string>
+    <string name="main_local_only">Sem notificação fixa</string>
+    <string name="main_local_only_hint">Dispensa a notificação permanente e o serviço em segundo plano: aí o wallpaper acompanha só o que toca neste celular, e deixa de acompanhar música tocada em outros aparelhos.</string>
+    <string name="main_debug_tools">Ferramentas de debug</string>
+
+    <string name="onb_step_progress">Passo %1$d de %2$d</string>
+    <string name="onb_continue">Continuar</string>
+    <string name="onb_not_now">Agora não</string>
+    <string name="onb_client_title">Conecte seu app do Spotify</string>
+    <string name="onb_client_intro">O Wallpaper Changer fala com o Spotify por um app de desenvolvedor gratuito que você cria uma vez só. Leva uns dois minutos.</string>
+    <string name="onb_client_step1">1. Abra o painel do Spotify e entre com sua conta.</string>
+    <string name="onb_open_dashboard">Abrir painel</string>
+    <string name="onb_client_step2">2. Crie um app. Em Redirect URIs, adicione exatamente:</string>
+    <string name="onb_copy">Copiar</string>
+    <string name="onb_client_step3">3. Marque “Web API”, salve e cole aqui o Client ID do app:</string>
+    <string name="onb_client_id_label">Client ID</string>
+    <string name="onb_client_id_invalid">O Client ID tem 32 letras e números (0–9, a–f).</string>
+    <string name="onb_login_title">Entre no Spotify</string>
+    <string name="onb_login_body">O Spotify vai pedir permissão para ver o que está tocando. Nada além disso é lido.</string>
+    <string name="onb_login_button">Entrar no Spotify</string>
+    <string name="onb_login_cancelled">O login não terminou. Se o Spotify disse “Invalid redirect URI”, confira se o painel tem exatamente: %1$s</string>
+    <string name="onb_login_failed">O login falhou: %1$s</string>
+    <string name="onb_change_client_id">Usar outro Client ID</string>
+    <string name="onb_notif_title">Permita a notificação de status</string>
+    <string name="onb_notif_body">Enquanto sincroniza, o Android exige uma notificação. Ela mostra a música do wallpaper e tem um botão Parar. Sem a permissão o sync funciona, só fica escondido.</string>
+    <string name="onb_allow">Permitir</string>
+    <string name="onb_battery_title">Mantenha o app ativo</string>
+    <string name="onb_battery_body">A economia de bateria pode parar o sync em segundo plano. Deixe o Wallpaper Changer sem restrições: ele só trabalha com a tela ligada.</string>
+    <string name="onb_battery_button">Permitir uso em segundo plano</string>
+    <string name="onb_battery_samsung">Na Samsung, confira também se ele não está em Configurações › Bateria › Limites de uso em segundo plano › Apps em suspensão.</string>
+    <string name="onb_open_app_settings">Abrir configurações do app</string>
+    <string name="onb_done_title">Tudo pronto</string>
+    <string name="onb_done_body">Toque algo no Spotify: o wallpaper acompanha. Dá para desligar quando quiser pelo app ou pelas Configurações rápidas.</string>
+    <string name="onb_start">Começar</string>
+
+    <string name="tile_label">Capa no wallpaper</string>
+    <string name="tile_on">Ligado</string>
+    <string name="tile_off">Desligado</string>
+</resources>

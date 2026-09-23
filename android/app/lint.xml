@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- Lint says mipmap-anydpi-v26 is redundant at minSdk 26 and suggests
+         mipmap-anydpi. Tried it: AAPT then fails with "resource mipmap/ic_launcher
+         not found", so the versioned folder stays. -->
+    <issue id="ObsoleteSdkInt">
+        <ignore path="src/main/res/mipmap-anydpi-v26" />
+    </issue>
+
+    <!-- targetSdk 36 with compileSdk 37 is deliberate: AndroidX needs 37 to
+         compile, and targeting 36 keeps the behaviour we tested on. -->
+    <issue id="OldTargetApi" severity="ignore" />
+</lint>
