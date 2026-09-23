@@ -76,6 +76,12 @@ class Poller:
         # for as long as the track plays; with it, a frozen wallpaper leaves
         # exactly one line per track in the log.
         self._unresolved_logged_key: Optional[str] = None
+        # Set when the tray's Force Sync woke the loop; consumed by the next cycle.
+        self._force_pending = False
+        # A 429 from any path blocks every Web API call until this (monotonic),
+        # Force Sync included: answering a rate limit with another request
+        # only extends it.
+        self._rate_limited_until = float("-inf")
 
     def set_client(self, client: Spotify) -> None:
         self._client = client
@@ -87,12 +93,22 @@ class Poller:
 
     def _wait(self, interval: float) -> None:
         # Wakes early on force-sync or stop so "Force Sync" from the tray feels instant.
-        self._app_state.force_sync_event.wait(timeout=interval)
+        woken = self._app_state.force_sync_event.wait(timeout=interval)
         self._app_state.force_sync_event.clear()
+        if woken and not self._app_state.stop_event.is_set():
+            self._force_pending = True
 
     def _run_one_cycle(self) -> float:
         if self._app_state.is_paused():
             return self._settings.poll_interval_seconds
+
+        forced, self._force_pending = self._force_pending, False
+        if forced:
+            # Force Sync means "redraw now": the same track counts as new (also
+            # how a style change from the tray reaches the screen), and the Web
+            # API throttle is skipped once so a pending art lookup retries.
+            logger.info("Force sync: redrawing the current track")
+            self._last_rendered_track_id = None
 
         locked = self._is_locked_fn()
 
@@ -100,20 +116,21 @@ class Poller:
         if smtc_snapshot is not None:
             # Spotify desktop is open: SMTC drives this, no network call at all
             # for track-change detection, so lock state doesn't matter here.
-            return self._handle_smtc_snapshot(smtc_snapshot)
+            return self._handle_smtc_snapshot(smtc_snapshot, forced)
 
         if locked:
             # Spotify desktop is closed and the workstation is locked: nothing
             # to show and nobody watching, so don't touch the Spotify API.
             return self._settings.poll_interval_seconds
 
-        if not self._should_call_web_api():
+        if not self._should_call_web_api(forced):
             return self._settings.poll_interval_seconds
 
         try:
             now_playing = fetch_now_playing(self._client)
         except RateLimitedError as exc:
             logger.warning("Rate limited by Spotify, backing off %.0fs", exc.retry_after)
+            self._rate_limited_until = time.monotonic() + exc.retry_after
             return exc.retry_after
         except AuthExpiredError as exc:
             logger.error("Spotify auth expired, reauthenticating: %s", exc)
@@ -131,11 +148,11 @@ class Poller:
         self._backoff_seconds = 0.0
         return self._handle_now_playing(now_playing, success_interval=self._settings.fallback_poll_interval_seconds)
 
-    def _handle_smtc_snapshot(self, snapshot: SmtcNowPlaying) -> float:
+    def _handle_smtc_snapshot(self, snapshot: SmtcNowPlaying, forced: bool = False) -> float:
         track_key = _track_key(snapshot.artist, snapshot.title)
         resolved = self._track_to_album.get(track_key)
 
-        if resolved is None and snapshot.is_playing and self._should_call_web_api():
+        if resolved is None and snapshot.is_playing and self._should_call_web_api(forced):
             resolved = self._resolve_and_cache_album()
 
         if resolved is None:
@@ -198,6 +215,7 @@ class Poller:
             return fetch_now_playing(self._client)
         except RateLimitedError as exc:
             logger.warning("Rate limited while resolving high-res art, backing off %.0fs", exc.retry_after)
+            self._rate_limited_until = time.monotonic() + exc.retry_after
             self._last_web_api_at = time.monotonic() + max(
                 0.0, exc.retry_after - self._settings.fallback_poll_interval_seconds
             )
@@ -208,9 +226,11 @@ class Poller:
             logger.warning("Transient network error while resolving high-res art: %s", exc)
         return None
 
-    def _should_call_web_api(self) -> bool:
+    def _should_call_web_api(self, forced: bool = False) -> bool:
         now = time.monotonic()
-        if now - self._last_web_api_at < self._settings.fallback_poll_interval_seconds:
+        if now < self._rate_limited_until:
+            return False
+        if not forced and now - self._last_web_api_at < self._settings.fallback_poll_interval_seconds:
             return False
         self._last_web_api_at = now
         return True

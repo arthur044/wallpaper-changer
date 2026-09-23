@@ -9,6 +9,7 @@ from src.graphics.base_cache import base_cache_key
 from src.graphics.layout import compute_layout
 from src.graphics.renderer import render_for_now_playing
 from src.os_integration import lockscreen
+from src.os_integration import restart
 from src.os_integration.autostart import install_autostart, uninstall_autostart
 from src.onboarding.state import needs_onboarding, should_abort_after_wizard
 from src.onboarding.wizard import run_wizard
@@ -147,12 +148,23 @@ def main() -> int:
         if smtc_watcher is not None:
             smtc_watcher.stop()
 
+    def on_restart() -> None:
+        logger.info("Restarting Spotify Wallpaper Engine")
+        # Stop this instance's poller first (letting a render in progress
+        # finish), so the two instances never write the wallpaper at once.
+        app_state.stop_event.set()
+        app_state.force_sync_event.set()
+        poll_thread.join(timeout=15.0)
+        on_exit()
+        restart.relaunch()
+
     tray = TrayApp(
         app_state,
         settings,
         on_reauthenticate=on_reauthenticate,
         on_exit=on_exit,
         on_setup=on_setup,
+        on_restart=on_restart,
     )
     tray.run()  # blocks until Exit is clicked
 

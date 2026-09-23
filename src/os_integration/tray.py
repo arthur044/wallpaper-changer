@@ -34,6 +34,7 @@ class TrayApp:
         on_reauthenticate: Callable[[], None],
         on_exit: Callable[[], None],
         on_setup: Callable[[], None],
+        on_restart: Callable[[], None] = lambda: None,
     ):
         self._app_state = app_state
         self._settings = settings
@@ -42,6 +43,7 @@ class TrayApp:
         # Deliberately not named _on_setup: that name belongs to the pystray
         # setup hook below, and an instance attribute would shadow it.
         self._launch_wizard = on_setup
+        self._on_restart = on_restart
         self._wizard_thread: Optional[threading.Thread] = None
         self._icon = pystray.Icon(
             "spotify_wallpaper_engine",
@@ -54,6 +56,7 @@ class TrayApp:
         return pystray.Menu(
             pystray.MenuItem(self._pause_label, self._toggle_pause),
             pystray.MenuItem("Force Sync", self._force_sync),
+            pystray.MenuItem("Style", self._build_style_menu()),
             pystray.MenuItem(
                 "Sync Lock Screen",
                 self._toggle_lock_sync,
@@ -66,7 +69,27 @@ class TrayApp:
             ),
             pystray.MenuItem("Setup...", self._setup),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Restart", self._restart),
             pystray.MenuItem("Exit", self._exit),
+        )
+
+    def _build_style_menu(self) -> pystray.Menu:
+        return pystray.Menu(
+            pystray.MenuItem(
+                "Solid background",
+                lambda icon, item: self._set_background("solid"),
+                checked=lambda item: self._settings.background_style == "solid",
+                radio=True,
+            ),
+            pystray.MenuItem(
+                "Mesh background",
+                lambda icon, item: self._set_background("mesh"),
+                checked=lambda item: self._settings.background_style == "mesh",
+                radio=True,
+            ),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Art glow", self._toggle_glow, checked=lambda item: self._settings.art_glow),
+            pystray.MenuItem("Glass card", self._toggle_glass, checked=lambda item: self._settings.text_card == "glass"),
         )
 
     def _pause_label(self, item) -> str:
@@ -78,6 +101,30 @@ class TrayApp:
 
     def _force_sync(self, icon, item) -> None:
         self._app_state.force_sync_event.set()
+
+    def _set_background(self, style: str) -> None:
+        if self._settings.background_style == style:
+            return
+        self._settings.background_style = style
+        self._apply_style_change()
+
+    def _toggle_glow(self, icon, item) -> None:
+        self._settings.art_glow = not self._settings.art_glow
+        self._apply_style_change()
+
+    def _toggle_glass(self, icon, item) -> None:
+        self._settings.text_card = "none" if self._settings.text_card == "glass" else "glass"
+        self._apply_style_change()
+
+    def _apply_style_change(self) -> None:
+        # The render reads this same Settings object, and the base cache key
+        # includes the style, so a forced redraw is all it takes to show it.
+        save_settings(self._settings)
+        self._app_state.force_sync_event.set()
+
+    def _restart(self, icon, item) -> None:
+        self._on_restart()
+        icon.stop()
 
     def _reauthenticate(self, icon, item) -> None:
         threading.Thread(target=self._on_reauthenticate, daemon=True).start()
