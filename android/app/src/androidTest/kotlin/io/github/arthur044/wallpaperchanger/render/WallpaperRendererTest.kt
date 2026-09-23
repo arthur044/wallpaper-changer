@@ -118,6 +118,45 @@ class WallpaperRendererTest {
         assertTrue("text on a white band should be dark", hasDarkInk(final, band))
     }
 
+    // Mostly gray art (the dominant fill) with a vivid red corner (the accent).
+    private fun artWithAccent() = solidArt(Color.rgb(60, 60, 60)).apply {
+        Canvas(this).drawRect(0f, 0f, 200f, 200f, Paint().apply { color = Color.rgb(230, 20, 40) })
+    }
+
+    private fun redness(p: Rgb) = p.r - p.g
+
+    @Test
+    fun glowTintsTheEdgeOfTheArtWithItsColor() {
+        val leftOfArt = layout.art.left - 12 to layout.art.centerY
+        val plain = renderer.drawBase(white, layout, gray)
+        val glow = renderer.drawBase(white, layout, gray, glow = Rgb(230, 20, 40))
+
+        val before = redness(plain.bitmap.rgbAt(leftOfArt.first, leftOfArt.second))
+        val after = redness(glow.bitmap.rgbAt(leftOfArt.first, leftOfArt.second))
+        assertTrue("glow should push the edge toward red ($before -> $after)", after > before + 60)
+    }
+
+    @Test
+    fun artGlowSettingLightsTheArtFromItsOwnColors() {
+        val leftOfArt = layout.art.left - 12 to layout.art.centerY
+        val plain = renderer.renderBase(artWithAccent(), layout, Settings())
+        val glow = renderer.renderBase(artWithAccent(), layout, Settings(artGlow = true))
+
+        val before = plain.bitmap.rgbAt(leftOfArt.first, leftOfArt.second)
+        val after = glow.bitmap.rgbAt(leftOfArt.first, leftOfArt.second)
+        // Same fill either way (the dominant color); only the halo differs.
+        assertEquals(plain.bitmap.rgbAt(2, 2), glow.bitmap.rgbAt(2, 2))
+        assertTrue("artGlow should light the edge ($before -> $after)", after.r + after.g + after.b > before.r + before.g + before.b + 60)
+    }
+
+    @Test
+    fun glowReplacesTheDarkShadow() {
+        val glow = renderer.renderBase(artWithAccent(), layout, Settings(artGlow = true))
+        val corner = glow.bitmap.rgbAt(2, 2)
+        val below = glow.bitmap.rgbAt(layout.art.centerX, layout.art.bottom + 2)
+        assertTrue("no black shadow under a glowing art ($below vs fill $corner)", below.r >= corner.r)
+    }
+
     private fun hasDarkInk(bitmap: Bitmap, area: PixelRect): Boolean {
         for (y in area.top until area.bottom) {
             for (x in area.left until area.right step 2) {

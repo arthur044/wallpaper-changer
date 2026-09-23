@@ -15,11 +15,16 @@ import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
 import android.text.TextPaint
 import android.text.TextUtils
+import io.github.arthur044.wallpaperchanger.core.config.Settings
+import io.github.arthur044.wallpaperchanger.core.render.ACCENT_COLOR_COUNT
+import io.github.arthur044.wallpaperchanger.core.render.ACCENT_QUALITY
 import io.github.arthur044.wallpaperchanger.core.render.ColorThief
 import io.github.arthur044.wallpaperchanger.core.render.PixelRect
 import io.github.arthur044.wallpaperchanger.core.render.Rgb
 import io.github.arthur044.wallpaperchanger.core.render.WallpaperLayout
 import io.github.arthur044.wallpaperchanger.core.render.averageColor
+import io.github.arthur044.wallpaperchanger.core.render.needsAccentPalette
+import io.github.arthur044.wallpaperchanger.core.render.pickGlowColor
 import io.github.arthur044.wallpaperchanger.core.render.textColorFor
 import kotlin.math.min
 
@@ -41,21 +46,38 @@ class WallpaperRenderer {
             ?: throw IllegalArgumentException("Album art is not a decodable image (${bytes.size} bytes)")
 
     /** The desktop's background color for this art (color_extractor.py), same algorithm and fallback. */
-    fun dominantColor(art: Bitmap): Rgb {
-        val pixels = IntArray(art.width * art.height)
-        art.getPixels(pixels, 0, art.width, 0, 0, art.width, art.height)
-        return ColorThief.dominantColor(pixels) ?: FALLBACK_BACKGROUND
+    fun dominantColor(art: Bitmap): Rgb = dominantColor(pixelsOf(art))
+
+    private fun dominantColor(pixels: IntArray): Rgb = ColorThief.dominantColor(pixels) ?: FALLBACK_BACKGROUND
+
+    /** The art's base with the effects [settings] ask for. */
+    fun renderBase(art: Bitmap, layout: WallpaperLayout, settings: Settings): RenderedBase {
+        val pixels = pixelsOf(art)
+        val background = dominantColor(pixels)
+        // A second quantization, so only when an effect needs the accents.
+        val palette = if (needsAccentPalette(settings)) {
+            ColorThief.palette(pixels, ACCENT_COLOR_COUNT, ACCENT_QUALITY).orEmpty()
+        } else {
+            emptyList()
+        }
+        val glow = if (settings.artGlow) pickGlowColor(palette, background) else null
+        return drawBase(art, layout, background, glow)
     }
 
-    fun renderBase(art: Bitmap, layout: WallpaperLayout): RenderedBase = drawBase(art, layout, dominantColor(art))
-
-    fun drawBase(art: Bitmap, layout: WallpaperLayout, background: Rgb): RenderedBase {
+    /** [glow] replaces the dark drop shadow with a halo of that color. */
+    fun drawBase(art: Bitmap, layout: WallpaperLayout, background: Rgb, glow: Rgb? = null): RenderedBase {
         val bitmap = createBitmap(layout.canvasWidth, layout.canvasHeight)
         val canvas = Canvas(bitmap)
         canvas.drawColor(background.argb)
-        drawShadow(canvas, layout)
+        if (glow != null) drawGlow(canvas, layout, glow) else drawShadow(canvas, layout)
         drawArt(canvas, art, layout)
         return RenderedBase(bitmap)
+    }
+
+    private fun pixelsOf(art: Bitmap): IntArray {
+        val pixels = IntArray(art.width * art.height)
+        art.getPixels(pixels, 0, art.width, 0, 0, art.width, art.height)
+        return pixels
     }
 
     /** A new bitmap: the base plus track text. The base itself is left untouched for reuse. */
@@ -83,14 +105,27 @@ class WallpaperRenderer {
 
     private fun drawShadow(canvas: Canvas, layout: WallpaperLayout) {
         if (layout.shadowBlurPx <= 0f) return
-        val spread = layout.shadowSpreadPx
+        drawHalo(canvas, layout, SHADOW_COLOR, layout.shadowBlurPx, layout.shadowSpreadPx, layout.shadowOffsetYPx)
+    }
+
+    // The art as a light source: wider than the shadow and centered on it.
+    private fun drawGlow(canvas: Canvas, layout: WallpaperLayout, color: Rgb) {
+        val side = layout.art.width
+        val blur = maxOf(layout.shadowBlurPx * 2, side * GLOW_BLUR_OF_ART)
+        val argb = Color.argb(GLOW_ALPHA, color.r, color.g, color.b)
+        drawHalo(canvas, layout, argb, blur, side * GLOW_SPREAD_OF_ART, offsetY = 0f)
+    }
+
+    // A blurred rounded rectangle behind the art.
+    @Suppress("LongParameterList")
+    private fun drawHalo(canvas: Canvas, layout: WallpaperLayout, argb: Int, blur: Float, spread: Float, offsetY: Float) {
         val box = layout.art.toRectF().apply {
             inset(-spread, -spread)
-            offset(0f, layout.shadowOffsetYPx)
+            offset(0f, offsetY)
         }
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = SHADOW_COLOR
-            maskFilter = BlurMaskFilter(layout.shadowBlurPx, BlurMaskFilter.Blur.NORMAL)
+            color = argb
+            maskFilter = BlurMaskFilter(blur, BlurMaskFilter.Blur.NORMAL)
         }
         val radius = layout.cornerRadiusPx + spread
         canvas.drawRoundRect(box, radius, radius, paint)
@@ -147,6 +182,11 @@ class WallpaperRenderer {
         /** color_extractor.py's _FALLBACK_COLOR, used when the art has no usable pixel. */
         val FALLBACK_BACKGROUND = Rgb(30, 30, 30)
         private val SHADOW_COLOR = Color.argb(140, 0, 0, 0)
+
+        // renderer.py's glow: alpha 200, blur 8% and spread 3% of the art side.
+        private const val GLOW_ALPHA = 200
+        private const val GLOW_BLUR_OF_ART = 0.08f
+        private const val GLOW_SPREAD_OF_ART = 0.03f
         private val BOLD: Typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
         private val REGULAR: Typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
     }

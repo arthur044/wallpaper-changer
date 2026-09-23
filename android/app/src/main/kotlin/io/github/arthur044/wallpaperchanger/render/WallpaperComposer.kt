@@ -66,7 +66,7 @@ class WallpaperComposer(
         val base = withContext(cpu) {
             val image = renderer.decodeArt(bytes)
             try {
-                CachedBase(renderer.renderBase(image, computeLayout(canvas, settings, image.width)), image.width)
+                CachedBase(renderer.renderBase(image, computeLayout(canvas, settings, image.width), settings), image.width)
             } finally {
                 image.recycle()
             }
