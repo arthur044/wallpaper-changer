@@ -116,6 +116,10 @@ class TrayApp:
             ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Glass card", self._toggle_glass, checked=lambda item: self._settings.text_card == "glass"),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem(
+                "Smooth transition", self._toggle_smooth, checked=lambda item: self._settings.smooth_transition
+            ),
         )
 
     def _pause_label(self, item) -> str:
@@ -142,6 +146,10 @@ class TrayApp:
         if self._settings.art_frame == frame:
             return
         self._settings.art_frame = frame
+        self._apply_style_change()
+
+    def _toggle_smooth(self, icon, item) -> None:
+        self._settings.smooth_transition = not self._settings.smooth_transition
         self._apply_style_change()
 
     def _toggle_glass(self, icon, item) -> None:

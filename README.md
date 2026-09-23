@@ -58,6 +58,7 @@ Pra rodar de novo depois (trocar de conta, token revogado): `python main.py --se
 | `background_style` | `"solid"` | Fundo: `"solid"` (cor predominante da capa), `"mesh"` (gradiente suave com 2 a 4 cores da capa) ou `"blur"` (a própria capa cobrindo a tela, desfocada e escurecida nas bordas) |
 | `art_glow` | `false` | Troca a sombra preta da arte por um brilho na cor mais vibrante da capa |
 | `art_frame` | `"none"` | Moldura de vidro em volta da capa: `"none"`, `"single"` (uma borda) ou `"double"` (duas); a capa encolhe para caber nela, sem mover o texto |
+| `smooth_transition` | `false` | Troca o wallpaper com o fade do próprio Windows (precisa das animações do sistema ligadas); se falhar, troca na hora |
 | `text_card` | `"none"` | Cartão atrás do título/artista: `"none"` ou `"glass"` (vidro fosco sobre o fundo). Só com `show_track_info` |
 | `sync_lock_screen` | `false` | Também aplica o wallpaper na tela de bloqueio real do Windows (exige uma Scheduled Task elevada via UAC, uma vez só) |
 | `log_level` | `"INFO"` | Nível de log |

@@ -43,7 +43,7 @@ def _make_render_fn(settings):
         base_path = album_base_path(base_cache_key(now_playing.album_id, layout.canvas_size, settings))
         output_path = next_output_path()
         render_for_now_playing(now_playing, settings, layout, base_path, output_path)
-        set_wallpaper(output_path)
+        set_wallpaper(output_path, smooth=settings.smooth_transition)
         if settings.sync_lock_screen:
             lockscreen.request_update(output_path)
 

@@ -174,3 +174,17 @@ def test_picking_the_current_frame_again_does_nothing(monkeypatch):
     tray._set_frame("none")
 
     assert saved == []
+
+
+
+def test_smooth_transition_toggles_and_redraws(monkeypatch):
+    settings = Settings()
+    tray, saved = _style_tray(monkeypatch, settings)
+
+    tray._toggle_smooth(tray._icon, None)
+    assert settings.smooth_transition is True
+    assert tray._app_state.force_sync_event.is_set()
+
+    tray._toggle_smooth(tray._icon, None)
+    assert settings.smooth_transition is False
+    assert len(saved) == 2

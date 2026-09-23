@@ -67,6 +67,9 @@ class Settings:
     # "double" (duas). A arte encolhe para caber nela, então o conjunto ocupa
     # o mesmo espaço e o texto não se mexe.
     art_frame: str = "none"
+    # Troca o wallpaper pelo caminho que o Windows anima (fade), quando as
+    # animações do sistema estão ligadas; se falhar, troca na hora como antes.
+    smooth_transition: bool = False
     fallback_resolution: List[int] = field(default_factory=lambda: [1920, 1080])
     log_level: str = "INFO"
     sync_lock_screen: bool = False
@@ -88,6 +91,7 @@ _CHOICES = {
     "text_card": TEXT_CARDS,
     "art_glow": (True, False),
     "art_frame": ART_FRAMES,
+    "smooth_transition": (True, False),
 }
 
 # A moldura já foi uma chave liga/desliga; configs dessa época continuam valendo.

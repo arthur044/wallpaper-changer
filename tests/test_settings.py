@@ -8,6 +8,7 @@ def test_background_options_default_to_the_current_look():
     assert settings.art_glow is False
     assert settings.text_card == "none"
     assert settings.art_frame == "none"
+    assert settings.smooth_transition is False
 
 
 def test_blurred_art_background_and_frames_are_valid_choices():
@@ -51,3 +52,9 @@ def test_from_dict_ignores_unknown_keys():
     settings = Settings.from_dict({"not_a_setting": 1, "corner_radius": 8})
 
     assert settings.corner_radius == 8
+
+
+
+def test_smooth_transition_is_an_on_off_option():
+    assert Settings.from_dict({"smooth_transition": True}).smooth_transition is True
+    assert Settings.from_dict({"smooth_transition": "yes"}).smooth_transition is False
