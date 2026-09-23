@@ -29,6 +29,14 @@ class SettingsTest {
     }
 
     @Test
+    fun `background styles default to the original look`() {
+        val s = Settings()
+        assertEquals(BackgroundStyle.SOLID, s.backgroundStyle)
+        assertFalse(s.artGlow)
+        assertEquals(TextCard.NONE, s.textCard)
+    }
+
+    @Test
     fun `sanitized leaves valid values untouched`() {
         val s = Settings(clientId = "abc", artSizePct = 0.5, cornerRadius = 8)
         assertEquals(s, s.sanitized())

@@ -195,3 +195,15 @@ class WallpaperLayoutTest {
         )
     }
 }
+
+class TextBandTest {
+    @Test
+    fun `band spans the text lines at the max width, centered`() {
+        val text = TextLayout(
+            titleSizePx = 40f, artistSizePx = 28f,
+            titleTop = 1500, artistTop = 1560, bottom = 1600,
+            maxWidth = 900, centerX = 540,
+        )
+        assertEquals(PixelRect(90, 1500, 990, 1600), text.band)
+    }
+}

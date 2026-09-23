@@ -16,7 +16,11 @@ data class TextLayout(
     val bottom: Int,
     val maxWidth: Int,
     val centerX: Int,
-)
+) {
+    /** Where the text can land: both lines at the max width. What it is drawn over. */
+    val band: PixelRect
+        get() = PixelRect(centerX - maxWidth / 2, titleTop, centerX + maxWidth / 2, bottom)
+}
 
 data class WallpaperLayout(
     val canvasWidth: Int,

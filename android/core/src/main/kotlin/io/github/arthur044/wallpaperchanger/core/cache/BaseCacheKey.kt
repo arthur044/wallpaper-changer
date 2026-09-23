@@ -9,8 +9,10 @@ import java.security.MessageDigest
  * are never reused.
  *
  * 2: background color now matches the desktop (ColorThief port, not Palette).
+ * 3: the cache file no longer carries the background color; the text color
+ *    is sampled from the base itself.
  */
-const val BASE_RENDER_VERSION = 2
+const val BASE_RENDER_VERSION = 3
 
 /**
  * Cache key for an album's base image (fill + shadow + art, no text).
@@ -20,7 +22,8 @@ const val BASE_RENDER_VERSION = 2
  * download the cache exists to avoid. The source art is fixed per album, so
  * album id + canvas + the pixel-affecting settings determine the base fully.
  * Settings that never touch pixels (client id, polling, pause...) are left out
- * so changing them doesn't throw the cache away.
+ * so changing them doesn't throw the cache away. Neither is textCard: the
+ * card is drawn over the base on every track.
  */
 fun baseCacheKey(albumId: String, canvas: CanvasSpec, settings: Settings): String {
     val inputs = listOf(
@@ -30,6 +33,7 @@ fun baseCacheKey(albumId: String, canvas: CanvasSpec, settings: Settings): Strin
         canvas.density,
         settings.artSizePct, settings.cornerRadius, settings.shadowBlurRadius,
         settings.artOffsetYPct, settings.showTrackInfo,
+        settings.backgroundStyle, settings.artGlow,
     ).joinToString("|")
     return "${fileSafeId(albumId)}_${canvas.canvasWidth}x${canvas.canvasHeight}_${sha256Hex(inputs).take(12)}"
 }

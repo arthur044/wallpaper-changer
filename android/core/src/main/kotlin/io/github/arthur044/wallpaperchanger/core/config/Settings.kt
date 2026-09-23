@@ -40,6 +40,10 @@ data class Settings(
     // alone - no foreground service, no ongoing notification, and no polling
     // when nothing plays on this phone.
     @SerialName("local_only") val localOnly: Boolean = false,
+    @SerialName("background_style") val backgroundStyle: BackgroundStyle = BackgroundStyle.SOLID,
+    // The art's shadow in its most vivid color instead of black.
+    @SerialName("art_glow") val artGlow: Boolean = false,
+    @SerialName("text_card") val textCard: TextCard = TextCard.NONE,
 ) {
     val webApiPollInterval: Duration get() = webApiPollIntervalSeconds.seconds
 

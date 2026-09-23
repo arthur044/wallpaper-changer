@@ -1,7 +1,9 @@
 package io.github.arthur044.wallpaperchanger.render
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.render.CanvasSpec
@@ -47,7 +49,6 @@ class WallpaperRendererTest {
         assertEquals(1080, base.bitmap.width)
         assertEquals(2400, base.bitmap.height)
         assertEquals(gray, base.bitmap.rgbAt(2, 2))
-        assertEquals(gray, base.background)
     }
 
     @Test
@@ -97,6 +98,33 @@ class WallpaperRendererTest {
         val base = renderer.drawBase(white, artOnly, gray)
         val final = renderer.drawFinal(base, artOnly, "Airbag", "Radiohead")
         assertTrue(!rowHasInk(final, artOnly.art.bottom + 60, final.height - 1, gray))
+    }
+
+    @Test
+    fun textColorFollowsWhatIsBehindTheTextNotTheFillColor() {
+        // Dark fill, but the band under the text is white (as over a gradient
+        // or a glow): the text must come out dark to be readable.
+        val text = checkNotNull(layout.text)
+        val dark = Rgb(10, 10, 10)
+        val bitmap = Bitmap.createBitmap(1080, 2400, Bitmap.Config.ARGB_8888).apply { eraseColor(dark.argb) }
+        val band = text.band
+        Canvas(bitmap).drawRect(
+            band.left.toFloat(), band.top.toFloat(), band.right.toFloat(), band.bottom.toFloat(),
+            Paint().apply { color = Color.WHITE },
+        )
+
+        val final = renderer.drawFinal(RenderedBase(bitmap), layout, "Airbag", "Radiohead")
+
+        assertTrue("text on a white band should be dark", hasDarkInk(final, band))
+    }
+
+    private fun hasDarkInk(bitmap: Bitmap, area: PixelRect): Boolean {
+        for (y in area.top until area.bottom) {
+            for (x in area.left until area.right step 2) {
+                if (bitmap.rgbAt(x, y).r < 100) return true
+            }
+        }
+        return false
     }
 
     // Any pixel in [top, bottom) noticeably different from the background.

@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import io.github.arthur044.wallpaperchanger.core.render.Rgb
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -24,9 +23,8 @@ class AlbumBaseCacheTest {
 
     private fun cache(maxBytes: Long = 50L * 1024 * 1024) = AlbumBaseCache(dir, maxBytes, clock = { now })
 
-    private fun base(color: Int, background: Rgb = Rgb(10, 20, 30)) = RenderedBase(
+    private fun base(color: Int) = RenderedBase(
         Bitmap.createBitmap(120, 240, Bitmap.Config.ARGB_8888).apply { eraseColor(color) },
-        background,
     )
 
     @Before
@@ -43,7 +41,6 @@ class AlbumBaseCacheTest {
         assertEquals(120, hit.base.bitmap.width)
         assertEquals(240, hit.base.bitmap.height)
         assertEquals(Color.RED, hit.base.bitmap.getPixel(60, 120))
-        assertEquals(Rgb(10, 20, 30), hit.base.background)
         assertEquals(640, hit.sourceArtSidePx)
     }
 
@@ -56,7 +53,7 @@ class AlbumBaseCacheTest {
     @Test
     fun corruptFileIsDiscardedAsAMiss() {
         dir.mkdirs()
-        val broken = File(dir, "a1_120x240_abc.0a141e.640.png").apply { writeText("not a png") }
+        val broken = File(dir, "a1_120x240_abc.640.png").apply { writeText("not a png") }
 
         assertNull(cache().get("a1_120x240_abc"))
         assertFalse(broken.exists())
@@ -65,7 +62,7 @@ class AlbumBaseCacheTest {
     @Test
     fun storingAgainReplacesTheEntry() {
         cache().put("a1_120x240_abc", base(Color.RED), 640)
-        cache().put("a1_120x240_abc", base(Color.BLUE, Rgb(1, 2, 3)), 300)
+        cache().put("a1_120x240_abc", base(Color.BLUE), 300)
 
         assertEquals(1, dir.listFiles()?.size)
         val hit = checkNotNull(cache().get("a1_120x240_abc"))

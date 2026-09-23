@@ -29,6 +29,9 @@ class SettingsSerializerTest {
             artOffsetYPct = 0.1,
             useMediaSession = true,
             paused = true,
+            backgroundStyle = BackgroundStyle.MESH,
+            artGlow = true,
+            textCard = TextCard.GLASS,
         )
         assertEquals(s, decode(encode(s)))
     }
@@ -39,6 +42,25 @@ class SettingsSerializerTest {
         assertTrue("\"client_id\"" in json, json)
         assertTrue("\"fallback_poll_interval_seconds\"" in json, json)
         assertTrue("\"sync_lock_screen\"" in json, json)
+        assertTrue("\"background_style\": \"solid\"" in json, json)
+        assertTrue("\"art_glow\"" in json, json)
+        assertTrue("\"text_card\": \"none\"" in json, json)
+    }
+
+    @Test
+    fun `reads the desktop's background style values`() = runTest {
+        val s = decode("""{"background_style": "mesh", "art_glow": true, "text_card": "glass"}""")
+        assertEquals(BackgroundStyle.MESH, s.backgroundStyle)
+        assertTrue(s.artGlow)
+        assertEquals(TextCard.GLASS, s.textCard)
+    }
+
+    @Test
+    fun `an unknown style value falls back to its default, not to corruption`() = runTest {
+        val s = decode("""{"background_style": "plasma", "text_card": "neon", "corner_radius": 40}""")
+        assertEquals(BackgroundStyle.SOLID, s.backgroundStyle)
+        assertEquals(TextCard.NONE, s.textCard)
+        assertEquals(40, s.cornerRadius)
     }
 
     @Test

@@ -5,7 +5,6 @@ import android.graphics.BitmapFactory
 import android.util.Log
 import io.github.arthur044.wallpaperchanger.core.cache.CacheEntry
 import io.github.arthur044.wallpaperchanger.core.cache.evictionOrder
-import io.github.arthur044.wallpaperchanger.core.render.Rgb
 import java.io.File
 import java.io.IOException
 
@@ -15,8 +14,8 @@ class CachedBase(val base: RenderedBase, val sourceArtSidePx: Int)
  * Per-album base images on disk, keyed by
  * [io.github.arthur044.wallpaperchanger.core.cache.baseCacheKey].
  *
- * One PNG per entry, its metadata in the name: `<key>.<RRGGBB>.<artSide>.png`
- * (background color and source art size, needed to redraw the text). Writes go
+ * One PNG per entry, its metadata in the name: `<key>.<artSide>.png` (the
+ * source art size, needed to lay the text out again). Writes go
  * to a temp file and are renamed into place, so an entry is either complete or
  * absent. Recency is the file's mtime, refreshed on every hit, and the
  * directory is trimmed to [maxBytes] after each write.
@@ -39,13 +38,13 @@ class AlbumBaseCache(
             return null
         }
         file.setLastModified(clock())
-        return CachedBase(RenderedBase(bitmap, meta.background), meta.sourceArtSidePx)
+        return CachedBase(RenderedBase(bitmap), meta.sourceArtSidePx)
     }
 
     @Synchronized
     fun put(key: String, base: RenderedBase, sourceArtSidePx: Int) {
         dir.mkdirs()
-        val target = File(dir, "$key.${hex(base.background)}.$sourceArtSidePx$EXTENSION")
+        val target = File(dir, "$key.$sourceArtSidePx$EXTENSION")
         val temp = File(dir, "$key$TEMP_EXTENSION")
         try {
             temp.outputStream().use { out ->
@@ -73,18 +72,15 @@ class AlbumBaseCache(
     private fun entriesFor(key: String): List<File> =
         dir.listFiles { f -> f.name.startsWith("$key.") && f.name.endsWith(EXTENSION) }.orEmpty().toList()
 
-    private data class Meta(val background: Rgb, val sourceArtSidePx: Int)
+    private data class Meta(val sourceArtSidePx: Int)
 
-    // "<key>.<RRGGBB>.<side>.png" -> Meta; keys never contain dots.
+    // "<key>.<side>.png" -> Meta; keys never contain dots.
     private fun parseName(name: String): Meta? {
         val parts = name.removeSuffix(EXTENSION).split('.')
-        if (parts.size != 3) return null
-        val color = parts[1].toIntOrNull(16) ?: return null
-        val side = parts[2].toIntOrNull()?.takeIf { it > 0 } ?: return null
-        return Meta(Rgb.fromArgb(color), side)
+        if (parts.size != 2) return null
+        val side = parts[1].toIntOrNull()?.takeIf { it > 0 } ?: return null
+        return Meta(side)
     }
-
-    private fun hex(rgb: Rgb) = "%02x%02x%02x".format(rgb.r, rgb.g, rgb.b)
 
     companion object {
         const val DEFAULT_MAX_BYTES: Long = 150L * 1024 * 1024

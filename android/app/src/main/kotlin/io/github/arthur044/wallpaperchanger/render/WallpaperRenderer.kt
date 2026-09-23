@@ -19,16 +19,18 @@ import io.github.arthur044.wallpaperchanger.core.render.ColorThief
 import io.github.arthur044.wallpaperchanger.core.render.PixelRect
 import io.github.arthur044.wallpaperchanger.core.render.Rgb
 import io.github.arthur044.wallpaperchanger.core.render.WallpaperLayout
+import io.github.arthur044.wallpaperchanger.core.render.averageColor
 import io.github.arthur044.wallpaperchanger.core.render.textColorFor
 import kotlin.math.min
 
 /** The per-album part of a wallpaper, identical for every track on the album. */
-class RenderedBase(val bitmap: Bitmap, val background: Rgb)
+class RenderedBase(val bitmap: Bitmap)
 
 /**
  * Draws wallpapers onto a software Canvas (renderer.py's Pillow pipeline):
  * the base (dominant-color fill, blurred shadow, rounded art) is cacheable per
- * album; the final image is a copy of it with the track text on top.
+ * album; the final image is a copy of it with the track text on top, its
+ * color picked from the base pixels under the text.
  *
  * CPU-bound: call from a background dispatcher.
  */
@@ -53,7 +55,7 @@ class WallpaperRenderer {
         canvas.drawColor(background.argb)
         drawShadow(canvas, layout)
         drawArt(canvas, art, layout)
-        return RenderedBase(bitmap, background)
+        return RenderedBase(bitmap)
     }
 
     /** A new bitmap: the base plus track text. The base itself is left untouched for reuse. */
@@ -61,10 +63,22 @@ class WallpaperRenderer {
         val final = base.bitmap.copy(Bitmap.Config.ARGB_8888, true)
         val text = layout.text ?: return final
         val canvas = Canvas(final)
-        val color = textColorFor(base.background).argb
+        // Sampled from what is actually behind the text: a gradient or a glow
+        // has no single color, and the fill says nothing about the text band.
+        val color = textColorFor(averageColorIn(base.bitmap, text.band)).argb
         drawLine(canvas, trackName, text.titleSizePx, bold = true, top = text.titleTop, bottom = text.artistTop, text.maxWidth, text.centerX, color)
         drawLine(canvas, artistName, text.artistSizePx, bold = false, top = text.artistTop, bottom = text.bottom, text.maxWidth, text.centerX, color)
         return final
+    }
+
+    private fun averageColorIn(bitmap: Bitmap, area: PixelRect): Rgb {
+        val left = area.left.coerceIn(0, bitmap.width - 1)
+        val top = area.top.coerceIn(0, bitmap.height - 1)
+        val width = (area.right.coerceAtMost(bitmap.width) - left).coerceAtLeast(1)
+        val height = (area.bottom.coerceAtMost(bitmap.height) - top).coerceAtLeast(1)
+        val pixels = IntArray(width * height)
+        bitmap.getPixels(pixels, 0, width, left, top, width, height)
+        return averageColor(pixels)
     }
 
     private fun drawShadow(canvas: Canvas, layout: WallpaperLayout) {

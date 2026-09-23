@@ -50,6 +50,12 @@ cd android
 ./gradlew :app:assembleRelease     # APK para sideload
 ```
 
+O build de debug é instalado como `io.github.arthur044.wallpaperchanger.debug`
+("Wallpaper Changer (debug)"), ao lado do de release, sem mexer nele: os dois são
+assinados com chaves diferentes, e atualizar um pelo outro exigiria desinstalar o
+release, perdendo login e configurações. Os dois usam o mesmo esquema de callback,
+então um login feito pelo debug pode perguntar qual app abrir.
+
 `local.properties` precisa de `sdk.dir`, com o dois-pontos escapado no Windows:
 `sdk.dir=C\:/Users/<voce>/AppData/Local/Android/Sdk`.
 
