@@ -47,18 +47,22 @@ fun glassCard(ink: PixelRect, titleSizePx: Float, canvasWidth: Int, canvasHeight
 fun frostPixels(pixels: IntArray, width: Int, height: Int, sigma: Float): IntArray {
     require(pixels.size == width * height)
     val channels = Array(3) { c -> IntArray(pixels.size) { (pixels[it] shr (16 - 8 * c)) and 0xFF } }
-    if (sigma > 0f) {
-        val scratch = IntArray(pixels.size)
-        for (size in boxSizes(sigma.toDouble())) {
-            val radius = (size - 1) / 2
-            for (channel in channels) {
-                boxBlurRows(channel, scratch, width, height, radius)
-                boxBlurColumns(scratch, channel, width, height, radius)
-            }
-        }
-    }
+    blurChannels(channels, width, height, sigma)
     val (r, g, b) = channels
     return IntArray(pixels.size) { (0xFF shl 24) or (tint(r[it]) shl 16) or (tint(g[it]) shl 8) or tint(b[it]) }
+}
+
+/** Gaussian blur of [sigma] (three box passes, edges clamped) on each channel, in place. */
+internal fun blurChannels(channels: Array<IntArray>, width: Int, height: Int, sigma: Float) {
+    if (sigma <= 0f) return
+    val scratch = IntArray(width * height)
+    for (size in boxSizes(sigma.toDouble())) {
+        val radius = (size - 1) / 2
+        for (channel in channels) {
+            boxBlurRows(channel, scratch, width, height, radius)
+            boxBlurColumns(scratch, channel, width, height, radius)
+        }
+    }
 }
 
 private fun tint(c: Int): Int = Math.rint(c + (255 - c) * TINT_AMOUNT).toInt()

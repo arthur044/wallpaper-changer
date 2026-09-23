@@ -16,6 +16,7 @@ import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
 import android.text.TextPaint
 import android.text.TextUtils
+import io.github.arthur044.wallpaperchanger.core.config.ArtFrame
 import io.github.arthur044.wallpaperchanger.core.config.BackgroundStyle
 import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.config.TextCard
@@ -29,6 +30,9 @@ import io.github.arthur044.wallpaperchanger.core.render.Rgb
 import io.github.arthur044.wallpaperchanger.core.render.TextLayout
 import io.github.arthur044.wallpaperchanger.core.render.WallpaperLayout
 import io.github.arthur044.wallpaperchanger.core.render.averageColor
+import io.github.arthur044.wallpaperchanger.core.render.blurredArtBackground
+import io.github.arthur044.wallpaperchanger.core.render.frameRims
+import io.github.arthur044.wallpaperchanger.core.render.framedArt
 import io.github.arthur044.wallpaperchanger.core.render.frostPixels
 import io.github.arthur044.wallpaperchanger.core.render.glassCard
 import io.github.arthur044.wallpaperchanger.core.render.meshPixels
@@ -74,32 +78,63 @@ class WallpaperRenderer {
         }
         val glow = if (settings.artGlow) pickGlowColor(palette, background) else null
         val mesh = if (settings.backgroundStyle == BackgroundStyle.MESH) pickMeshColors(background, palette) else null
-        return drawBase(art, layout, background, glow, mesh)
+        val blurredArt = settings.backgroundStyle == BackgroundStyle.BLUR
+        return drawBase(art, layout, background, glow, mesh, blurredArt, settings.artFrame)
     }
 
     /**
      * [glow] replaces the dark drop shadow with a halo of that color; [mesh]
-     * replaces the flat [background] fill with a gradient of those colors.
+     * replaces the flat [background] fill with a gradient of those colors, and
+     * [blurredArt] with the art itself, blurred. A [frame] puts glass rims
+     * where the art was and shrinks the art inside them.
      */
+    @Suppress("LongParameterList")
     fun drawBase(
         art: Bitmap,
         layout: WallpaperLayout,
         background: Rgb,
         glow: Rgb? = null,
         mesh: List<Rgb>? = null,
+        blurredArt: Boolean = false,
+        frame: ArtFrame = ArtFrame.NONE,
     ): RenderedBase {
-        val bitmap = createBitmap(layout.canvasWidth, layout.canvasHeight)
+        val (w, h) = layout.canvasWidth to layout.canvasHeight
+        val bitmap = createBitmap(w, h)
         val canvas = Canvas(bitmap)
-        if (mesh != null) {
-            val (w, h) = layout.canvasWidth to layout.canvasHeight
-            bitmap.setPixels(meshPixels(w, h, mesh), 0, w, 0, 0, w, h)
-        } else {
-            canvas.drawColor(background.argb)
+        when {
+            mesh != null -> bitmap.setPixels(meshPixels(w, h, mesh), 0, w, 0, 0, w, h)
+            blurredArt -> bitmap.setPixels(blurredArtBackground(pixelsOf(art), art.width, art.height, w, h), 0, w, 0, 0, w, h)
+            else -> canvas.drawColor(background.argb)
         }
+        // Shadow and glow keep the art's laid-out box: with a frame, that is the outer rim.
         if (glow != null) drawGlow(canvas, layout, glow) else drawShadow(canvas, layout)
-        drawArt(canvas, art, layout)
+        val artRect = framedArt(layout.art, frame)
+        drawFrame(canvas, artRect, frame, layout.cornerRadiusPx, frameEdgeWidth(w, h))
+        drawArt(canvas, art, artRect, layout.cornerRadiusPx)
         return RenderedBase(bitmap)
     }
+
+    // A light veil and a hairline edge per rim, outermost first.
+    private fun drawFrame(canvas: Canvas, art: PixelRect, frame: ArtFrame, cornerRadius: Float, edgeWidth: Float) {
+        for (rim in frameRims(frame)) {
+            val gap = Math.rint((art.width * rim.gapOfArt).toDouble()).toFloat()
+            val rect = art.toRectF().apply { inset(-gap, -gap) }
+            val radius = cornerRadius + gap
+            val veil = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(rim.veilAlpha, 255, 255, 255) }
+            canvas.drawRoundRect(rect, radius, radius, veil)
+            rect.inset(edgeWidth / 2, edgeWidth / 2)
+            val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = edgeWidth
+                color = Color.argb(rim.edgeAlpha, 255, 255, 255)
+            }
+            canvas.drawRoundRect(rect, radius, radius, edge)
+        }
+    }
+
+    // The desktop's round(height / 540) at 1080p, taken from the short side here.
+    private fun frameEdgeWidth(width: Int, height: Int): Float =
+        maxOf(1f, Math.rint(min(width, height) / FRAME_EDGE_DIVISOR).toFloat())
 
     private fun pixelsOf(art: Bitmap): IntArray {
         val pixels = IntArray(art.width * art.height)
@@ -268,8 +303,7 @@ class WallpaperRenderer {
         canvas.drawRoundRect(box, radius, radius, paint)
     }
 
-    private fun drawArt(canvas: Canvas, art: Bitmap, layout: WallpaperLayout) {
-        val rect = layout.art
+    private fun drawArt(canvas: Canvas, art: Bitmap, rect: PixelRect, cornerRadius: Float) {
         val square = centerSquare(art)
         val scaled = square.scale(rect.width, rect.height)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG).apply {
@@ -277,7 +311,7 @@ class WallpaperRenderer {
                 setLocalMatrix(Matrix().apply { setTranslate(rect.left.toFloat(), rect.top.toFloat()) })
             }
         }
-        canvas.drawRoundRect(rect.toRectF(), layout.cornerRadiusPx, layout.cornerRadiusPx, paint)
+        canvas.drawRoundRect(rect.toRectF(), cornerRadius, cornerRadius, paint)
         if (scaled !== square) scaled.recycle()
         if (square !== art) square.recycle()
     }
@@ -298,6 +332,7 @@ class WallpaperRenderer {
         private const val GLOW_ALPHA = 200
         private const val GLOW_BLUR_OF_ART = 0.08f
         private const val GLOW_SPREAD_OF_ART = 0.03f
+        private const val FRAME_EDGE_DIVISOR = 540.0
         private val BOLD: Typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
         private val REGULAR: Typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
     }

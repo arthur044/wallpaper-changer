@@ -1,5 +1,6 @@
 package io.github.arthur044.wallpaperchanger.core.cache
 
+import io.github.arthur044.wallpaperchanger.core.config.ArtFrame
 import io.github.arthur044.wallpaperchanger.core.config.BackgroundStyle
 import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.config.TextCard
@@ -48,6 +49,9 @@ class BaseCacheKeyTest {
             Settings(showTrackInfo = false),
             Settings(backgroundStyle = BackgroundStyle.MESH),
             Settings(artGlow = true),
+            Settings(backgroundStyle = BackgroundStyle.BLUR),
+            Settings(artFrame = ArtFrame.SINGLE),
+            Settings(artFrame = ArtFrame.DOUBLE),
         ).forEach { changed ->
             assertNotEquals(key, baseCacheKey("1rG6IgNdwE1IGFuIKuYosz", phone, changed), "$changed")
         }

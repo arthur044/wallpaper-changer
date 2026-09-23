@@ -35,6 +35,7 @@ class SettingsTest {
         assertFalse(s.artGlow)
         assertEquals(TextCard.NONE, s.textCard)
         assertFalse(s.smoothTransition)
+        assertEquals(ArtFrame.NONE, s.artFrame)
     }
 
     @Test

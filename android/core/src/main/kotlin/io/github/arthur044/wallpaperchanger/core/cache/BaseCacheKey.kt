@@ -33,7 +33,7 @@ fun baseCacheKey(albumId: String, canvas: CanvasSpec, settings: Settings): Strin
         canvas.density,
         settings.artSizePct, settings.cornerRadius, settings.shadowBlurRadius,
         settings.artOffsetYPct, settings.showTrackInfo,
-        settings.backgroundStyle, settings.artGlow,
+        settings.backgroundStyle, settings.artGlow, settings.artFrame,
     ).joinToString("|")
     return "${fileSafeId(albumId)}_${canvas.canvasWidth}x${canvas.canvasHeight}_${sha256Hex(inputs).take(12)}"
 }

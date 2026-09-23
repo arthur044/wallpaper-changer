@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.arthur044.wallpaperchanger.core.config.ArtFrame
 import io.github.arthur044.wallpaperchanger.core.config.BackgroundStyle
 import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.config.TextCard
@@ -225,6 +226,44 @@ class WallpaperRendererTest {
 
         assertTrue("plain text on mid-gray should be light", !hasDarkInk(plain, band))
         assertTrue("text on the tinted card should be dark", hasDarkInk(glass, band))
+    }
+
+    @Test
+    fun blurredArtBackgroundIsTheCoverItself() {
+        val redOverBlue = solidArt(Color.rgb(200, 30, 30)).apply {
+            Canvas(this).drawRect(0f, 320f, 640f, 640f, Paint().apply { color = Color.rgb(30, 40, 200) })
+        }
+        val base = renderer.renderBase(redOverBlue, layout, Settings(backgroundStyle = BackgroundStyle.BLUR))
+
+        val top = base.bitmap.rgbAt(5, 100)
+        val bottom = base.bitmap.rgbAt(5, 2300)
+        assertTrue("top should be reddish: $top", top.r > top.b)
+        assertTrue("bottom should be bluish: $bottom", bottom.b > bottom.r)
+    }
+
+    private fun whiteRun(bitmap: Bitmap, y: Int) = (0 until bitmap.width).count { bitmap.rgbAt(it, y) == Rgb(255, 255, 255) }
+
+    @Test
+    fun aFrameTakesTheArtsPlaceAndShrinksTheArt() {
+        val black = Rgb(0, 0, 0)
+        val plain = renderer.drawBase(white, layout, black)
+        val framed = renderer.drawBase(white, layout, black, frame = ArtFrame.DOUBLE)
+        val nearEdge = layout.art.left + 3 to layout.art.centerY
+
+        assertEquals(Rgb(255, 255, 255), plain.bitmap.rgbAt(nearEdge.first, nearEdge.second))
+        val rim = framed.bitmap.rgbAt(nearEdge.first, nearEdge.second)
+        assertTrue("a translucent glass rim should sit there now: $rim", rim.r in 1..199)
+        assertEquals(Rgb(255, 255, 255), framed.bitmap.rgbAt(layout.art.centerX, layout.art.centerY))
+    }
+
+    @Test
+    fun aSingleFrameLeavesTheArtBiggerThanADoubleOne() {
+        val black = Rgb(0, 0, 0)
+        val row = layout.art.centerY
+        val none = whiteRun(renderer.drawBase(white, layout, black).bitmap, row)
+        val single = whiteRun(renderer.drawBase(white, layout, black, frame = ArtFrame.SINGLE).bitmap, row)
+        val double = whiteRun(renderer.drawBase(white, layout, black, frame = ArtFrame.DOUBLE).bitmap, row)
+        assertTrue("$none > $single > $double", none > single && single > double && double > 0)
     }
 
     private fun hasDarkInk(bitmap: Bitmap, area: PixelRect): Boolean {

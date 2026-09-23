@@ -15,6 +15,19 @@ enum class BackgroundStyle {
 
     /** A soft gradient of 2-4 of the art's colors. */
     @SerialName("mesh") MESH,
+
+    /** The art itself covering the screen, blurred and darkened toward the edges. */
+    @SerialName("blur") BLUR,
+}
+
+/** Glass rims around the art, which shrinks to fit them. */
+@Serializable
+enum class ArtFrame {
+    @SerialName("none") NONE,
+
+    @SerialName("single") SINGLE,
+
+    @SerialName("double") DOUBLE,
 }
 
 /** What sits behind the track text. */

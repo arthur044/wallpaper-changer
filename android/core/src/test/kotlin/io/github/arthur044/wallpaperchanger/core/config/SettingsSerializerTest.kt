@@ -33,6 +33,7 @@ class SettingsSerializerTest {
             artGlow = true,
             textCard = TextCard.GLASS,
             smoothTransition = true,
+            artFrame = ArtFrame.DOUBLE,
         )
         assertEquals(s, decode(encode(s)))
     }
@@ -54,6 +55,13 @@ class SettingsSerializerTest {
         assertEquals(BackgroundStyle.MESH, s.backgroundStyle)
         assertTrue(s.artGlow)
         assertEquals(TextCard.GLASS, s.textCard)
+    }
+
+    @Test
+    fun `reads the desktop's blurred background and frame values`() = runTest {
+        val s = decode("""{"background_style": "blur", "art_frame": "single"}""")
+        assertEquals(BackgroundStyle.BLUR, s.backgroundStyle)
+        assertEquals(ArtFrame.SINGLE, s.artFrame)
     }
 
     @Test

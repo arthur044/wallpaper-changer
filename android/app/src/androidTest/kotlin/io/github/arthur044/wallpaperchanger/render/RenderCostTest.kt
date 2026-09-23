@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.os.SystemClock
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.github.arthur044.wallpaperchanger.core.config.ArtFrame
 import io.github.arthur044.wallpaperchanger.core.config.BackgroundStyle
 import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.config.TextCard
@@ -56,6 +57,8 @@ class RenderCostTest {
             "glow" to Settings(artGlow = true),
             "mesh" to Settings(backgroundStyle = BackgroundStyle.MESH),
             "mesh+glow" to Settings(backgroundStyle = BackgroundStyle.MESH, artGlow = true),
+            "blur" to Settings(backgroundStyle = BackgroundStyle.BLUR),
+            "blur+frame" to Settings(backgroundStyle = BackgroundStyle.BLUR, artFrame = ArtFrame.DOUBLE),
         )
         styles.forEach { (name, settings) ->
             val layout = computeLayout(phone, settings, sourceArtSidePx = 640)
