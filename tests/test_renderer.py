@@ -137,3 +137,46 @@ def test_new_album_draws_the_solid_base_and_caches_it(tmp_path, monkeypatch):
     assert corner[0] > 150 and corner[1] < 90 and corner[2] < 90
     # ...and the art itself in the middle.
     assert result.getpixel((200, 90)) == (200, 40, 40)
+
+
+def _art_with_accent() -> bytes:
+    # Mostly gray art (the dominant fill) with a vivid red corner (the accent).
+    art = Image.new("RGB", (64, 64), (60, 60, 60))
+    art.paste((230, 20, 40), (0, 0, 20, 20))
+    return _png_bytes(art)
+
+
+def _render_new_album(tmp_path, monkeypatch, settings) -> Image.Image:
+    monkeypatch.setattr("src.graphics.renderer.download_art", lambda url: _art_with_accent())
+    out = tmp_path / "out.png"
+    render_for_now_playing(_now_playing(), settings, _LAYOUT, tmp_path / "base.png", out)
+    return Image.open(out).convert("RGB")
+
+
+def test_solid_base_keeps_a_dark_shadow_under_the_art(tmp_path, monkeypatch):
+    result = _render_new_album(tmp_path, monkeypatch, Settings(show_track_info=False))
+
+    below_art = result.getpixel((200, _LAYOUT.art_position[1] + _LAYOUT.art_size + 6))
+    assert sum(below_art) < sum(result.getpixel((0, 0)))
+
+
+def test_art_glow_tints_the_area_around_the_art_with_the_accent(tmp_path, monkeypatch):
+    left_of_art = (_LAYOUT.art_position[0] - 6, _LAYOUT.art_position[1] + _LAYOUT.art_size // 2)
+
+    (tmp_path / "plain").mkdir()
+    (tmp_path / "glow").mkdir()
+    plain = _render_new_album(tmp_path / "plain", monkeypatch, Settings(show_track_info=False))
+    glow = _render_new_album(tmp_path / "glow", monkeypatch, Settings(show_track_info=False, art_glow=True))
+
+    r_plain, g_plain, _ = plain.getpixel(left_of_art)
+    r_glow, g_glow, _ = glow.getpixel(left_of_art)
+    assert r_glow - g_glow > r_plain - g_plain + 30, "glow should push the edge toward the red accent"
+
+
+def test_accent_palette_is_only_computed_when_an_effect_needs_it(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr("src.graphics.renderer.extract_accent_palette", lambda b: calls.append(1) or [])
+
+    _render_new_album(tmp_path, monkeypatch, Settings(show_track_info=False))
+
+    assert calls == []

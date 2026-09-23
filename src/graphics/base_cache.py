@@ -8,7 +8,8 @@ from src.config.settings import Settings
 #
 # 1: key covers the pixel-affecting settings and the resolution, not just the
 #    album id (bases used to survive a resolution or style change).
-BASE_RENDER_VERSION = 1
+# 2: shadow blurred on a downscaled layer; art_glow draws a colored halo.
+BASE_RENDER_VERSION = 2
 
 
 def base_cache_key(album_id: str, canvas_size: Tuple[int, int], settings: Settings) -> str:
