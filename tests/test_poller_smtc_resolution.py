@@ -1,4 +1,5 @@
 import logging
+import time
 
 from src.config.settings import Settings
 from src.os_integration.smtc import SmtcNowPlaying
@@ -96,7 +97,7 @@ def test_throttled_resolution_skips_render_entirely(monkeypatch):
     monkeypatch.setattr(poller_module, "fetch_now_playing", lambda client: calls.append(1))
 
     poller, rendered = _make_poller(monkeypatch, fallback_interval=9999.0)
-    poller._last_web_api_at = 0.0  # pretend a Web API call just happened -> still throttled
+    poller._last_web_api_at = time.monotonic()  # a Web API call just happened -> still throttled
 
     poller._run_one_cycle()
 

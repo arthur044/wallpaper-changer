@@ -22,6 +22,20 @@ logger = logging.getLogger(__name__)
 RenderFn = Callable[[NowPlaying], None]
 ReauthFn = Callable[[], Spotify]
 
+# A new album seen through SMTC is looked up at most this often: quick enough
+# for skipping between albums, far below what trips Spotify's rate limit. The
+# background poll (Spotify desktop closed) keeps fallback_poll_interval_seconds.
+_ALBUM_LOOKUP_SPACING_SECONDS = 5.0
+# The Web API trails the desktop app: asked right as a song changes, it can
+# still describe the previous one. Its answer is only used for the song that
+# SMTC reports once the titles match, or after this many tries (the two can
+# spell a title differently, and never drawing is worse).
+_MAX_TITLE_MISMATCHES = 3
+
+
+def _same_title(a: Optional[str], b: Optional[str]) -> bool:
+    return (a or "").strip().casefold() == (b or "").strip().casefold()
+
 
 def _track_key(artist: Optional[str], title: Optional[str]) -> str:
     return f"{(artist or '').strip().lower()}::{(title or '').strip().lower()}"
@@ -86,6 +100,12 @@ class Poller:
         # Force Sync included: answering a rate limit with another request
         # only extends it.
         self._rate_limited_until = float("-inf")
+        # Lookups of the playing song whose answer described another one, per track key.
+        self._title_mismatches: Dict[str, int] = {}
+        # Albums whose tracklist was already fetched (each costs one call, once),
+        # and the one waiting to be fetched right after the current render.
+        self._tracklists_fetched: set = set()
+        self._pending_tracklist: Optional[Tuple[str, Tuple[str, Optional[str]]]] = None
 
     def set_client(self, client: Spotify) -> None:
         self._client = client
@@ -171,8 +191,9 @@ class Poller:
         track_key = _track_key(snapshot.artist, snapshot.title)
         resolved = self._track_to_album.get(track_key)
 
-        if resolved is None and snapshot.is_playing and self._should_call_web_api(forced):
-            resolved = self._resolve_and_cache_album()
+        spacing = min(_ALBUM_LOOKUP_SPACING_SECONDS, self._settings.fallback_poll_interval_seconds)
+        if resolved is None and snapshot.is_playing and self._should_call_web_api(forced, spacing):
+            resolved = self._resolve_and_cache_album(track_key, snapshot)
 
         if resolved is None:
             # No verified Spotify art for this album yet (throttled, failed,
@@ -187,12 +208,17 @@ class Poller:
             # says so: silently skipping here makes a frozen wallpaper
             # indistinguishable from an idle one in the log.
             self._log_unresolved(track_key, snapshot)
+            self._fetch_pending_tracklist()
             return self._settings.poll_interval_seconds
 
         self._unresolved_logged_key = None
         album_id, art_url = resolved
         now_playing = _smtc_to_now_playing(snapshot, album_id=album_id, art_url=art_url)
-        return self._handle_now_playing(now_playing)
+        interval = self._handle_now_playing(now_playing)
+        # After the render, not before: the wallpaper shouldn't wait on a call
+        # that only speeds up the album's other songs.
+        self._fetch_pending_tracklist()
+        return interval
 
     def _log_unresolved(self, track_key: str, snapshot: SmtcNowPlaying) -> None:
         if self._unresolved_logged_key == track_key:
@@ -205,26 +231,58 @@ class Poller:
             snapshot.is_playing,
         )
 
-    def _resolve_and_cache_album(self) -> Optional[Tuple[str, Optional[str]]]:
-        """Throttled: one Web API call to resolve the real album_id + art_url
-        for the currently SMTC-detected track, plus one more to fetch every
-        other track name on that album so later tracks on it never need to
-        hit the API again. The second call is best-effort - if it fails, the
-        current track still renders fine, just without the pre-warmed cache."""
+    def _resolve_and_cache_album(
+        self, track_key: str, snapshot: SmtcNowPlaying
+    ) -> Optional[Tuple[str, Optional[str]]]:
+        """One throttled Web API call for the album of what is playing. Its
+        tracklist is queued for right after the render (once per album), so
+        every other song on it needs no call of its own afterwards."""
         fetched = self._resolve_high_res_art()
         if fetched is None or not fetched.album_id:
             return None
 
         resolved = (fetched.album_id, fetched.art_url)
         self._track_to_album[_track_key(fetched.artist_name, fetched.track_name)] = resolved
+        if fetched.album_id not in self._tracklists_fetched:
+            self._pending_tracklist = (fetched.album_id, resolved)
 
-        try:
-            for name, artist in fetch_album_tracks(self._client, fetched.album_id):
-                self._track_to_album[_track_key(artist, name)] = resolved
-        except Exception as exc:  # noqa: BLE001 - a best-effort prefetch must never crash the render pipeline
-            logger.warning("Failed to prefetch tracklist for album %s: %s", fetched.album_id, exc)
+        if not _same_title(fetched.track_name, snapshot.title):
+            misses = self._title_mismatches.get(track_key, 0) + 1
+            self._title_mismatches[track_key] = misses
+            if misses < _MAX_TITLE_MISMATCHES:
+                logger.info(
+                    "Web API still reports %r while %r plays; asking again shortly",
+                    fetched.track_name,
+                    snapshot.title,
+                )
+                return None
+            logger.warning(
+                "Web API keeps reporting %r for %r; using its album anyway", fetched.track_name, snapshot.title
+            )
 
+        self._title_mismatches.pop(track_key, None)
+        # Also under SMTC's own spelling of the artist, which can differ.
+        self._track_to_album[track_key] = resolved
         return resolved
+
+    def _fetch_pending_tracklist(self) -> None:
+        """Best-effort: maps every song of the queued album. A failure only
+        means those songs are looked up one by one later."""
+        if self._pending_tracklist is None or time.monotonic() < self._rate_limited_until:
+            return
+        album_id, resolved = self._pending_tracklist
+        self._pending_tracklist = None
+        self._tracklists_fetched.add(album_id)
+        try:
+            for name, artist in fetch_album_tracks(self._client, album_id):
+                self._track_to_album[_track_key(artist, name)] = resolved
+        except RateLimitedError as exc:
+            logger.warning("Rate limited while prefetching the tracklist, backing off %.0fs", exc.retry_after)
+            self._rate_limited_until = time.monotonic() + exc.retry_after
+            self._tracklists_fetched.discard(album_id)
+            self._pending_tracklist = (album_id, resolved)
+        except Exception as exc:  # noqa: BLE001 - a best-effort prefetch must never crash the render pipeline
+            logger.warning("Failed to prefetch tracklist for album %s: %s", album_id, exc)
 
     def _resolve_high_res_art(self) -> Optional[NowPlaying]:
         """One throttled Web API call to get the real album_id + art_url for
@@ -245,11 +303,12 @@ class Poller:
             logger.warning("Transient network error while resolving high-res art: %s", exc)
         return None
 
-    def _should_call_web_api(self, forced: bool = False) -> bool:
+    def _should_call_web_api(self, forced: bool = False, spacing: Optional[float] = None) -> bool:
         now = time.monotonic()
         if now < self._rate_limited_until:
             return False
-        if not forced and now - self._last_web_api_at < self._settings.fallback_poll_interval_seconds:
+        min_spacing = self._settings.fallback_poll_interval_seconds if spacing is None else spacing
+        if not forced and now - self._last_web_api_at < min_spacing:
             return False
         self._last_web_api_at = now
         return True
