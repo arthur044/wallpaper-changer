@@ -9,6 +9,7 @@ import requests
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageStat
 
 from src.config.settings import Settings
+from src.graphics.base_cache import mark_used, prune_album_bases
 from src.graphics.color_extractor import (
     extract_accent_palette,
     extract_dominant_color,
@@ -346,11 +347,14 @@ def render_for_now_playing(
 ) -> None:
     if base_path.exists():
         base_image = Image.open(base_path).convert("RGB")
+        mark_used(base_path)
         logger.info("Reusing cached base art for album %s", now_playing.album_id)
     else:
         art_bytes = download_art(now_playing.art_url)
         base_image = _build_base_canvas(art_bytes, settings, layout)
-        base_image.save(base_path, format="PNG")
+        # Fast compression: written once per album, and the cache is capped by size.
+        base_image.save(base_path, format="PNG", compress_level=1)
+        prune_album_bases(base_path.parent, keep=base_path)
         logger.info("Rendered new base art for album %s", now_playing.album_id)
 
     final_image = base_image.copy()

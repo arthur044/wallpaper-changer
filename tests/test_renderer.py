@@ -388,3 +388,15 @@ def test_a_single_frame_leaves_the_art_bigger_than_a_double_one(tmp_path, monkey
 
     none, single, double = art_width("none"), art_width("single"), art_width("double")
     assert none > single > double > 0
+
+
+def test_reusing_a_cached_base_marks_it_as_recently_used(tmp_path):
+    import os
+
+    base_path = tmp_path / "base.png"
+    Image.new("RGB", _LAYOUT.canvas_size, (40, 80, 120)).save(base_path)
+    os.utime(base_path, (1000, 1000))
+
+    render_for_now_playing(_now_playing(), Settings(show_track_info=False), _LAYOUT, base_path, tmp_path / "out.png")
+
+    assert base_path.stat().st_mtime > 1000, "a base in use must not look stale to the cache limit"

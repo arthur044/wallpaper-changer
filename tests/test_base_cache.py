@@ -1,10 +1,11 @@
 import dataclasses
+import os
 
 import pytest
 
 from src.config import paths
 from src.config.settings import Settings
-from src.graphics.base_cache import base_cache_key
+from src.graphics.base_cache import base_cache_key, prune_album_bases
 
 _CANVAS = (1920, 1080)
 
@@ -73,3 +74,55 @@ def test_album_base_path_lives_in_the_album_bases_dir(monkeypatch, tmp_path):
 
     assert path == tmp_path / "album_bases" / "somekey.png"
     assert path.parent.is_dir()
+
+
+def _base_file(directory, name, size, mtime):
+    path = directory / name
+    path.write_bytes(b"x" * size)
+    os.utime(path, (mtime, mtime))
+    return path
+
+
+def test_prune_removes_bases_in_the_old_album_id_only_format(tmp_path):
+    legacy = _base_file(tmp_path, "4aawyAB9vmqN3uQ7FjRGTy.png", 10, 1000)
+    current = _base_file(tmp_path, "4aawyAB9vmqN3uQ7FjRGTy_1920x1080_0123456789ab.png", 10, 1000)
+
+    prune_album_bases(tmp_path, keep=current)
+
+    assert not legacy.exists()
+    assert current.exists()
+
+
+def test_prune_drops_the_least_recently_used_bases_over_budget(tmp_path):
+    old = _base_file(tmp_path, "a_1920x1080_000000000001.png", 100, 1000)
+    mid = _base_file(tmp_path, "b_1920x1080_000000000002.png", 100, 2000)
+    new = _base_file(tmp_path, "c_1920x1080_000000000003.png", 100, 3000)
+
+    prune_album_bases(tmp_path, keep=new, max_bytes=250)
+
+    assert not old.exists()
+    assert mid.exists() and new.exists()
+
+
+def test_prune_never_drops_the_base_in_use(tmp_path):
+    in_use = _base_file(tmp_path, "a_1920x1080_000000000001.png", 500, 1000)
+
+    prune_album_bases(tmp_path, keep=in_use, max_bytes=100)
+
+    assert in_use.exists()
+
+
+def test_prune_leaves_everything_under_budget(tmp_path):
+    files = [_base_file(tmp_path, f"{c}_1920x1080_00000000000{i}.png", 100, 1000 + i) for i, c in enumerate("abc")]
+
+    prune_album_bases(tmp_path, keep=files[0], max_bytes=10_000)
+
+    assert all(f.exists() for f in files)
+
+
+def test_prune_keeps_the_base_in_use_whatever_its_name(tmp_path):
+    in_use = _base_file(tmp_path, "base.png", 10, 1000)
+
+    prune_album_bases(tmp_path, keep=in_use)
+
+    assert in_use.exists()
