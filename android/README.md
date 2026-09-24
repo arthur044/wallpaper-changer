@@ -121,9 +121,10 @@ Com `debugStoreFile`, o debug é assinado com a mesma chave que a CI usa. Assim,
 debug gerado no PC atualiza o baixado do GitHub, e vice-versa. Sem ele, o debug usa a
 chave de debug da própria máquina.
 
-Na CI, as chaves vêm dos secrets do repositório (`RELEASE_KEYSTORE_B64`,
-`RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_PASSWORD`, `DEBUG_KEYSTORE_B64`), e o
-`ci/write-signing.sh` monta o `keystore.properties` do runner. A versão vem do git:
+Na CI, a chave de release vem dos secrets do Environment `release`, que só libera a `main`
+(`RELEASE_KEYSTORE_B64`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_PASSWORD`). A de debug
+vem do secret de repositório `DEBUG_KEYSTORE_B64`. O `ci/write-signing.sh` monta o
+`keystore.properties` do runner, que é apagado junto com as chaves logo depois do build. A versão vem do git:
 `versionCode` é o número de commits. `./gradlew -q :app:printVersion` mostra a versão que o
 checkout atual recebe.
 

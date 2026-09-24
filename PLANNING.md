@@ -210,11 +210,11 @@ app: seção "Atualizações" → UpdateClient (API do GitHub, sem token) → up
 
 | Componente | Papel |
 |---|---|
-| `UpdateController` (`:core`) | Lógica da seção: uma ação por vez. Fases `Checking` → `Downloading` → `Installing`, ou `UpToDate`, `Older`, `NoBuild`, `WrongPackage`, `NeedsPermission`, `Failed` |
+| `UpdateController` (`:core`) | Lógica da seção: uma ação por vez. Fases `Checking` → `Downloading` → `Installing`, ou `UpToDate`, `Older`, `NoBuild`, `WrongPackage`, `NeedsPermission`, `Failed`. `Installing` não trava o botão: o sistema pode nunca responder (confirmação bloqueada em segundo plano ou fechada com Home) |
 | `UpdateClient` (`:core`) | Release: `releases/latest`. Debug: lista as pré-releases `debug-*` (páginas de 100, até 5; cada página é uma chamada) e o `update.json` da branch escolhida. Baixa para `cacheDir/updates` |
 | `UpdateInfo` / `GithubReleases` (`:core`) | Parse e validação do `update.json` (SHA-256 com 64 hex, `versionCode` > 0, `apk` como nome de arquivo simples, porque vira caminho na pasta de download) e da resposta do GitHub |
 | `ApkInstaller` (`:app`) | Abre uma sessão do `PackageInstaller`, grava o APK e faz o commit. Pede "instalar apps desconhecidos" |
-| `InstallResultReceiver` (`:app`, não exportado) | Mostra a confirmação do sistema e devolve o resultado ao controller |
+| `InstallResultReceiver` (`:app`, não exportado) | Abre a confirmação do sistema e guarda o intent em `AppContainer.pendingInstallConfirmation`; a seção mostra "Confirmar instalação" para reabri-la. Limpa o intent e devolve o resultado ao controller |
 
 O canal é o do build instalado: o release só olha o release, e o debug escolhe uma branch.
 Ele vem pré-selecionado com a própria branch (`BuildConfig.GIT_BRANCH`) enquanto ela tiver
@@ -255,7 +255,7 @@ Backup automático do Android desligado (`allowBackup=false`).
 
 | Arquivo | Uso |
 |---|---|
-| `~/.keystores/wallpaper-changer.jks` | Chave de release. Cópia mestre; a CI recebe uma cópia pelos secrets |
+| `~/.keystores/wallpaper-changer.jks` | Chave de release. Cópia mestre; a CI recebe uma cópia pelos secrets do Environment `release` |
 | `~/.keystores/wallpaper-changer-debug.jks` | Chave de debug compartilhada entre o PC e a CI, via `debugStoreFile` |
 | `android/keystore.properties` | `storeFile`, `storePassword`, `keyAlias`, `keyPassword` e `debugStoreFile` (opcional). Sem `debugStoreFile`, o debug usa o `~/.android/debug.keystore` da máquina |
 
@@ -359,7 +359,9 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | Redesenhar ao mudar o tamanho da tela, não ao rotacionar | O wallpaper só é desenhado na troca de faixa; sem isso, abrir o dobrável mostrava o desenho da tela externa cortado, e fechar mostrava o quadrado da interna cortado nas laterais |
 | Debug com sufixo `.debug` | Instala ao lado do release sem apagar login e configurações (as chaves de assinatura diferem) |
 | `versionCode` = número de commits até o HEAD; clone raso é recusado | O mesmo commit tem o mesmo número no PC e na CI, e todo commit novo na `main` atualiza o app. Num clone raso a contagem voltaria para trás, então o build falha em vez de chutar. Sem git, vale 1 |
-| Assinatura na CI a partir dos GitHub Secrets | A chave vira arquivo só no `$RUNNER_TEMP` e some com o runner. `verify-apk-cert.sh` confere o SHA-256 do certificado antes de publicar: um APK com outra chave nunca atualizaria o instalado |
+| Chave de release só no Environment `release` (deployment branch = `main`) | Código de outra branch (build script, `ci/*.sh`) nunca roda com a chave, diga o workflow o que disser. A chave vira arquivo no `$RUNNER_TEMP` e é apagada logo depois do assemble, mesmo com falha. `verify-apk-cert.sh` confere o SHA-256 do certificado antes de publicar: um APK com outra chave nunca atualizaria o instalado |
+| Actions fixadas pelo SHA do commit (tag no comentário) | Uma tag movida não pode alcançar a chave de assinatura |
+| Release não publica se já existe um `r<N>` maior | Reexecutar uma execução antiga não pode tornar um build mais velho o "latest" |
 | Chave de debug compartilhada entre o PC e a CI | O APK de debug de um atualiza o do outro, sem desinstalar |
 | Canais: release em `releases/latest`, debug com uma pré-release por branch | A `main` publica `r<versionCode>`, marcada como latest. Cada branch tem só o build mais novo em `debug-<slug>`. O slug perde a `/`, então o nome exato da branch vai no título e no `update.json` |
 | Consultas ao GitHub sem token | Repositório público, e um token no app seria um segredo em todo celular. O limite de 60 por hora basta para um botão manual |
@@ -404,6 +406,11 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
   `Older`. A lista de branches cobre as 500 releases mais novas (5 páginas), e cada push na
   `main` cria uma release. O Play Protect pede
   para verificar os builds de debug antes de instalar.
+- **`versionCode` por contagem de commits** só cresce sempre enquanto a `main` recebe merge
+  commits. Um squash ou rebase-merge de uma branch longa pode deixar o release da CI com
+  `versionCode` menor que o de um build local daquela branch.
+- **Rotação da pré-release de debug** (apaga e recria): a branch fica sem build por alguns
+  segundos e, se a criação falhar, até o próximo push. Limitação aceita.
 - **`debug-cleanup.yml`** (apaga as pré-releases de branches removidas) só dispara depois de
   estar na `main`: eventos `delete` e `schedule` rodam o workflow da branch padrão.
 - **Mudar o estilo baixa a arte de novo** (a chave muda e a arte original não fica em cache).
@@ -442,11 +449,13 @@ A chave de assinatura e o `keystore.properties` ficam fora do repositório. **Se
 
 | Workflow | Gatilho | O que faz |
 |---|---|---|
-| `release.yml` | push na `main`; manual | Testes + lint → assina com a chave de release → confere o certificado → publica `r<versionCode>` como latest. Manual em outra branch, é um ensaio: tudo menos publicar, e a saída vira artefato por 7 dias. Um release por vez, nunca cancelado no meio |
-| `debug.yml` | push em qualquer branch menos a `main`; manual | Testes + lint → assina com a chave de debug compartilhada → confere → apaga e recria a pré-release `debug-<slug>`, com título = nome da branch. Um push novo cancela o build anterior da mesma branch |
+| `release.yml` | push na `main`; manual (o job só roda na `main`, com `environment: release`) | Testes + lint → assina com a chave de release → apaga a chave → confere o certificado → publica `r<versionCode>` como latest, se não houver um `r<N>` maior. Um release por vez, nunca cancelado no meio |
+| `debug.yml` | push em qualquer branch menos a `main`; manual | Testes + lint → assina com a chave de debug compartilhada → apaga a chave → confere → apaga e recria a pré-release `debug-<slug>`, com título = nome da branch. Um push novo cancela o build anterior da mesma branch |
 | `debug-cleanup.yml` | branch apagada, toda segunda às 04:17 UTC, manual | Apaga as pré-releases `debug-*` cuja branch (pelo título) não existe mais |
 
-Os dois de build usam `fetch-depth: 0` (o `versionCode` precisa do histórico completo) e JDK 17.
+Os dois de build usam `fetch-depth: 0` (o `versionCode` precisa do histórico completo), JDK 17
+e actions fixadas pelo SHA do commit. Um passo com `if: always()` apaga `$RUNNER_TEMP/*.jks` e
+o `keystore.properties` logo depois do assemble.
 
 Scripts em `android/ci/`:
 
@@ -457,7 +466,13 @@ Scripts em `android/ci/`:
 | `write-update-json.sh <canal> <apk> <dir>` | Copia o APK como `wallpaper-changer-<versionCode>.apk` e gera o `update.json` ao lado |
 | `debug-tag.sh <branch>` | Nome da tag: `debug-` + slug (minúsculas, dígitos, `.` e `-`) |
 
-Secrets do repositório: `RELEASE_KEYSTORE_B64`, `RELEASE_KEYSTORE_PASSWORD`,
-`RELEASE_KEY_PASSWORD`, `DEBUG_KEYSTORE_B64` (os `.jks` em base64). O alias
+Secrets (os `.jks` em base64):
+
+| Onde | Secrets |
+|---|---|
+| Environment `release` (deployment branch = `main`) | `RELEASE_KEYSTORE_B64`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_PASSWORD` |
+| Repositório | `DEBUG_KEYSTORE_B64` |
+
+O alias
 (`wallpaper-changer`) vai como texto no `release.yml`: como secret, o GitHub mascararia o
 nome do repositório em todos os logs.
