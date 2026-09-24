@@ -39,6 +39,8 @@ fun Context.screenMetrics(): ScreenMetrics {
             // Before S a window context gets no configuration updates: its
             // resources keep the screen it was created on (a foldable opened
             // since would still read as a phone). The window bounds do follow.
+            // This counts the whole screen, while the system's value leaves the
+            // nav bar out: only a screen within a bar's width of 600dp differs.
             (min(metrics.bounds.width(), metrics.bounds.height()) / density).toInt()
         }
         val bars = metrics.windowInsets.getInsetsIgnoringVisibility(
@@ -84,9 +86,11 @@ fun Context.defaultDisplayWindowContext(): Context {
  * without any track changing. Use on a context from
  * [defaultDisplayWindowContext].
  *
- * Two triggers: before S a window context gets no configuration updates (its
- * callbacks go to the application), and a configuration change may arrive
- * before the new bounds; the display listener works on every version.
+ * From S on, the window context's configuration arrives with the new bounds.
+ * Before S it gets no configuration updates (its callbacks go to the
+ * application, maybe before the bounds change), so the main display is
+ * watched too. Only there: from S on, onDisplayChanged also fires for refresh
+ * rate changes, many times a second while scrolling on an adaptive screen.
  */
 fun Context.canvasSpecs(): Flow<CanvasSpec> = callbackFlow {
     val measure = { trySend(canvasSpec(screenMetrics())) }
@@ -98,7 +102,7 @@ fun Context.canvasSpecs(): Flow<CanvasSpec> = callbackFlow {
         @Deprecated("Deprecated in Java")
         override fun onLowMemory() = Unit
     }
-    val displays = getSystemService(DisplayManager::class.java)
+    val displays = getSystemService(DisplayManager::class.java).takeIf { Build.VERSION.SDK_INT < Build.VERSION_CODES.S }
     val listener = object : DisplayManager.DisplayListener {
         override fun onDisplayChanged(displayId: Int) {
             if (displayId == Display.DEFAULT_DISPLAY) measure()
@@ -109,11 +113,11 @@ fun Context.canvasSpecs(): Flow<CanvasSpec> = callbackFlow {
         override fun onDisplayRemoved(displayId: Int) = Unit
     }
     registerComponentCallbacks(callbacks)
-    displays.registerDisplayListener(listener, Handler(Looper.getMainLooper()))
+    displays?.registerDisplayListener(listener, Handler(Looper.getMainLooper()))
     // Read after registering, so a change in between is not lost.
     measure()
     awaitClose {
-        displays.unregisterDisplayListener(listener)
+        displays?.unregisterDisplayListener(listener)
         unregisterComponentCallbacks(callbacks)
     }
 }
