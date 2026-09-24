@@ -4,7 +4,7 @@ Documentação técnica do estado atual. Descreve **como o sistema funciona hoje
 foi construído. Uso e instalação estão no [README](README.md) e no
 [README do Android](android/README.md).
 
-Última revisão: 2026-09-24 · base: `main` @ `e368b0e` (PR #5 mergeado) + `ci/android-spike`
+Última revisão: 2026-09-24 · base: `main` @ `bd7bf9e` (PR #6 mergeado) + `fix/redraw-on-density-change` (PR #7)
 
 ---
 
@@ -184,14 +184,17 @@ o loop, e o serviço mostra o motivo numa notificação.
      o desenho da outra tela. Conteúdo novo descarta os outros quadros. A tela de bloqueio
      continua estática. Enquanto o live wallpaper não é escolhido, a imagem também é aplicada
      como estática.
-3. **Troca de tela (dobrável aberto/fechado):** o `AppContainer` coleta
+3. **Troca de tela (dobrável aberto/fechado, tamanho de exibição/zoom):** o `AppContainer` coleta
    `canvasSpecs().resizes()` (`DeviceScreen.kt`). Gatilhos: `ComponentCallbacks` na window
    context e, **só abaixo do Android 12**, um `DisplayListener` do display principal (antes
    do 12 a window context não recebe configuração; do 12 em diante o listener dispararia a
    cada troca de taxa de atualização). No Android 11 o `sw` sai dos bounds da janela, não
-   dos resources, que ficam presos à tela da criação. Se o tamanho do canvas mudou, chama
-   `SyncEngine.redraw()`: redesenha a faixa na tela sem chamada à API. Rotação de celular
-   não conta (o canvas continua o mesmo). Com o sync parado, o redesenho fica pendente até
+   dos resources, que ficam presos à tela da criação. `resizes()` (`CanvasResizes.kt`) compara
+   `(canvasWidth, canvasHeight, density)`; se algum mudou, chama `SyncEngine.redraw()`:
+   redesenha a faixa na tela sem chamada à API. A densidade conta porque o zoom muda a escala
+   dp sem mudar os pixels, e o texto tem piso em dp (`WallpaperLayout`:
+   `maxOf(short × fração, MIN_*_DP × density)`). Quando o piso não vence, o redesenho repete a
+   mesma imagem (custo aceito). Rotação de celular não conta (canvas e densidade iguais). Com o sync parado, o redesenho fica pendente até
    ele voltar. Após a morte do processo, a faixa na tela é esquecida e só a próxima faixa
    redesenha.
 4. `WallpaperBlockedException` (aparelho sem wallpaper ou política proibindo) para o sync.
@@ -356,7 +359,7 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | Android: `targetSdk 36` com `compileSdk 37` | O AndroidX exige compileSdk 37. O target ficou em 36 de propósito (ver `app/lint.xml`) |
 | R8 desligado | AppAuth, Tink e a serialização precisariam de regras próprias. A build testada no aparelho é a sem R8 |
 | JaCoCo em vez de Kover | Kover 0.9.1 falha com Kotlin 2.4.20 |
-| Redesenhar ao mudar o tamanho da tela, não ao rotacionar | O wallpaper só é desenhado na troca de faixa; sem isso, abrir o dobrável mostrava o desenho da tela externa cortado, e fechar mostrava o quadrado da interna cortado nas laterais |
+| Redesenhar ao mudar o tamanho da tela ou a densidade, não ao rotacionar | O wallpaper só é desenhado na troca de faixa; sem isso, abrir o dobrável mostrava o desenho da tela externa cortado, e fechar mostrava o quadrado da interna cortado nas laterais. Mudar o zoom deixava o texto antigo até a próxima faixa (a chave do cache já incluía a densidade, então só a próxima saía certa) |
 | Debug com sufixo `.debug` | Instala ao lado do release sem apagar login e configurações (as chaves de assinatura diferem) |
 | `versionCode` = número de commits até o HEAD; clone raso é recusado | O mesmo commit tem o mesmo número no PC e na CI, e todo commit novo na `main` atualiza o app. Num clone raso a contagem voltaria para trás, então o build falha em vez de chutar. Sem git, vale 1 |
 | Chave de release só no Environment `release` (deployment branch = `main`) | Código de outra branch (build script, `ci/*.sh`) nunca roda com a chave, diga o workflow o que disser. A chave vira arquivo no `$RUNNER_TEMP` e é apagada logo depois do assemble, mesmo com falha. `verify-apk-cert.sh` confere o SHA-256 do certificado antes de publicar: um APK com outra chave nunca atualizaria o instalado |
@@ -381,6 +384,11 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | #3 | Nas duas plataformas: estilos `mesh`/`blur`, glow, moldura de vidro, cartão de vidro, intensidade do blur, transição suave, cache de 150 MB com LRU, álbum novo em ~5 s, índice faixa → álbum persistido. Desktop: menu Style e Restart na bandeja, Force Sync redesenha até com a música pausada, sem janela de console piscando. Android: `build-apk.ps1` gera e instala o release |
 | #4 | Documentação técnica (`PLANNING.md`) |
 | #5 | Android: redesenho ao abrir ou fechar dobráveis, um quadro do live wallpaper por forma de tela |
+| #6 | CI: canais release/debug no GitHub Releases, `versionCode` = contagem de commits, atualização no app |
+
+Em aberto: **#7** (`fix/redraw-on-density-change`), redesenho ao mudar o tamanho de exibição
+(zoom). Aprovado no review, CI verde. Falta validar no Galaxy A71: com música tocando, mudar o
+zoom deve redesenhar o texto sem trocar de faixa.
 
 ### 5.2 Limitações conhecidas
 
@@ -413,6 +421,12 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
   segundos e, se a criação falhar, até o próximo push. Limitação aceita.
 - **`debug-cleanup.yml`** (apaga as pré-releases de branches removidas) só dispara depois de
   estar na `main`: eventos `delete` e `schedule` rodam o workflow da branch padrão.
+- **Celular deitado:** o sistema mostra o retrato cortado e o texto some. Decisão do usuário:
+  manter.
+- **DPI muito baixo** (densidade ≤ ~1,8 numa tela de 1080 px) deixa `sw` ≥ 600dp: o celular
+  vira "tablet" e ganha canvas quadrado. Não medido; medir no A71.
+- **Zoom no Android < 12:** a densidade vem dos resources da window context, que podem ficar
+  presos à configuração da criação. Não tratado.
 - **Mudar o estilo baixa a arte de novo** (a chave muda e a arte original não fica em cache).
 - **Lacunas de teste:** `SpotifyAuth` e `SyncController` sem testes (precisariam de
   Robolectric). Serviço, receiver e bloco só foram verificados manualmente no aparelho.

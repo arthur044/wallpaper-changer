@@ -137,8 +137,9 @@ class AppContainer(app: Application) {
     )
 
     init {
-        // A foldable opened or closed: redraw the track on screen for the new
-        // canvas. No Web API call; if the sync is stopped, it redraws on start.
+        // A foldable opened or closed, or the display size (zoom) changed: redraw
+        // the track on screen for the new canvas. No Web API call; if the sync is
+        // stopped, it redraws on start.
         appScope.launch { screen.canvasSpecs().resizes().collect { syncEngine.redraw() } }
     }
 
