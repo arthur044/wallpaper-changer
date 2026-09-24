@@ -1,6 +1,7 @@
 package io.github.arthur044.wallpaperchanger
 
 import android.app.Application
+import android.content.Intent
 import android.util.Log
 import io.github.arthur044.wallpaperchanger.auth.EncryptedTokenStore
 import io.github.arthur044.wallpaperchanger.auth.SpotifyAuth
@@ -12,6 +13,11 @@ import io.github.arthur044.wallpaperchanger.core.spotify.SpotifyApi
 import io.github.arthur044.wallpaperchanger.core.sync.FileRenderMemory
 import io.github.arthur044.wallpaperchanger.core.sync.FileTrackIndexStore
 import io.github.arthur044.wallpaperchanger.core.sync.SyncEngine
+import io.github.arthur044.wallpaperchanger.core.update.InstalledBuild
+import io.github.arthur044.wallpaperchanger.core.update.UpdateChannel
+import io.github.arthur044.wallpaperchanger.core.update.UpdateClient
+import io.github.arthur044.wallpaperchanger.core.update.UpdateController
+import io.github.arthur044.wallpaperchanger.update.ApkInstaller
 import io.github.arthur044.wallpaperchanger.sync.SyncController
 import io.github.arthur044.wallpaperchanger.render.canvasSpecs
 import io.github.arthur044.wallpaperchanger.render.defaultDisplayWindowContext
@@ -29,6 +35,7 @@ import io.github.arthur044.wallpaperchanger.wallpaper.WallpaperApplier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -104,6 +111,30 @@ class AppContainer(app: Application) {
     )
 
     val syncController = SyncController(app, settings, spotifyAuth, appScope)
+
+    /**
+     * The installer's confirmation screen while an update waits for it. Kept
+     * so the update section can reopen it: starting it from the background is
+     * blocked, and the user may leave it with Home.
+     */
+    val pendingInstallConfirmation = MutableStateFlow<Intent?>(null)
+
+    val apkInstaller = ApkInstaller(app)
+
+    /** In-app updates from the builds CI publishes on GitHub Releases. */
+    val updates = UpdateController(
+        source = UpdateClient(),
+        installer = apkInstaller,
+        installed = InstalledBuild(
+            packageName = app.packageName,
+            versionCode = BuildConfig.VERSION_CODE,
+            versionName = BuildConfig.VERSION_NAME,
+            branch = BuildConfig.GIT_BRANCH,
+            channel = if (BuildConfig.DEBUG) UpdateChannel.DEBUG else UpdateChannel.RELEASE,
+        ),
+        downloadDir = File(app.cacheDir, "updates"),
+        scope = appScope,
+    )
 
     init {
         // A foldable opened or closed: redraw the track on screen for the new

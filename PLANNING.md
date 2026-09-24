@@ -4,7 +4,7 @@ Documentação técnica do estado atual. Descreve **como o sistema funciona hoje
 foi construído. Uso e instalação estão no [README](README.md) e no
 [README do Android](android/README.md).
 
-Última revisão: 2026-09-24 · base: `main` @ `0573ce5` + `fix/foldable-screen-change`
+Última revisão: 2026-09-24 · base: `main` @ `e368b0e` (PR #5 mergeado) + `ci/android-spike`
 
 ---
 
@@ -130,12 +130,12 @@ com `mesh` ou `art_glow` ligados.
 
 | Módulo | Conteúdo | Dependência de Android |
 |---|---|---|
-| `:core` | Settings, `SyncEngine`, `decide`, backoff, `ApiThrottle`, `TrackAlbumIndex`, cliente da API (OkHttp), port do ColorThief, layout, mesh, blur, moldura, vidro, chave de cache, eviction, quadros por forma de tela (`ScreenFrames`) | Nenhuma (JVM pura, testável sem aparelho) |
-| `:app` | OAuth (AppAuth + Tink), render em Canvas, cache de bases, aplicação do wallpaper, serviços, telas | Sim |
+| `:core` | Settings, `SyncEngine`, `decide`, backoff, `ApiThrottle`, `TrackAlbumIndex`, cliente da API (OkHttp), port do ColorThief, layout, mesh, blur, moldura, vidro, chave de cache, eviction, quadros por forma de tela (`ScreenFrames`), atualização do app (`update/`) | Nenhuma (JVM pura, testável sem aparelho) |
+| `:app` | OAuth (AppAuth + Tink), render em Canvas, cache de bases, aplicação do wallpaper, serviços, telas, instalador de atualizações | Sim |
 
 DI manual: um `AppContainer` por processo (`WallpaperApp.kt`) com uma instância de cada
 dependência longa: `SettingsRepository`, `SpotifyAuth`, `SpotifyApi`, `WallpaperComposer`,
-`WallpaperUpdater`, `SyncEngine`, `SyncController`, `LiveWallpaperFrames`.
+`WallpaperUpdater`, `SyncEngine`, `SyncController`, `LiveWallpaperFrames`, `UpdateController`.
 
 **Quem roda o `SyncEngine`** (nunca os dois ao mesmo tempo: `run()` usa um `Mutex`):
 
@@ -198,6 +198,28 @@ o loop, e o serviço mostra o motivo numa notificação.
    `TrackNotDrawableException` (álbum sem imagem) marca a faixa como impossível de desenhar,
    para não tentar de novo a cada consulta.
 
+### 2.4 Android: CI e atualização no app
+
+```
+push em main   → release.yml → APK release assinado → GitHub Release r<versionCode> (latest)
+push em branch → debug.yml   → APK debug assinado   → pré-release debug-<slug> (substituído a cada push)
+                                   cada release leva o APK + update.json
+app: seção "Atualizações" → UpdateClient (API do GitHub, sem token) → update.json
+     → versionCode maior? → baixa → confere SHA-256 → ApkInstaller (sessão do PackageInstaller)
+```
+
+| Componente | Papel |
+|---|---|
+| `UpdateController` (`:core`) | Lógica da seção: uma ação por vez. Fases `Checking` → `Downloading` → `Installing`, ou `UpToDate`, `Older`, `NoBuild`, `WrongPackage`, `NeedsPermission`, `Failed`. `Installing` não trava o botão: o sistema pode nunca responder (confirmação bloqueada em segundo plano ou fechada com Home). A lista de branches é buscada uma vez por processo; só "Atualizar lista" busca de novo, então reabrir ou girar a tela não gasta chamada |
+| `UpdateClient` (`:core`) | Release: `releases/latest`. Debug: lista as pré-releases `debug-*` (páginas de 100, até 5; cada página é uma chamada). Ao verificar, relê o release da branch pela tag (`releases/tags/{tag}`) antes do `update.json`, porque a CI substitui o release a cada push e o da lista em cache pode apontar para o APK do build anterior. Baixa para `cacheDir/updates` |
+| `UpdateInfo` / `GithubReleases` (`:core`) | Parse e validação do `update.json` (SHA-256 com 64 hex, `versionCode` > 0, `apk` como nome de arquivo simples, porque vira caminho na pasta de download) e da resposta do GitHub |
+| `ApkInstaller` (`:app`) | Abandona as sessões anteriores do app (e a cópia do APK delas), abre uma nova no `PackageInstaller`, grava o APK e faz o commit. Pede "instalar apps desconhecidos" |
+| `InstallResultReceiver` (`:app`, não exportado) | Abre a confirmação do sistema e guarda o intent em `AppContainer.pendingInstallConfirmation`; a seção mostra "Confirmar instalação" para reabri-la (sessão expirada → erro na tela). Limpa o intent e devolve o resultado ao controller |
+
+O canal é o do build instalado: o release só olha o release, e o debug escolhe uma branch.
+Ele vem pré-selecionado com a própria branch (`BuildConfig.GIT_BRANCH`) enquanto ela tiver
+build. Um `update.json` de outro pacote é recusado (`WrongPackage`).
+
 ---
 
 ## 3. Esquema de dados
@@ -225,8 +247,21 @@ o loop, e o serviço mostra o motivo numa notificação.
 | `files/sync_state/track_index.json` | Índice faixa → álbum (DataStore) |
 | `files/live_wallpaper/frame.bin` | Último quadro em pixels crus (sem PNG, por custo). Só o mais novo; o quadro da outra tela do dobrável fica só em memória |
 | `cacheDir/album_bases/` | Bases por álbum, LRU com teto de 150 MB |
+| `cacheDir/updates/` | APK de atualização baixado (só um: a pasta é esvaziada antes; `.part` até o SHA-256 conferir) |
 
 Backup automático do Android desligado (`allowBackup=false`).
+
+**Chaves de assinatura (fora do repositório):**
+
+| Arquivo | Uso |
+|---|---|
+| `~/.keystores/wallpaper-changer.jks` | Chave de release. Cópia mestre; a CI recebe uma cópia pelos secrets do Environment `release` |
+| `~/.keystores/wallpaper-changer-debug.jks` | Chave de debug compartilhada entre o PC e a CI, via `debugStoreFile` |
+| `android/keystore.properties` | `storeFile`, `storePassword`, `keyAlias`, `keyPassword` e `debugStoreFile` (opcional). Sem `debugStoreFile`, o debug usa o `~/.android/debug.keystore` da máquina |
+
+**`update.json`** (anexado a cada release pela CI): `channel`, `package`, `versionCode`,
+`versionName`, `commit`, `branch` (nome exato), `apk` (nome do asset), `sha256`, `notes`,
+`builtAt`. Os campos de versão são lidos do próprio APK (`aapt2`).
 
 ### 3.3 Configuração
 
@@ -323,6 +358,15 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | JaCoCo em vez de Kover | Kover 0.9.1 falha com Kotlin 2.4.20 |
 | Redesenhar ao mudar o tamanho da tela, não ao rotacionar | O wallpaper só é desenhado na troca de faixa; sem isso, abrir o dobrável mostrava o desenho da tela externa cortado, e fechar mostrava o quadrado da interna cortado nas laterais |
 | Debug com sufixo `.debug` | Instala ao lado do release sem apagar login e configurações (as chaves de assinatura diferem) |
+| `versionCode` = número de commits até o HEAD; clone raso é recusado | O mesmo commit tem o mesmo número no PC e na CI, e todo commit novo na `main` atualiza o app. Num clone raso a contagem voltaria para trás, então o build falha em vez de chutar. Sem git, vale 1 |
+| Chave de release só no Environment `release` (deployment branch = `main`) | Código de outra branch (build script, `ci/*.sh`) nunca roda com a chave, diga o workflow o que disser. A chave vira arquivo no `$RUNNER_TEMP` e é apagada logo depois do assemble, mesmo com falha. `verify-apk-cert.sh` confere o SHA-256 do certificado antes de publicar: um APK com outra chave nunca atualizaria o instalado |
+| Actions fixadas pelo SHA do commit (tag no comentário) | Uma tag movida não pode alcançar a chave de assinatura |
+| Release não publica se já existe um `r<N>` maior | Reexecutar uma execução antiga não pode tornar um build mais velho o "latest" |
+| Chave de debug compartilhada entre o PC e a CI | O APK de debug de um atualiza o do outro, sem desinstalar |
+| Canais: release em `releases/latest`, debug com uma pré-release por branch | A `main` publica `r<versionCode>`, marcada como latest. Cada branch tem só o build mais novo em `debug-<slug>`. O slug perde a `/`, então o nome exato da branch vai no título e no `update.json` |
+| Consultas ao GitHub sem token | Repositório público, e um token no app seria um segredo em todo celular. O limite de 60 por hora basta para um botão manual |
+| SHA-256 conferido antes de instalar | O APK precisa ser o que o `update.json` descreve. Se não bater, o arquivo é apagado e nunca vai para o instalador |
+| Instalação por sessão do `PackageInstaller` | `ACTION_INSTALL_PACKAGE` está obsoleto desde o Android 10. A sessão devolve um status por código, que a tela traduz |
 
 ---
 
@@ -335,6 +379,8 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | #1 | Desktop: híbrido SMTC/API, pré-busca de tracklist, tela de bloqueio, bandeja, assistente de 6 passos |
 | #2 | Android M0–M16: OAuth, render, cache, FGS, retomada após reboot/update, tela principal, bloco nas Configurações rápidas, onboarding, MediaSession opcional, modo local, APK assinado |
 | #3 | Nas duas plataformas: estilos `mesh`/`blur`, glow, moldura de vidro, cartão de vidro, intensidade do blur, transição suave, cache de 150 MB com LRU, álbum novo em ~5 s, índice faixa → álbum persistido. Desktop: menu Style e Restart na bandeja, Force Sync redesenha até com a música pausada, sem janela de console piscando. Android: `build-apk.ps1` gera e instala o release |
+| #4 | Documentação técnica (`PLANNING.md`) |
+| #5 | Android: redesenho ao abrir ou fechar dobráveis, um quadro do live wallpaper por forma de tela |
 
 ### 5.2 Limitações conhecidas
 
@@ -355,6 +401,18 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
   wallpaper mostra o quadro da outra tela cortado. Com a tela de bloqueio sincronizada, ela é
   reaplicada a cada abrir/fechar e pisca. Não se sabe se a One UI guarda wallpapers
   separados por tela nem se aceita `setBitmap` de terceiros nas duas.
+- **Atualização no app (debug):** trocar para uma branch com `versionCode` menor que o
+  instalado (menos commits) exige desinstalar: o Android recusa o downgrade, e a tela mostra
+  `Older`. A lista de branches cobre as 500 releases mais novas (5 páginas), e cada push na
+  `main` cria uma release. O Play Protect pede
+  para verificar os builds de debug antes de instalar.
+- **`versionCode` por contagem de commits** só cresce sempre enquanto a `main` recebe merge
+  commits. Um squash ou rebase-merge de uma branch longa pode deixar o release da CI com
+  `versionCode` menor que o de um build local daquela branch.
+- **Rotação da pré-release de debug** (apaga e recria): a branch fica sem build por alguns
+  segundos e, se a criação falhar, até o próximo push. Limitação aceita.
+- **`debug-cleanup.yml`** (apaga as pré-releases de branches removidas) só dispara depois de
+  estar na `main`: eventos `delete` e `schedule` rodam o workflow da branch padrão.
 - **Mudar o estilo baixa a arte de novo** (a chave muda e a arte original não fica em cache).
 - **Lacunas de teste:** `SpotifyAuth` e `SyncController` sem testes (precisariam de
   Robolectric). Serviço, receiver e bloco só foram verificados manualmente no aparelho.
@@ -380,6 +438,41 @@ wallpaper por monitor e testes com Robolectric para `SpotifyAuth` e `SyncControl
 | Android: lógica pura | `cd android && ./gradlew :core:test` (cobertura: `:core:jacocoTestReport`) |
 | Android: app | `./gradlew :app:testDebugUnitTest`, `:app:connectedDebugAndroidTest` (celular desbloqueado e com a tela ligada), `:app:lintDebug` |
 | Android: release | `android/build-apk.cmd` (gera, confere a assinatura, copia para `android/dist/`, instala por USB se pedido) |
+| Android: versão | `./gradlew -q :app:printVersion` → `versionCode=<commits> sha=<7> branch=<nome>` |
 
 A chave de assinatura e o `keystore.properties` ficam fora do repositório. **Sem a chave não
 é possível atualizar o app instalado.**
+
+`versionName` = `0.1.0` + sufixo: ` (<sha>)` no release e ` (<sha>, <branch>)` no debug.
+
+**CI (GitHub Actions, `.github/workflows/`):**
+
+| Workflow | Gatilho | O que faz |
+|---|---|---|
+| `release.yml` | push na `main`; manual (o job só roda na `main`, com `environment: release`) | Testes + lint → assina com a chave de release → apaga a chave → confere o certificado → publica `r<versionCode>` como latest, se não houver um `r<N>` maior. Um release por vez, nunca cancelado no meio |
+| `debug.yml` | push em qualquer branch menos a `main`; manual | Testes + lint → assina com a chave de debug compartilhada → apaga a chave → confere → apaga e recria a pré-release `debug-<slug>`, com título = nome da branch. Um push novo cancela o build anterior da mesma branch |
+| `debug-cleanup.yml` | branch apagada, toda segunda às 04:17 UTC, manual | Apaga as pré-releases `debug-*` cuja branch (pelo título) não existe mais |
+
+Os dois de build usam `fetch-depth: 0` (o `versionCode` precisa do histórico completo), JDK 17
+e actions fixadas pelo SHA do commit. Um passo com `if: always()` apaga `$RUNNER_TEMP/*.jks` e
+o `keystore.properties` logo depois do assemble.
+
+Scripts em `android/ci/`:
+
+| Script | Função |
+|---|---|
+| `write-signing.sh` | Recria as chaves no `$RUNNER_TEMP` a partir dos secrets e escreve o `keystore.properties`. Os secrets de release são tudo ou nada |
+| `verify-apk-cert.sh <release\|debug> <apk>` | Falha se o SHA-256 do certificado não for o esperado para o canal (valores públicos, fixos no script) |
+| `write-update-json.sh <canal> <apk> <dir>` | Copia o APK como `wallpaper-changer-<versionCode>.apk` e gera o `update.json` ao lado |
+| `debug-tag.sh <branch>` | Nome da tag: `debug-` + slug (minúsculas, dígitos, `.` e `-`) |
+
+Secrets (os `.jks` em base64):
+
+| Onde | Secrets |
+|---|---|
+| Environment `release` (deployment branch = `main`) | `RELEASE_KEYSTORE_B64`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_PASSWORD` |
+| Repositório | `DEBUG_KEYSTORE_B64` |
+
+O alias
+(`wallpaper-changer`) vai como texto no `release.yml`: como secret, o GitHub mascararia o
+nome do repositório em todos os logs.

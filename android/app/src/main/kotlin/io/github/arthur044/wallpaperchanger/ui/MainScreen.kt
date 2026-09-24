@@ -24,11 +24,13 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import io.github.arthur044.wallpaperchanger.AppContainer
 import io.github.arthur044.wallpaperchanger.BuildConfig
 import io.github.arthur044.wallpaperchanger.core.spotify.ArtSource
 import io.github.arthur044.wallpaperchanger.core.sync.SyncStatus
+import io.github.arthur044.wallpaperchanger.core.update.InstallOutcome
 import io.github.arthur044.wallpaperchanger.media.notificationAccessGranted
 import io.github.arthur044.wallpaperchanger.wallpaper.LiveWallpaperService
 import kotlinx.coroutines.CancellationException
@@ -49,6 +51,9 @@ fun MainScreen(
     val scope = container.appScope
     val settings by container.settings.settings.collectAsState(initial = null)
     val status by container.syncEngine.status.collectAsState()
+    val update by container.updates.state.collectAsState()
+    val pendingConfirmation by container.pendingInstallConfirmation.collectAsState()
+    LaunchedEffect(Unit) { container.updates.loadBranches() }
     var signedIn by remember { mutableStateOf(true) }
     LaunchedEffect(status) { signedIn = container.spotifyAuth.status().signedIn }
 
@@ -92,6 +97,8 @@ fun MainScreen(
             notificationAccess = notificationAccess,
             liveWallpaperActive = liveWallpaperActive,
             showDebugTools = BuildConfig.DEBUG,
+            update = update,
+            updateConfirmationPending = pendingConfirmation != null,
         ),
         callbacks = MainCallbacks(
             onSyncEnabledChange = { on ->
@@ -136,6 +143,21 @@ fun MainScreen(
             onPickLiveWallpaper = { context.pickLiveWallpaper() },
             onConnect = onConnect,
             onOpenDebug = onOpenDebug,
+            update = UpdateCallbacks(
+                onUpdate = container.updates::update,
+                onSelectBranch = container.updates::selectBranch,
+                onRefreshBranches = { container.updates.loadBranches(force = true) },
+                onAllowInstalls = { context.allowInstallingApps() },
+                onConfirmInstall = {
+                    pendingConfirmation?.let { confirm ->
+                        runCatching { context.startActivity(confirm) }.onFailure { e ->
+                            // The session is gone (expired, or already answered): say so.
+                            container.pendingInstallConfirmation.value = null
+                            container.updates.onInstallOutcome(InstallOutcome.FAILED, e.message)
+                        }
+                    }
+                },
+            ),
         ),
         modifier = modifier,
     )
@@ -153,6 +175,14 @@ private fun Context.pickLiveWallpaper() {
     } catch (e: ActivityNotFoundException) {
         runCatching { startActivity(Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER)) }
     }
+}
+
+// The system page where the user lets this app install apps (needed for updates).
+private fun Context.allowInstallingApps() {
+    startActivity(
+        Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, "package:$packageName".toUri())
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+    )
 }
 
 // A small copy of the art for the status card; null if it can't be fetched now.

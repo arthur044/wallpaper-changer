@@ -1,0 +1,86 @@
+# Debug channel: every push to a branch other than main builds the debug APK
+# (signed with the debug key shared with the developer's PC) and publishes
+# it as the pre-release debug-<branch-slug>, replaced on every push so each
+# branch keeps only its newest build. The release title is the exact branch
+# name (the tag can't hold a "/"); the app lists branches from it.
+name: Android debug
+
+on:
+  push:
+    branches-ignore: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# A newer push to the same branch makes this build pointless.
+concurrency:
+  group: android-debug-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  debug:
+    if: github.ref_name != 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      # Actions pinned by commit: a moved tag must not reach the signing key.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # versionCode counts commits: the build refuses a shallow clone.
+          fetch-depth: 0
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      - name: Print version
+        run: ./gradlew -q :app:printVersion
+
+      - name: Test and lint
+        run: ./gradlew :core:test :app:testDebugUnitTest :app:lintDebug
+
+      - name: Set up the shared debug key
+        run: ci/write-signing.sh
+        env:
+          DEBUG_KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+
+      - name: Assemble debug APK
+        run: ./gradlew :app:assembleDebug
+
+      - name: Delete the signing key from the runner
+        if: always()
+        run: rm -f "$RUNNER_TEMP"/*.jks keystore.properties
+
+      - name: Verify signature
+        run: ci/verify-apk-cert.sh debug app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Stage APK and update.json
+        id: stage
+        run: |
+          apk="$(ci/write-update-json.sh debug app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/publish")"
+          echo "apk=$apk" >> "$GITHUB_OUTPUT"
+          echo "tag=$(ci/debug-tag.sh "$GITHUB_REF_NAME")" >> "$GITHUB_OUTPUT"
+          echo "version_name=$(jq -r .versionName "$RUNNER_TEMP/publish/update.json")" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the branch's pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.stage.outputs.tag }}
+          APK: ${{ steps.stage.outputs.apk }}
+          VERSION_NAME: ${{ steps.stage.outputs.version_name }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release delete "$TAG" --yes --cleanup-tag
+          fi
+          gh release create "$TAG" "$APK" "$RUNNER_TEMP/publish/update.json" \
+            --target "$GITHUB_SHA" --title "$GITHUB_REF_NAME" --prerelease --latest=false \
+            --notes "Debug build $VERSION_NAME of branch \`$GITHUB_REF_NAME\`.
+
+          $(git log -1 --format=%B)"

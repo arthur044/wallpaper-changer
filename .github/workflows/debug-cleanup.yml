@@ -1,0 +1,36 @@
+# Deletes the debug pre-release of every branch that no longer exists, so
+# the app's branch list only offers live ones. Runs when a branch is deleted,
+# weekly as a safety net, and by hand.
+name: Android debug cleanup
+
+on:
+  delete:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Delete pre-releases of deleted branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          branches="$(gh api --paginate "repos/$GH_REPO/branches" -q '.[].name')"
+          # The title holds the exact branch name (see debug.yml).
+          gh release list --limit 1000 --json tagName,name,isPrerelease \
+            -q '.[] | select(.isPrerelease and (.tagName | startswith("debug-"))) | [.tagName, .name] | @tsv' |
+          while IFS=$'\t' read -r tag branch; do
+            if grep -qxF -- "$branch" <<< "$branches"; then
+              echo "keep $tag ($branch)"
+            else
+              echo "delete $tag ($branch is gone)"
+              gh release delete "$tag" --yes --cleanup-tag
+            fi
+          done

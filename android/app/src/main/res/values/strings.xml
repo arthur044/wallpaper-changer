@@ -90,4 +90,37 @@
     <string name="tile_label">Album wallpaper</string>
     <string name="tile_on">On</string>
     <string name="tile_off">Off</string>
+
+    <!-- Update screen -->
+    <string name="update_section">Updates</string>
+    <string name="update_installed">Installed: %1$s</string>
+    <string name="update_channel_release">Release channel: the latest build of main.</string>
+    <string name="update_channel_debug">Debug channel: pick a branch to follow its newest build.</string>
+    <string name="update_button_release">Update app</string>
+    <string name="update_button_debug">Download latest build</string>
+    <string name="update_branch_label">Branch</string>
+    <string name="update_branch_loading">Loading branches…</string>
+    <string name="update_branch_none">No branch has a debug build yet</string>
+    <string name="update_branch_refresh">Refresh list</string>
+    <string name="update_checking">Checking…</string>
+    <string name="update_no_build">Nothing published here yet.</string>
+    <string name="update_up_to_date">Already up to date (%1$s).</string>
+    <string name="update_older">%1$s is older than the installed build, and Android won\'t install over a newer one. Uninstall the debug app first to switch to it.</string>
+    <string name="update_wrong_package">The published build is for another app, so it can\'t update this one.</string>
+    <string name="update_needs_permission">To install %1$s, allow this app to install apps, then tap the button again.</string>
+    <string name="update_allow">Allow</string>
+    <string name="update_downloading">Downloading %1$s…</string>
+    <string name="update_installing">Installing %1$s: confirm on the next screen. If Play Protect asks, let it scan the app.</string>
+    <string name="update_failed_network">Couldn\'t reach GitHub. Check the connection and try again.</string>
+    <string name="update_failed_rate_limited">GitHub allows 60 checks an hour. Try again after %1$s.</string>
+    <string name="update_failed_rate_limited_later">GitHub allows 60 checks an hour. Try again later.</string>
+    <string name="update_failed_bad_data">The published update information is invalid.</string>
+    <string name="update_failed_checksum">The download didn\'t match its checksum and was deleted. Try again.</string>
+    <string name="update_failed_blocked">The install was blocked (Play Protect or a device policy). If Play Protect offers it, scan the app and install.</string>
+    <string name="update_failed_conflict">Android refused: this build is signed with another key or is older than the installed one. Uninstall the app to install it.</string>
+    <string name="update_failed_storage">Not enough storage to install the update.</string>
+    <string name="update_failed_invalid">The downloaded app is invalid for this device.</string>
+    <string name="update_failed_other">The install failed: %1$s</string>
+    <string name="update_older_release">%1$s is older than the installed build: there\'s nothing to update.</string>
+    <string name="update_confirm">Confirm install</string>
 </resources>
