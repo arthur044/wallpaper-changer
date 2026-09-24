@@ -211,6 +211,30 @@ class UpdateControllerTest {
     }
 
     @Test
+    fun `the branch list is fetched once unless refreshed`() = runTest {
+        var calls = 0
+        val counting = object : UpdateSource by source {
+            override suspend fun debugBranches(): List<DebugBranch> {
+                calls++
+                return listOf(DebugBranch("feat/foo", release("debug-feat-foo", "feat/foo")))
+            }
+        }
+        val c = UpdateController(
+            counting, installer, InstalledBuild(DEBUG_PKG, 90, "0.1.0", "feat/foo", UpdateChannel.DEBUG), dir, backgroundScope,
+        )
+
+        c.loadBranches()
+        runCurrent()
+        c.loadBranches() // the screen composed again (rotation, coming back)
+        runCurrent()
+        assertEquals(1, calls)
+
+        c.loadBranches(force = true)
+        runCurrent()
+        assertEquals(2, calls)
+    }
+
+    @Test
     fun `debug installs the chosen branch's newer build`() = runTest {
         source.branches = listOf(
             DebugBranch("feat/foo", release("debug-feat-foo", "feat/foo")),

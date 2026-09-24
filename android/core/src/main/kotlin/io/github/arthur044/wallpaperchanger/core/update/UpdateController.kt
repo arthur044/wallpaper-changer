@@ -129,11 +129,17 @@ class UpdateController(
     val state: StateFlow<UpdateState> = mutableState.asStateFlow()
 
     private var debugBranches: List<DebugBranch> = emptyList()
+    private var branchesLoaded = false
     private var job: Job? = null
 
-    /** Debug channel: (re)loads the branch list; keeps the selection while it still exists. */
-    fun loadBranches() {
+    /**
+     * Debug channel: loads the branch list once; [force] (the refresh button)
+     * loads it again. Opening the screen, or rotating it, costs no API call
+     * after the first. The selection is kept while its branch still exists.
+     */
+    fun loadBranches(force: Boolean = false) {
         if (state.value.installed.channel != UpdateChannel.DEBUG) return
+        if (branchesLoaded && !force) return
         launchOnce { refreshBranches() }
     }
 
@@ -188,6 +194,7 @@ class UpdateController(
         mutableState.update { it.copy(branchesLoading = true) }
         try {
             debugBranches = source.debugBranches()
+            branchesLoaded = true
         } finally {
             mutableState.update { it.copy(branchesLoading = false) }
         }

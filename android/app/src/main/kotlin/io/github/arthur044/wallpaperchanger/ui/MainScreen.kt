@@ -30,6 +30,7 @@ import io.github.arthur044.wallpaperchanger.AppContainer
 import io.github.arthur044.wallpaperchanger.BuildConfig
 import io.github.arthur044.wallpaperchanger.core.spotify.ArtSource
 import io.github.arthur044.wallpaperchanger.core.sync.SyncStatus
+import io.github.arthur044.wallpaperchanger.core.update.InstallOutcome
 import io.github.arthur044.wallpaperchanger.media.notificationAccessGranted
 import io.github.arthur044.wallpaperchanger.wallpaper.LiveWallpaperService
 import kotlinx.coroutines.CancellationException
@@ -145,9 +146,17 @@ fun MainScreen(
             update = UpdateCallbacks(
                 onUpdate = container.updates::update,
                 onSelectBranch = container.updates::selectBranch,
-                onRefreshBranches = container.updates::loadBranches,
+                onRefreshBranches = { container.updates.loadBranches(force = true) },
                 onAllowInstalls = { context.allowInstallingApps() },
-                onConfirmInstall = { pendingConfirmation?.let { runCatching { context.startActivity(it) } } },
+                onConfirmInstall = {
+                    pendingConfirmation?.let { confirm ->
+                        runCatching { context.startActivity(confirm) }.onFailure { e ->
+                            // The session is gone (expired, or already answered): say so.
+                            container.pendingInstallConfirmation.value = null
+                            container.updates.onInstallOutcome(InstallOutcome.FAILED, e.message)
+                        }
+                    }
+                },
             ),
         ),
         modifier = modifier,
