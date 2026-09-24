@@ -179,11 +179,13 @@ o loop, e o serviço mostra o motivo numa notificação.
      inicial e opcionalmente na de bloqueio;
    - ligado → publica o bitmap em `LiveWallpaperFrames`, que o `LiveWallpaperService` mostra
      com crossfade de 300 ms. Guarda um quadro por forma de tela (até 2, do mesmo conteúdo:
-     faixa + settings); o serviço mostra o de proporção mais próxima da superfície, então
+     faixa + settings visuais, `frameContent`); o serviço mostra o de proporção mais próxima da superfície, então
      fechar o dobrável troca na hora, sem esticar o desenho da outra tela. A tela de bloqueio continua estática. Enquanto o live wallpaper
      não é escolhido, a imagem também é aplicada como estática.
 3. **Troca de tela (dobrável aberto/fechado):** o `AppContainer` observa mudanças de
-   configuração na window context (`canvasSpecs().resizes()`). Se o tamanho do canvas mudou,
+   configuração e do display principal (`DisplayListener`, porque antes do Android 12 a window
+   context não recebe configuração) via `canvasSpecs().resizes()`. No Android 11 o `sw` sai
+   dos bounds da janela, não dos resources, que ficam presos à tela da criação. Se o tamanho do canvas mudou,
    chama `SyncEngine.redraw()`: redesenha a faixa na tela sem chamada à API. Rotação de
    celular não conta (o canvas continua o mesmo). Com o sync parado, o redesenho fica
    pendente até ele voltar. Após a morte do processo, a faixa na tela é esquecida e só a

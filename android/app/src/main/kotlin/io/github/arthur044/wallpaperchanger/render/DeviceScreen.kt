@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.res.Configuration
 import android.hardware.display.DisplayManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.DisplayMetrics
 import android.view.Display
 import android.view.WindowInsets
@@ -16,6 +18,7 @@ import io.github.arthur044.wallpaperchanger.core.render.canvasSpec
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
@@ -28,9 +31,16 @@ import kotlin.math.roundToInt
 fun Context.screenMetrics(): ScreenMetrics {
     val windowManager = getSystemService(WindowManager::class.java)
     val density = resources.displayMetrics.density
-    val smallestWidthDp = resources.configuration.smallestScreenWidthDp
     return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
         val metrics = windowManager.maximumWindowMetrics
+        val smallestWidthDp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            resources.configuration.smallestScreenWidthDp
+        } else {
+            // Before S a window context gets no configuration updates: its
+            // resources keep the screen it was created on (a foldable opened
+            // since would still read as a phone). The window bounds do follow.
+            (min(metrics.bounds.width(), metrics.bounds.height()) / density).toInt()
+        }
         val bars = metrics.windowInsets.getInsetsIgnoringVisibility(
             WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout(),
         )
@@ -50,7 +60,7 @@ fun Context.screenMetrics(): ScreenMetrics {
             widthPx = real.widthPixels,
             heightPx = real.heightPixels,
             density = density,
-            smallestWidthDp = smallestWidthDp,
+            smallestWidthDp = resources.configuration.smallestScreenWidthDp,
             insets = Insets(0, (STATUS_BAR_DP * density).roundToInt(), 0, (NAV_BAR_DP * density).roundToInt()),
         )
     }
@@ -69,23 +79,43 @@ fun Context.defaultDisplayWindowContext(): Context {
 }
 
 /**
- * The canvas for this screen, now and after every configuration change: a
- * foldable opened or closed changes the screen without any track changing.
- * Use on a context from [defaultDisplayWindowContext], which follows its display.
+ * The canvas for this screen, now and whenever the main display or the
+ * configuration changes: a foldable opened or closed changes the screen
+ * without any track changing. Use on a context from
+ * [defaultDisplayWindowContext].
+ *
+ * Two triggers: before S a window context gets no configuration updates (its
+ * callbacks go to the application), and a configuration change may arrive
+ * before the new bounds; the display listener works on every version.
  */
 fun Context.canvasSpecs(): Flow<CanvasSpec> = callbackFlow {
+    val measure = { trySend(canvasSpec(screenMetrics())) }
     val callbacks = object : ComponentCallbacks {
         override fun onConfigurationChanged(newConfig: Configuration) {
-            trySend(canvasSpec(screenMetrics()))
+            measure()
         }
 
         @Deprecated("Deprecated in Java")
         override fun onLowMemory() = Unit
     }
+    val displays = getSystemService(DisplayManager::class.java)
+    val listener = object : DisplayManager.DisplayListener {
+        override fun onDisplayChanged(displayId: Int) {
+            if (displayId == Display.DEFAULT_DISPLAY) measure()
+        }
+
+        override fun onDisplayAdded(displayId: Int) = Unit
+
+        override fun onDisplayRemoved(displayId: Int) = Unit
+    }
     registerComponentCallbacks(callbacks)
+    displays.registerDisplayListener(listener, Handler(Looper.getMainLooper()))
     // Read after registering, so a change in between is not lost.
-    trySend(canvasSpec(screenMetrics()))
-    awaitClose { unregisterComponentCallbacks(callbacks) }
+    measure()
+    awaitClose {
+        displays.unregisterDisplayListener(listener)
+        unregisterComponentCallbacks(callbacks)
+    }
 }
 
 private const val STATUS_BAR_DP = 24

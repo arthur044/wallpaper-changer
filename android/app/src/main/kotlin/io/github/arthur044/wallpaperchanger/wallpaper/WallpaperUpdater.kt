@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import io.github.arthur044.wallpaperchanger.core.NowPlaying
 import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.render.CanvasSpec
+import io.github.arthur044.wallpaperchanger.core.render.frameContent
 import io.github.arthur044.wallpaperchanger.core.sync.WallpaperBlockedException
 import io.github.arthur044.wallpaperchanger.core.sync.WallpaperSink
 import io.github.arthur044.wallpaperchanger.render.WallpaperComposer
@@ -53,7 +54,7 @@ class WallpaperUpdater(
 
     private suspend fun showLive(live: LiveWallpaper, bitmap: Bitmap, nowPlaying: NowPlaying, current: Settings): ApplyResult {
         // Same track and look drawn for the other screen of a foldable: both kept.
-        withContext(Dispatchers.IO) { live.frames.publish(bitmap, content = nowPlaying to current) }
+        withContext(Dispatchers.IO) { live.frames.publish(bitmap, content = frameContent(nowPlaying, current)) }
         return when {
             !live.status.isActive() -> applier.apply(bitmap, includeLockScreen = current.syncLockScreen)
             current.syncLockScreen -> applier.applyToLockScreenOnly(bitmap)
