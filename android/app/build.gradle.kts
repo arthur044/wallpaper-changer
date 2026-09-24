@@ -51,6 +51,8 @@ android {
         versionCode = gitCommitCount
         // Kept a plain literal: build-apk.ps1 reads it from this file.
         versionName = "0.1.0"
+        // The update screen preselects this branch's debug build.
+        buildConfigField("String", "GIT_BRANCH", "\"${gitBranch.filter { it != '"' && it.code != 92 }}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // AppAuth's RedirectUriReceiverActivity claims this scheme; the full

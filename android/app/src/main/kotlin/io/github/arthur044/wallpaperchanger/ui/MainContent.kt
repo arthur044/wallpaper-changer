@@ -41,6 +41,7 @@ import io.github.arthur044.wallpaperchanger.core.config.BackgroundStyle
 import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.config.TextCard
 import io.github.arthur044.wallpaperchanger.core.sync.SyncStatus
+import io.github.arthur044.wallpaperchanger.core.update.UpdateState
 import io.github.arthur044.wallpaperchanger.sync.describe
 import kotlin.math.roundToInt
 
@@ -56,6 +57,8 @@ data class MainUiState(
     val liveWallpaperActive: Boolean = false,
     /** Debug builds only: the link to the debug and spike screens. */
     val showDebugTools: Boolean = false,
+    /** The update section; null hides it (previews, tests). */
+    val update: UpdateState? = null,
 )
 
 class MainCallbacks(
@@ -73,6 +76,7 @@ class MainCallbacks(
     val onPickLiveWallpaper: () -> Unit = {},
     val onConnect: () -> Unit = {},
     val onOpenDebug: () -> Unit = {},
+    val update: UpdateCallbacks = UpdateCallbacks(),
 )
 
 /** The main screen, stateless: everything comes in through [state] and goes out through [callbacks]. */
@@ -94,6 +98,7 @@ fun MainContent(state: MainUiState, callbacks: MainCallbacks, modifier: Modifier
             LookSection(state, callbacks)
             InstantSection(state, callbacks)
             AdvancedSection(state.settings, callbacks.onSettingsChange)
+            state.update?.let { UpdateSection(it, callbacks.update) }
             // Kept in the code, but only reachable from a debug build.
             if (state.showDebugTools) {
                 TextButton(onClick = callbacks.onOpenDebug, modifier = Modifier.align(Alignment.CenterHorizontally)) {
@@ -335,7 +340,7 @@ private fun InstantSection(state: MainUiState, callbacks: MainCallbacks) {
 }
 
 @Composable
-private fun Section(title: String, content: @Composable () -> Unit) {
+internal fun Section(title: String, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         HorizontalDivider()
         Spacer(Modifier.height(4.dp))

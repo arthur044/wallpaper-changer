@@ -84,4 +84,35 @@
     <string name="tile_label">Capa no wallpaper</string>
     <string name="tile_on">Ligado</string>
     <string name="tile_off">Desligado</string>
+
+    <!-- Update screen -->
+    <string name="update_section">Atualizações</string>
+    <string name="update_installed">Instalado: %1$s</string>
+    <string name="update_channel_release">Canal release: o build mais recente da main.</string>
+    <string name="update_channel_debug">Canal debug: escolha uma branch para acompanhar o build mais recente dela.</string>
+    <string name="update_button_release">Atualizar app</string>
+    <string name="update_button_debug">Baixar versão mais recente</string>
+    <string name="update_branch_label">Branch</string>
+    <string name="update_branch_loading">Carregando branches…</string>
+    <string name="update_branch_none">Nenhuma branch tem build de debug ainda</string>
+    <string name="update_branch_refresh">Atualizar lista</string>
+    <string name="update_checking">Verificando…</string>
+    <string name="update_no_build">Nada publicado aqui ainda.</string>
+    <string name="update_up_to_date">Já está na versão mais recente (%1$s).</string>
+    <string name="update_older">%1$s é mais antigo que o build instalado, e o Android não instala por cima de um mais novo. Desinstale o app de debug antes para trocar para ele.</string>
+    <string name="update_wrong_package">O build publicado é de outro app e não pode atualizar este.</string>
+    <string name="update_needs_permission">Para instalar %1$s, permita que este app instale apps e toque no botão de novo.</string>
+    <string name="update_allow">Permitir</string>
+    <string name="update_downloading">Baixando %1$s…</string>
+    <string name="update_installing">Instalando %1$s: confirme na próxima tela. Se o Play Protect pedir, deixe-o verificar o app.</string>
+    <string name="update_failed_network">Não foi possível acessar o GitHub. Confira a conexão e tente de novo.</string>
+    <string name="update_failed_rate_limited">O GitHub permite 60 verificações por hora. Tente de novo depois das %1$s.</string>
+    <string name="update_failed_rate_limited_later">O GitHub permite 60 verificações por hora. Tente de novo mais tarde.</string>
+    <string name="update_failed_bad_data">As informações da atualização publicada são inválidas.</string>
+    <string name="update_failed_checksum">O download não bateu com o checksum e foi apagado. Tente de novo.</string>
+    <string name="update_failed_blocked">A instalação foi bloqueada (Play Protect ou uma política do aparelho). Se o Play Protect oferecer, verifique o app e instale.</string>
+    <string name="update_failed_conflict">O Android recusou: este build foi assinado com outra chave ou é mais antigo que o instalado. Desinstale o app para instalá-lo.</string>
+    <string name="update_failed_storage">Não há espaço suficiente para instalar a atualização.</string>
+    <string name="update_failed_invalid">O app baixado é inválido para este aparelho.</string>
+    <string name="update_failed_other">A instalação falhou: %1$s</string>
 </resources>

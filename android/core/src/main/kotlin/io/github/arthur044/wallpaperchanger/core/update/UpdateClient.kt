@@ -36,6 +36,17 @@ sealed interface UpdateCheck {
     data class WrongPackage(val info: UpdateInfo) : UpdateCheck
 }
 
+/** Where builds come from; [UpdateClient] in the app, a fake in tests. */
+interface UpdateSource {
+    suspend fun checkRelease(installedPackage: String, installedVersionCode: Int): UpdateCheck
+
+    suspend fun debugBranches(): List<DebugBranch>
+
+    suspend fun checkDebug(branch: DebugBranch, installedPackage: String, installedVersionCode: Int): UpdateCheck
+
+    suspend fun download(found: UpdateCheck.Found, dir: File): File
+}
+
 /**
  * Finds and downloads builds published by CI as GitHub Releases: the release
  * channel is the latest release, the debug channel one pre-release per branch.
@@ -45,9 +56,9 @@ sealed interface UpdateCheck {
 class UpdateClient(
     private val apiBase: HttpUrl = DEFAULT_API_BASE,
     private val http: OkHttpClient = defaultHttpClient(),
-) {
+) : UpdateSource {
     /** The release channel: the newest release of main (GitHub leaves pre-releases out). */
-    suspend fun checkRelease(installedPackage: String, installedVersionCode: Int): UpdateCheck {
+    override suspend fun checkRelease(installedPackage: String, installedVersionCode: Int): UpdateCheck {
         val release = getOrNull(apiBase.newBuilder().addPathSegments("releases/latest").build())
             ?.let(::parseRelease)
             ?: return UpdateCheck.NoBuild
@@ -55,13 +66,13 @@ class UpdateClient(
     }
 
     /** The branches with a debug build, newest first, from the first 100 releases. */
-    suspend fun debugBranches(): List<DebugBranch> {
+    override suspend fun debugBranches(): List<DebugBranch> {
         val url = apiBase.newBuilder().addPathSegment("releases").addQueryParameter("per_page", "100").build()
         return debugBranches(parseReleases(getOrNull(url) ?: "[]"))
     }
 
     /** The debug channel: the build of [branch]. */
-    suspend fun checkDebug(branch: DebugBranch, installedPackage: String, installedVersionCode: Int): UpdateCheck =
+    override suspend fun checkDebug(branch: DebugBranch, installedPackage: String, installedVersionCode: Int): UpdateCheck =
         check(branch.release, installedPackage, installedVersionCode)
 
     private suspend fun check(release: GithubRelease, installedPackage: String, installedVersionCode: Int): UpdateCheck {
@@ -76,7 +87,7 @@ class UpdateClient(
      * kept) and checks it against update.json. A file that doesn't match is
      * deleted, never returned.
      */
-    suspend fun download(found: UpdateCheck.Found, dir: File): File {
+    override suspend fun download(found: UpdateCheck.Found, dir: File): File {
         val url = found.release.assetUrl(found.info.apk)
             ?: throw UpdateNetworkException("The release has no ${found.info.apk}")
         val target = File(dir, found.info.apk)
