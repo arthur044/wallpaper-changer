@@ -46,6 +46,34 @@ comparar com valores gerados pelo código do desktop.
 
 O guia de primeira execução dentro do app mostra esse passo a passo e valida o Client ID.
 
+## Baixar e atualizar
+
+A CI publica os APKs em [GitHub Releases](https://github.com/arthur044/wallpaper-changer/releases):
+
+- **Release:** a release marcada como *Latest*, gerada a cada push na `main`
+  (`wallpaper-changer-<versionCode>.apk`).
+- **Debug:** uma pré-release por branch (`debug-<branch>`, título = nome da branch), só
+  com o build mais novo dela.
+
+Baixe o `.apk` da release e abra no celular. Na primeira vez, o Android pede para permitir
+a instalação de apps desconhecidos.
+
+**Atualizações dentro do app:** a seção "Atualizações" na tela principal mostra a versão
+instalada e segue o canal dela:
+
+- no app de release, "Atualizar app" busca o build mais recente da `main`;
+- no app de debug, escolha uma branch (a do build instalado já vem selecionada) e toque em
+  "Baixar versão mais recente".
+
+O app baixa o APK, confere o SHA-256 e passa para o instalador do Android, que pede
+confirmação. Login e configurações são mantidos. Detalhes:
+
+- é preciso permitir que o app instale apps (o botão "Permitir" leva ao ajuste);
+- o GitHub aceita 60 verificações por hora sem login; passou disso, espere a hora virar;
+- o Play Protect pode pedir para verificar os builds de debug: deixe verificar e instale;
+- trocar para uma branch mais antiga (com menos commits) que a instalada exige
+  desinstalar o app de debug antes, porque o Android não instala uma versão menor por cima.
+
 ## Build e instalação
 
 ```
@@ -85,7 +113,19 @@ storeFile=C:/caminho/para/wallpaper-changer.jks
 keyAlias=wallpaper-changer
 storePassword=...
 keyPassword=...
+# Opcional: chave de debug compartilhada com a CI
+debugStoreFile=C:/caminho/para/wallpaper-changer-debug.jks
 ```
+
+Com `debugStoreFile`, o debug é assinado com a mesma chave que a CI usa. Assim, um APK de
+debug gerado no PC atualiza o baixado do GitHub, e vice-versa. Sem ele, o debug usa a
+chave de debug da própria máquina.
+
+Na CI, as chaves vêm dos secrets do repositório (`RELEASE_KEYSTORE_B64`,
+`RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_PASSWORD`, `DEBUG_KEYSTORE_B64`), e o
+`ci/write-signing.sh` monta o `keystore.properties` do runner. A versão vem do git:
+`versionCode` é o número de commits. `./gradlew -q :app:printVersion` mostra a versão que o
+checkout atual recebe.
 
 Para criar uma chave nova:
 
