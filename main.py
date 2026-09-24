@@ -1,4 +1,5 @@
 import argparse
+import dataclasses
 import logging
 import sys
 import threading
@@ -39,12 +40,15 @@ def _make_render_fn(settings):
             logger.warning("No album art URL for track %s, skipping render", now_playing.track_id)
             return
 
-        layout = compute_layout(settings)
-        base_path = album_base_path(base_cache_key(now_playing.album_id, layout.canvas_size, settings))
+        # The tray edits [settings] from its own thread. A copy keeps the cache
+        # key and the drawing on the same style when it changes mid-render.
+        snapshot = dataclasses.replace(settings)
+        layout = compute_layout(snapshot)
+        base_path = album_base_path(base_cache_key(now_playing.album_id, layout.canvas_size, snapshot))
         output_path = next_output_path()
-        render_for_now_playing(now_playing, settings, layout, base_path, output_path)
-        set_wallpaper(output_path, smooth=settings.smooth_transition)
-        if settings.sync_lock_screen:
+        render_for_now_playing(now_playing, snapshot, layout, base_path, output_path)
+        set_wallpaper(output_path, smooth=snapshot.smooth_transition)
+        if snapshot.sync_lock_screen:
             lockscreen.request_update(output_path)
 
     return render
