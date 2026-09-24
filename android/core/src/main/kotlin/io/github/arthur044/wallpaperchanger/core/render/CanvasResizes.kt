@@ -9,8 +9,10 @@ import kotlinx.coroutines.flow.drop
  * another display, a new display size (zoom). The first value is the screen
  * as it was, so it is skipped.
  *
- * The canvas size and the density count: the text is sized in dp, so a new
- * zoom changes it even when the pixels stay the same. Rotating a phone moves
+ * The canvas size and the density count: the text has a floor in dp, so a new
+ * zoom can change it even when the pixels stay the same. When the floor does
+ * not win, the redraw repeats the same image, a cheap price (no Web API call)
+ * for never keeping the old text. Rotating a phone moves
  * the system bars and so the safe area, but the portrait image already drawn
  * stays right for it.
  */
