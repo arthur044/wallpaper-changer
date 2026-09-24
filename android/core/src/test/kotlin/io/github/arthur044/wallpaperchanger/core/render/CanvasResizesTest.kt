@@ -36,6 +36,15 @@ class CanvasResizesTest {
     }
 
     @Test
+    fun `changing only the density calls for a new drawing`() = runTest {
+        // Display size (zoom) changes the dp scale, not the pixels, and the text is sized in dp.
+        // A 1080x2400 phone at two zoom levels; values are illustrative, not measured.
+        val zoomedOut = canvasSpec(ScreenMetrics(1080, 2400, 2.625f, 411, Insets(0, 70, 0, 126)))
+        val zoomedIn = canvasSpec(ScreenMetrics(1080, 2400, 3.0f, 360, Insets(0, 70, 0, 126)))
+        assertEquals(listOf(zoomedIn, zoomedOut), flowOf(zoomedOut, zoomedIn, zoomedOut).resizes().toList())
+    }
+
+    @Test
     fun `a foldable's two screens get different canvases`() {
         assertEquals(904 to 2316, closed.canvasWidth to closed.canvasHeight)
         assertEquals(2176 to 2176, open.canvasWidth to open.canvasHeight)
