@@ -135,6 +135,41 @@ class UpdateClientTest {
     }
 
     @Test
+    fun `a branch's build replaced after the list was loaded is still installed`() = runTest {
+        // The list was loaded while the branch had build 104; CI then replaced
+        // it with 105. The check must use the release as it is now, or the new
+        // APK isn't among the old assets (seen on the phone as "no connection").
+        val stale = GithubRelease(
+            tagName = "debug-ci-android-spike",
+            name = "ci/android-spike",
+            prerelease = true,
+            assets = listOf(
+                GithubAsset("wallpaper-changer-104.apk", server.url("/download/wallpaper-changer-104.apk").toString()),
+                GithubAsset("update.json", server.url("/download/update.json").toString()),
+            ),
+        )
+        server.enqueue(ok(release("debug-ci-android-spike", "ci/android-spike", prerelease = true)))
+        server.enqueue(ok(updateJson(pkg = "io.github.arthur044.wallpaperchanger.debug")))
+        server.enqueue(MockResponse.Builder().body(Buffer().write(apkBytes)).build())
+
+        val found = client.checkDebug(DebugBranch("ci/android-spike", stale), "io.github.arthur044.wallpaperchanger.debug", 91)
+            as UpdateCheck.Found
+        val apk = client.download(found, dir)
+
+        assertEquals("/repos/o/r/releases/tags/debug-ci-android-spike", server.takeRequest().target)
+        assertEquals("wallpaper-changer-92.apk", apk.name)
+    }
+
+    @Test
+    fun `a release without the apk its update json names is bad data, not a network failure`() = runTest {
+        server.enqueue(ok(release("r92", "0.1.0", prerelease = false)))
+        server.enqueue(ok(updateJson().replace("wallpaper-changer-92.apk", "wallpaper-changer-93.apk")))
+        val found = client.checkRelease("io.github.arthur044.wallpaperchanger", 90) as UpdateCheck.Found
+
+        assertThrows<InvalidReleaseResponseException> { client.download(found, dir) }
+    }
+
+    @Test
     fun `the downloaded apk is kept when its checksum matches`() = runTest {
         val found = foundRelease()
         File(dir, "wallpaper-changer-80.apk").writeText("an old download")

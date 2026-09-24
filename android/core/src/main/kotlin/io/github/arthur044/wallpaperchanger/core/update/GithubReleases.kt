@@ -29,8 +29,8 @@ data class GithubAsset(
 /** A branch with a debug build to install, and the release that holds it. */
 data class DebugBranch(val branch: String, val release: GithubRelease)
 
-/** The response wasn't the JSON GitHub documents. */
-class InvalidReleaseResponseException(message: String, cause: Throwable) : Exception(message, cause)
+/** The response wasn't the JSON GitHub documents, or a release lacks a file it should have. */
+class InvalidReleaseResponseException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
 const val UPDATE_JSON = "update.json"
 

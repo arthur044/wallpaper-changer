@@ -84,9 +84,17 @@ class UpdateClient(
         return debugBranches(releases)
     }
 
-    /** The debug channel: the build of [branch]. */
-    override suspend fun checkDebug(branch: DebugBranch, installedPackage: String, installedVersionCode: Int): UpdateCheck =
-        check(branch.release, installedPackage, installedVersionCode)
+    /**
+     * The debug channel: the build of [branch], read from its release as it
+     * is now. CI replaces a branch's release on every push, so the one in a
+     * list loaded earlier may still list the previous build's APK.
+     */
+    override suspend fun checkDebug(branch: DebugBranch, installedPackage: String, installedVersionCode: Int): UpdateCheck {
+        val url = apiBase.newBuilder().addPathSegment("releases").addPathSegment("tags")
+            .addPathSegment(branch.release.tagName).build()
+        val release = getOrNull(url)?.let(::parseRelease) ?: return UpdateCheck.NoBuild
+        return check(release, installedPackage, installedVersionCode)
+    }
 
     private suspend fun check(release: GithubRelease, installedPackage: String, installedVersionCode: Int): UpdateCheck {
         val jsonUrl = release.updateJsonUrl ?: return UpdateCheck.NoBuild
@@ -102,7 +110,7 @@ class UpdateClient(
      */
     override suspend fun download(found: UpdateCheck.Found, dir: File): File {
         val url = found.release.assetUrl(found.info.apk)
-            ?: throw UpdateNetworkException("The release has no ${found.info.apk}")
+            ?: throw InvalidReleaseResponseException("The release has no ${found.info.apk}, which its update.json names")
         val target = File(dir, found.info.apk)
         val partial = File(dir, "${found.info.apk}.part")
         val digest = MessageDigest.getInstance("SHA-256")
