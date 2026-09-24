@@ -340,9 +340,9 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 
 1. **Cache em disco da arte original e das cores**, para mudar de estilo sem baixar a arte de
    novo nem recalcular a paleta.
-2. **Limite de ampliação da arte no desktop** (2×), para não borrar a capa em 4K.
-3. **Wallpaper por monitor no desktop** (hoje só o primário é medido).
-4. Testes com Robolectric para `SpotifyAuth` e `SyncController`.
+
+Descartados por decisão do usuário (2026-09-24): limite de ampliação da arte no desktop,
+wallpaper por monitor e testes com Robolectric para `SpotifyAuth` e `SyncController`.
 
 ---
 
