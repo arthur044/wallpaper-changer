@@ -30,6 +30,9 @@ class ApkInstaller(private val context: Context) : Installer {
 
     /** Streams [apk] into a new session and commits it. Blocking I/O runs off the main thread. */
     override suspend fun install(apk: File) = withContext(Dispatchers.IO) {
+        // First: from here on no older session is "current", whenever its
+        // abort report arrives.
+        currentSession.set(NO_SESSION)
         val installer = context.packageManager.packageInstaller
         // A retry after an unanswered confirmation: drop the old session (and
         // its copy of the APK) instead of leaving it for the system's cleanup.
