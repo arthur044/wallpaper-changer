@@ -350,7 +350,7 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
   faixa.
 - **Desktop:** só o monitor primário. Não há limite de ampliação da arte (a 4K, 640 px viram
   cerca de 1470 px).
-- **Dobráveis (não testado em aparelho real):** a primeira abertura com um álbum novo baixa
+- **Dobráveis (validado em aparelho real):** a primeira abertura com um álbum novo baixa
   a arte de novo (a base do outro tamanho ainda não existe); até o redesenho chegar, o live
   wallpaper mostra o quadro da outra tela cortado. Com a tela de bloqueio sincronizada, ela é
   reaplicada a cada abrir/fechar e pisca. Não se sabe se a One UI guarda wallpapers
