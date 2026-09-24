@@ -59,6 +59,8 @@ data class MainUiState(
     val showDebugTools: Boolean = false,
     /** The update section; null hides it (previews, tests). */
     val update: UpdateState? = null,
+    /** The installer's confirmation screen can be reopened. */
+    val updateConfirmationPending: Boolean = false,
 )
 
 class MainCallbacks(
@@ -98,7 +100,7 @@ fun MainContent(state: MainUiState, callbacks: MainCallbacks, modifier: Modifier
             LookSection(state, callbacks)
             InstantSection(state, callbacks)
             AdvancedSection(state.settings, callbacks.onSettingsChange)
-            state.update?.let { UpdateSection(it, callbacks.update) }
+            state.update?.let { UpdateSection(it, callbacks.update, state.updateConfirmationPending) }
             // Kept in the code, but only reachable from a debug build.
             if (state.showDebugTools) {
                 TextButton(onClick = callbacks.onOpenDebug, modifier = Modifier.align(Alignment.CenterHorizontally)) {

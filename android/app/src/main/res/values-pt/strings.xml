@@ -115,4 +115,6 @@
     <string name="update_failed_storage">Não há espaço suficiente para instalar a atualização.</string>
     <string name="update_failed_invalid">O app baixado é inválido para este aparelho.</string>
     <string name="update_failed_other">A instalação falhou: %1$s</string>
+    <string name="update_older_release">%1$s é mais antigo que o build instalado: não há o que atualizar.</string>
+    <string name="update_confirm">Confirmar instalação</string>
 </resources>

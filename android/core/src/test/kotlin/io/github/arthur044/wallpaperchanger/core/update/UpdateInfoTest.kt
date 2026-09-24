@@ -81,6 +81,16 @@ class UpdateInfoTest {
     }
 
     @Test
+    fun `the apk must be a plain file name`() {
+        // It becomes a path in the download directory.
+        listOf("../escape.apk", "dir/app.apk", ".hidden.apk", "app.zip", "").forEach { name ->
+            assertThrows<InvalidUpdateInfoException>(name) {
+                parseUpdateInfo(updateJson().replace("wallpaper-changer-92.apk", name))
+            }
+        }
+    }
+
+    @Test
     fun `a published build is compared by versionCode`() {
         val available = parseUpdateInfo(updateJson(versionCode = "92"))
 

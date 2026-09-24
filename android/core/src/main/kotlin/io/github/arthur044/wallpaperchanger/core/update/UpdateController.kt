@@ -103,9 +103,13 @@ data class UpdateState(
     val branchesLoading: Boolean = false,
     val phase: UpdatePhase = UpdatePhase.Idle,
 ) {
+    /**
+     * An action is running. Installing is not one: the system owns that step,
+     * and if its confirmation never shows (the app was in the background) or
+     * is left with Home, no outcome ever comes back. The button must work again.
+     */
     val busy: Boolean
-        get() = branchesLoading || phase is UpdatePhase.Checking || phase is UpdatePhase.Downloading ||
-            phase is UpdatePhase.Installing
+        get() = branchesLoading || phase is UpdatePhase.Checking || phase is UpdatePhase.Downloading
 }
 
 /**

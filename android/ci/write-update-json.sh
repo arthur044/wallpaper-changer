@@ -14,7 +14,9 @@ out="${3:?usage: $0 <release|debug> <apk> <out-dir>}"
 
 sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:?no Android SDK}}"
 aapt2="$(ls -d "$sdk"/build-tools/*/ | sort -V | tail -1)aapt2"
-badging="$("$aapt2" dump badging "$apk" | head -1)"
+# The whole output first: "| head -1" could kill aapt2 with SIGPIPE under pipefail.
+badging="$("$aapt2" dump badging "$apk")"
+badging="${badging%%$'\n'*}"
 version_code="$(sed -n "s/.* versionCode='\([0-9]*\)'.*/\1/p" <<< "$badging")"
 version_name="$(sed -n "s/.* versionName='\([^']*\)'.*/\1/p" <<< "$badging")"
 package="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<< "$badging")"

@@ -35,7 +35,10 @@ check(git("rev-parse", "--is-shallow-repository") != "true") {
 val gitCommitCount = git("rev-list", "--count", "HEAD")?.toIntOrNull() ?: 1
 val gitShortSha = git("rev-parse", "--short=7", "HEAD") ?: "nogit"
 // On CI HEAD may be detached; GitHub names the branch that triggered the run.
-val gitBranch = System.getenv("GITHUB_REF_NAME") ?: git("rev-parse", "--abbrev-ref", "HEAD") ?: "nogit"
+// A detached checkout outside CI names no branch ("HEAD").
+val gitBranch = System.getenv("GITHUB_REF_NAME")
+    ?: git("rev-parse", "--abbrev-ref", "HEAD")?.takeIf { it != "HEAD" }
+    ?: "nobranch"
 
 android {
     namespace = "io.github.arthur044.wallpaperchanger"

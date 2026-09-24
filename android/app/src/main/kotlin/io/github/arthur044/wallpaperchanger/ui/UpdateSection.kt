@@ -34,6 +34,8 @@ class UpdateCallbacks(
     val onRefreshBranches: () -> Unit = {},
     /** Opens the system's "install unknown apps" page for this app. */
     val onAllowInstalls: () -> Unit = {},
+    /** Reopens the installer's confirmation screen. */
+    val onConfirmInstall: () -> Unit = {},
 )
 
 /**
@@ -41,7 +43,7 @@ class UpdateCallbacks(
  * latest release. Debug: a branch picker, then the newest build of that branch.
  */
 @Composable
-internal fun UpdateSection(state: UpdateState, callbacks: UpdateCallbacks) {
+internal fun UpdateSection(state: UpdateState, callbacks: UpdateCallbacks, confirmationPending: Boolean = false) {
     Section(stringResource(R.string.update_section)) {
         Text(stringResource(R.string.update_installed, state.installed.versionName))
         val debug = state.installed.channel == UpdateChannel.DEBUG
@@ -58,7 +60,7 @@ internal fun UpdateSection(state: UpdateState, callbacks: UpdateCallbacks) {
         ) {
             Text(stringResource(if (debug) R.string.update_button_debug else R.string.update_button_release))
         }
-        PhaseMessage(state.phase, callbacks)
+        PhaseMessage(state.phase, callbacks, confirmationPending, debug)
     }
 }
 
@@ -94,13 +96,16 @@ private fun BranchPicker(state: UpdateState, callbacks: UpdateCallbacks) {
 }
 
 @Composable
-private fun PhaseMessage(phase: UpdatePhase, callbacks: UpdateCallbacks) {
+private fun PhaseMessage(phase: UpdatePhase, callbacks: UpdateCallbacks, confirmationPending: Boolean, debug: Boolean) {
     val text = when (phase) {
         UpdatePhase.Idle -> null
         UpdatePhase.Checking -> stringResource(R.string.update_checking)
         UpdatePhase.NoBuild -> stringResource(R.string.update_no_build)
         is UpdatePhase.UpToDate -> stringResource(R.string.update_up_to_date, phase.info.versionName)
-        is UpdatePhase.Older -> stringResource(R.string.update_older, phase.info.versionName)
+        is UpdatePhase.Older -> stringResource(
+            if (debug) R.string.update_older else R.string.update_older_release,
+            phase.info.versionName,
+        )
         is UpdatePhase.WrongPackage -> stringResource(R.string.update_wrong_package)
         is UpdatePhase.NeedsPermission -> stringResource(R.string.update_needs_permission, phase.info.versionName)
         is UpdatePhase.Downloading -> stringResource(R.string.update_downloading, phase.info.versionName)
@@ -120,6 +125,11 @@ private fun PhaseMessage(phase: UpdatePhase, callbacks: UpdateCallbacks) {
     }
     if (phase is UpdatePhase.NeedsPermission) {
         TextButton(onClick = callbacks.onAllowInstalls) { Text(stringResource(R.string.update_allow)) }
+    }
+    if (phase is UpdatePhase.Installing && confirmationPending) {
+        TextButton(onClick = callbacks.onConfirmInstall, modifier = Modifier.testTag(TAG_CONFIRM_INSTALL)) {
+            Text(stringResource(R.string.update_confirm))
+        }
     }
 }
 
@@ -144,3 +154,4 @@ private fun failureText(failure: UpdateFailure): String = when (failure) {
 internal const val TAG_UPDATE_BUTTON = "updateButton"
 internal const val TAG_BRANCH_PICKER = "branchPicker"
 internal const val TAG_UPDATE_MESSAGE = "updateMessage"
+internal const val TAG_CONFIRM_INSTALL = "confirmInstall"

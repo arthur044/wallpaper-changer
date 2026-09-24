@@ -51,6 +51,7 @@ fun MainScreen(
     val settings by container.settings.settings.collectAsState(initial = null)
     val status by container.syncEngine.status.collectAsState()
     val update by container.updates.state.collectAsState()
+    val pendingConfirmation by container.pendingInstallConfirmation.collectAsState()
     LaunchedEffect(Unit) { container.updates.loadBranches() }
     var signedIn by remember { mutableStateOf(true) }
     LaunchedEffect(status) { signedIn = container.spotifyAuth.status().signedIn }
@@ -96,6 +97,7 @@ fun MainScreen(
             liveWallpaperActive = liveWallpaperActive,
             showDebugTools = BuildConfig.DEBUG,
             update = update,
+            updateConfirmationPending = pendingConfirmation != null,
         ),
         callbacks = MainCallbacks(
             onSyncEnabledChange = { on ->
@@ -145,6 +147,7 @@ fun MainScreen(
                 onSelectBranch = container.updates::selectBranch,
                 onRefreshBranches = container.updates::loadBranches,
                 onAllowInstalls = { context.allowInstallingApps() },
+                onConfirmInstall = { pendingConfirmation?.let { runCatching { context.startActivity(it) } } },
             ),
         ),
         modifier = modifier,

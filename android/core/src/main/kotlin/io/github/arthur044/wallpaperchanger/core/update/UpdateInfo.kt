@@ -34,6 +34,9 @@ private val json = Json { ignoreUnknownKeys = true }
 
 private val SHA256_HEX = Regex("[0-9a-f]{64}")
 
+// A plain file name: it becomes a path in the download directory.
+private val APK_FILE_NAME = Regex("[A-Za-z0-9][A-Za-z0-9._-]*[.]apk")
+
 /** @throws InvalidUpdateInfoException rather than offering a build that can't be checked. */
 fun parseUpdateInfo(text: String): UpdateInfo {
     val info = try {
@@ -46,7 +49,7 @@ fun parseUpdateInfo(text: String): UpdateInfo {
     val problem = when {
         info.versionCode <= 0 -> "versionCode must be positive, was ${info.versionCode}"
         info.`package`.isBlank() -> "package is empty"
-        info.apk.isBlank() -> "apk is empty"
+        !APK_FILE_NAME.matches(info.apk) -> "apk is not a plain .apk file name"
         !SHA256_HEX.matches(info.sha256) -> "sha256 is not 64 lowercase hex digits"
         else -> null
     }

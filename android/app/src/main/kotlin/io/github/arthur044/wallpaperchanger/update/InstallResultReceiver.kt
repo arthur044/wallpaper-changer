@@ -17,17 +17,22 @@ import io.github.arthur044.wallpaperchanger.core.update.InstallOutcome
  */
 class InstallResultReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        val container = (context.applicationContext as WallpaperApp).container
         val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
         if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
-            val confirm = confirmationIntent(intent)
+            val confirm = confirmationIntent(intent)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             if (confirm != null) {
-                context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                // Kept for the update section's "confirm" button: from the
+                // background this start is silently blocked.
+                container.pendingInstallConfirmation.value = confirm
+                context.startActivity(confirm)
                 return
             }
             Log.w(TAG, "The installer asked for confirmation without a screen to show")
         }
+        container.pendingInstallConfirmation.value = null
         val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
-        (context.applicationContext as WallpaperApp).container.updates.onInstallOutcome(installOutcome(status), message)
+        container.updates.onInstallOutcome(installOutcome(status), message)
     }
 
     private fun installOutcome(status: Int): InstallOutcome = when (status) {

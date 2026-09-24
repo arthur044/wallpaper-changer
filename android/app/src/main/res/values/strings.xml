@@ -121,4 +121,6 @@
     <string name="update_failed_storage">Not enough storage to install the update.</string>
     <string name="update_failed_invalid">The downloaded app is invalid for this device.</string>
     <string name="update_failed_other">The install failed: %1$s</string>
+    <string name="update_older_release">%1$s is older than the installed build: there\'s nothing to update.</string>
+    <string name="update_confirm">Confirm install</string>
 </resources>

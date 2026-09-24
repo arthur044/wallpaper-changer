@@ -1,7 +1,10 @@
 # Release channel: every push to main builds the signed release APK and
 # publishes it as the GitHub Release r<versionCode>, marked latest, with the
-# update.json the app reads. Run by hand on another branch, it does all of
-# that except publishing (a dry run), so the channel only ever gets main.
+# update.json the app reads.
+#
+# The release key only exists in the "release" environment, whose deployment
+# branch is main: no other branch's code (build script, ci/*.sh) ever runs
+# with it, whatever this file says there.
 name: Android release
 
 on:
@@ -19,23 +22,26 @@ concurrency:
 
 jobs:
   release:
+    if: github.ref == 'refs/heads/main'
+    environment: release
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
       run:
         working-directory: android
     steps:
-      - uses: actions/checkout@v7
+      # Actions pinned by commit: a moved tag must not reach the signing key.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # versionCode counts commits: the build refuses a shallow clone.
           fetch-depth: 0
 
-      - uses: actions/setup-java@v6
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: 17
 
-      - uses: gradle/actions/setup-gradle@v6
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
       - name: Print version
         run: ./gradlew -q :app:printVersion
@@ -55,6 +61,11 @@ jobs:
       - name: Assemble release APK
         run: ./gradlew :app:assembleRelease
 
+      # Right after the only step that needs it, and even if it failed.
+      - name: Delete the signing key from the runner
+        if: always()
+        run: rm -f "$RUNNER_TEMP"/*.jks keystore.properties
+
       - name: Verify signature
         run: ci/verify-apk-cert.sh release app/build/outputs/apk/release/app-release.apk
 
@@ -67,24 +78,23 @@ jobs:
           echo "version_name=$(jq -r .versionName "$RUNNER_TEMP/publish/update.json")" >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub Release
-        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: r${{ steps.stage.outputs.version_code }}
+          VERSION_CODE: ${{ steps.stage.outputs.version_code }}
           TITLE: ${{ steps.stage.outputs.version_name }}
           APK: ${{ steps.stage.outputs.apk }}
         run: |
-          # A rerun of the same commit has the same versionCode: replace it.
-          if gh release view "$TAG" > /dev/null 2>&1; then
-            gh release delete "$TAG" --yes --cleanup-tag
+          tag="r$VERSION_CODE"
+          # A rerun of an old run must not make an older build "latest".
+          newest="$(gh release list --limit 100 --exclude-pre-releases --json tagName -q '.[].tagName' |
+            sed -n 's/^r\([0-9][0-9]*\)$/\1/p' | sort -n | tail -1)"
+          if [ -n "$newest" ] && [ "$newest" -gt "$VERSION_CODE" ]; then
+            echo "r$newest is newer than $tag: not publishing"
+            exit 0
           fi
-          gh release create "$TAG" "$APK" "$RUNNER_TEMP/publish/update.json" \
+          # A rerun of the same commit has the same versionCode: replace it.
+          if gh release view "$tag" > /dev/null 2>&1; then
+            gh release delete "$tag" --yes --cleanup-tag
+          fi
+          gh release create "$tag" "$APK" "$RUNNER_TEMP/publish/update.json" \
             --target "$GITHUB_SHA" --title "$TITLE" --notes "$(git log -1 --format=%B)" --latest
-
-      - name: Keep the dry run's output
-        if: github.ref != 'refs/heads/main'
-        uses: actions/upload-artifact@v7
-        with:
-          name: release-dry-run
-          path: ${{ runner.temp }}/publish/
-          retention-days: 7

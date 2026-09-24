@@ -118,7 +118,20 @@ class UpdateClientTest {
         )
 
         assertEquals(listOf("ci/android-spike"), client.debugBranches().map { it.branch })
-        assertEquals("/repos/o/r/releases?per_page=100", server.takeRequest().target)
+        assertEquals("/repos/o/r/releases?per_page=100&page=1", server.takeRequest().target)
+        assertEquals(1, server.requestCount, "a short page is the last one")
+    }
+
+    @Test
+    fun `a debug build past the first 100 releases is still listed`() = runTest {
+        // Every push to main adds a release; old branches fall off page one.
+        val fullPage = (1..100).joinToString(",", "[", "]") { release("r$it", "0.1.0", prerelease = false) }
+        server.enqueue(ok(fullPage))
+        server.enqueue(ok("[" + release("debug-feat-old", "feat/old", prerelease = true) + "]"))
+
+        assertEquals(listOf("feat/old"), client.debugBranches().map { it.branch })
+        server.takeRequest()
+        assertEquals("/repos/o/r/releases?per_page=100&page=2", server.takeRequest().target)
     }
 
     @Test

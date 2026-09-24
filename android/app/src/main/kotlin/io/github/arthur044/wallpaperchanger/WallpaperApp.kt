@@ -1,6 +1,7 @@
 package io.github.arthur044.wallpaperchanger
 
 import android.app.Application
+import android.content.Intent
 import android.util.Log
 import io.github.arthur044.wallpaperchanger.auth.EncryptedTokenStore
 import io.github.arthur044.wallpaperchanger.auth.SpotifyAuth
@@ -34,6 +35,7 @@ import io.github.arthur044.wallpaperchanger.wallpaper.WallpaperApplier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -109,6 +111,13 @@ class AppContainer(app: Application) {
     )
 
     val syncController = SyncController(app, settings, spotifyAuth, appScope)
+
+    /**
+     * The installer's confirmation screen while an update waits for it. Kept
+     * so the update section can reopen it: starting it from the background is
+     * blocked, and the user may leave it with Home.
+     */
+    val pendingInstallConfirmation = MutableStateFlow<Intent?>(null)
 
     /** In-app updates from the builds CI publishes on GitHub Releases. */
     val updates = UpdateController(

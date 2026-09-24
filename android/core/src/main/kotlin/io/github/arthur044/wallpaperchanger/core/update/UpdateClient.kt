@@ -65,10 +65,23 @@ class UpdateClient(
         return check(release, installedPackage, installedVersionCode)
     }
 
-    /** The branches with a debug build, newest first, from the first 100 releases. */
+    /**
+     * The branches with a debug build, newest first. Every push to main adds
+     * a release, so the list is paged: one call while there are under 100,
+     * up to [MAX_RELEASE_PAGES] (each call counts against the hourly limit).
+     */
     override suspend fun debugBranches(): List<DebugBranch> {
-        val url = apiBase.newBuilder().addPathSegment("releases").addQueryParameter("per_page", "100").build()
-        return debugBranches(parseReleases(getOrNull(url) ?: "[]"))
+        val releases = mutableListOf<GithubRelease>()
+        for (page in 1..MAX_RELEASE_PAGES) {
+            val url = apiBase.newBuilder().addPathSegment("releases")
+                .addQueryParameter("per_page", RELEASES_PER_PAGE.toString())
+                .addQueryParameter("page", page.toString())
+                .build()
+            val batch = parseReleases(getOrNull(url) ?: break)
+            releases += batch
+            if (batch.size < RELEASES_PER_PAGE) break
+        }
+        return debugBranches(releases)
     }
 
     /** The debug channel: the build of [branch]. */
@@ -163,6 +176,8 @@ class UpdateClient(
         private const val HTTP_NOT_FOUND = 404
         private const val HTTP_TOO_MANY_REQUESTS = 429
         private const val BUFFER_BYTES = 64 * 1024
+        private const val RELEASES_PER_PAGE = 100
+        private const val MAX_RELEASE_PAGES = 5
 
         fun defaultHttpClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(10.seconds.toJavaDuration())

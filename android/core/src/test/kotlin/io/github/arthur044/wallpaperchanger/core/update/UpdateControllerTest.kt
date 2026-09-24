@@ -154,6 +154,23 @@ class UpdateControllerTest {
     }
 
     @Test
+    fun `an install the system never answers doesn't lock the button`() = runTest {
+        // The confirmation can be blocked (app in the background) or left with
+        // Home: no outcome arrives, and the user must be able to try again.
+        source.releaseCheck = { found(info(92), VersionComparison.NEWER) }
+        val c = controller()
+        c.update()
+        runCurrent()
+        assertEquals(UpdatePhase.Installing(info(92)), c.state.value.phase)
+
+        assertTrue(!c.state.value.busy)
+        c.update()
+        runCurrent()
+
+        assertEquals(2, installer.installed.size)
+    }
+
+    @Test
     fun `the installer's answer is shown, and declining is not an error`() = runTest {
         val c = controller()
 
