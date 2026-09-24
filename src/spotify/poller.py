@@ -85,12 +85,14 @@ class Poller:
         # straight to track 7 of an already-seen album is recognized without
         # any further API call. Only Spotify-sourced art is ever rendered:
         # until a track's entry appears here, nothing gets rendered for it.
-        # In-memory only, cleared on restart.
         # Saved to disk when the app has a path for it (see TrackAlbumStore),
         # so songs of albums seen before need no lookup after a restart.
         self._track_to_album = track_index if track_index is not None else TrackAlbumStore(None)
         # Track keys already forgotten once after failing to draw (see below).
         self._forgotten_after_failure: set = set()
+        # Albums used although the Web API reported another title (see
+        # _resolve_and_cache_album): a guess, so memory-only, never saved.
+        self._unverified_albums: Dict[str, Tuple[str, Optional[str]]] = {}
         self._last_render_failed = False
         # Track key whose "still unresolved" state has already been logged.
         # Without it the message below would repeat every poll_interval_seconds
@@ -203,7 +205,7 @@ class Poller:
 
     def _handle_smtc_snapshot(self, snapshot: SmtcNowPlaying, forced: bool = False) -> float:
         track_key = _track_key(snapshot.artist, snapshot.title)
-        resolved = self._track_to_album.get(track_key)
+        resolved = self._track_to_album.get(track_key) or self._unverified_albums.get(track_key)
 
         spacing = min(_ALBUM_LOOKUP_SPACING_SECONDS, self._settings.fallback_poll_interval_seconds)
         if resolved is None and snapshot.is_playing and self._should_call_web_api(forced, spacing):
@@ -229,11 +231,15 @@ class Poller:
         album_id, art_url = resolved
         now_playing = _smtc_to_now_playing(snapshot, album_id=album_id, art_url=art_url)
         interval = self._handle_now_playing(now_playing)
-        if self._last_render_failed and track_key not in self._forgotten_after_failure:
+        if not self._last_render_failed:
+            # Drawn fine: if its link expires some day, it may be forgotten again.
+            self._forgotten_after_failure.discard(track_key)
+        elif track_key not in self._forgotten_after_failure:
             # Maybe the saved art link stopped working: forget it once, so the
             # next cycle asks Spotify again instead of failing on it forever.
             self._forgotten_after_failure.add(track_key)
             self._track_to_album.pop(track_key)
+            self._unverified_albums.pop(track_key, None)
         # After the render, not before: the wallpaper shouldn't wait on a call
         # that only speeds up the album's other songs.
         self._fetch_pending_tracklist()
@@ -278,6 +284,9 @@ class Poller:
             logger.warning(
                 "Web API keeps reporting %r for %r; using its album anyway", fetched.track_name, snapshot.title
             )
+            self._title_mismatches.pop(track_key, None)
+            self._unverified_albums[track_key] = resolved
+            return resolved
 
         self._title_mismatches.pop(track_key, None)
         # Also under SMTC's own spelling of the artist, which can differ.

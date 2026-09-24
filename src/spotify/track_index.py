@@ -31,6 +31,8 @@ class TrackAlbumStore:
             self._load(path)
 
     def get(self, key: str) -> Optional[Resolved]:
+        # Reordering alone does not mark the map dirty: the recency order on
+        # disk is refreshed with the next real change, which is good enough.
         value = self._entries.get(key)
         if value is not None:
             self._entries.move_to_end(key)
@@ -65,6 +67,8 @@ class TrackAlbumStore:
             return
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                raise ValueError(f"expected an object, got {type(data).__name__}")
             if data.get("version") != _VERSION:
                 logger.warning("Ignoring a track index of version %r", data.get("version"))
                 return

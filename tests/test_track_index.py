@@ -130,3 +130,68 @@ def test_a_song_that_fails_to_draw_is_looked_up_again(monkeypatch, tmp_path):
 
     assert calls == []
     assert store.get("angra::rebirth") is None, "forgotten, so the next cycle asks Spotify"
+
+
+def test_a_file_that_is_not_an_object_starts_an_empty_map(tmp_path):
+    for content in ("[]", "42", '"text"', "null", '{"version": 1, "tracks": [["only-a-key"]]}'):
+        path = tmp_path / "track_index.json"
+        path.write_text(content, encoding="utf-8")
+
+        assert TrackAlbumStore(path).get("k") is None, content
+
+
+def test_a_failed_draw_forgets_the_song_only_once(monkeypatch, tmp_path):
+    store = TrackAlbumStore(tmp_path / "track_index.json")
+    store["angra::rebirth"] = ("rebirth", "http://cdn/gone.jpg")
+
+    def failing(np):
+        raise OSError("404")
+
+    poller, calls = _poller(monkeypatch, store, failing)
+    poller._run_one_cycle()  # forgets the saved link
+    poller._last_web_api_at = -1e9
+    poller._run_one_cycle()  # looks it up again and saves the fresh one; the draw still fails
+
+    assert calls == [1]
+    assert store.get("angra::rebirth") == ("rebirth", "http://cdn/rebirth.jpg"), "not forgotten a second time"
+
+
+def test_a_song_that_draws_again_can_be_forgotten_again_later(monkeypatch, tmp_path):
+    # A link that works today can expire months from now.
+    store = TrackAlbumStore(tmp_path / "track_index.json")
+    store["angra::rebirth"] = ("rebirth", "http://cdn/gone.jpg")
+    outcomes = [OSError("404"), None, OSError("404")]
+
+    def render(np):
+        outcome = outcomes.pop(0)
+        if outcome is not None:
+            raise outcome
+
+    poller, _ = _poller(monkeypatch, store, render)
+    poller._run_one_cycle()  # fails: forgotten
+    poller._last_web_api_at = -1e9
+    poller._run_one_cycle()  # looked up again, draws
+    poller._last_rendered_track_id = None  # the same song, drawn again (e.g. a style change)
+    poller._run_one_cycle()  # fails again
+
+    assert store.get("angra::rebirth") is None
+
+
+def test_an_album_used_despite_a_title_mismatch_is_not_saved(monkeypatch, tmp_path):
+    # SMTC says one song, the Web API keeps reporting another: the album is
+    # drawn, but a guess must not outlive the app.
+    path = tmp_path / "track_index.json"
+    store = TrackAlbumStore(path)
+    rendered = []
+    poller, calls = _poller(monkeypatch, store, rendered.append)
+    poller._smtc = _Smtc("Nova Era")
+    for _ in range(poller_module._MAX_TITLE_MISMATCHES):
+        poller._last_web_api_at = -1e9
+        poller._run_one_cycle()
+
+    assert [r.album_id for r in rendered] == ["rebirth"]
+    assert TrackAlbumStore(path).get("angra::nova era") is None
+    assert TrackAlbumStore(path).get("angra::rebirth") is not None, "what the API did report is still saved"
+
+    poller._run_one_cycle()
+    assert len(calls) == poller_module._MAX_TITLE_MISMATCHES, "no new lookup while the app runs"
