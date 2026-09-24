@@ -20,6 +20,9 @@ jobs:
         working-directory: android
     steps:
       - uses: actions/checkout@v7
+        with:
+          # versionCode counts commits: the build refuses a shallow clone.
+          fetch-depth: 0
 
       - uses: actions/setup-java@v6
         with:
@@ -27,6 +30,9 @@ jobs:
           java-version: 17
 
       - uses: gradle/actions/setup-gradle@v6
+
+      - name: Print version
+        run: ./gradlew -q :app:printVersion
 
       - name: Assemble debug APK
         run: ./gradlew :app:assembleDebug --stacktrace
