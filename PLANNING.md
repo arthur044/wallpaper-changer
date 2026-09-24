@@ -4,7 +4,7 @@ Documentação técnica do estado atual. Descreve **como o sistema funciona hoje
 foi construído. Uso e instalação estão no [README](README.md) e no
 [README do Android](android/README.md).
 
-Última revisão: 2026-09-24 · base: `main` @ `bd7bf9e` (PR #6 mergeado) + `fix/redraw-on-density-change` (PR #7)
+Última revisão: 2026-09-24 · base: `main` @ `6413230` (PR #7 mergeado)
 
 ---
 
@@ -385,10 +385,7 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | #4 | Documentação técnica (`PLANNING.md`) |
 | #5 | Android: redesenho ao abrir ou fechar dobráveis, um quadro do live wallpaper por forma de tela |
 | #6 | CI: canais release/debug no GitHub Releases, `versionCode` = contagem de commits, atualização no app |
-
-Em aberto: **#7** (`fix/redraw-on-density-change`), redesenho ao mudar o tamanho de exibição
-(zoom). Aprovado no review, CI verde. Falta validar no Galaxy A71: com música tocando, mudar o
-zoom deve redesenhar o texto sem trocar de faixa.
+| #7 | Android: redesenho ao mudar o tamanho de exibição (zoom/DPI), sem chamada à API. Validado no build de release |
 
 ### 5.2 Limitações conhecidas
 
