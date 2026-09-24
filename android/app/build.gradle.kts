@@ -8,6 +8,9 @@ plugins {
 // Signing lives in keystore.properties, which is gitignored along with the key
 // itself. Without it the project still builds; only the release APK comes out
 // unsigned, so a fresh clone isn't broken by a missing secret.
+// debugStoreFile (optional) names the debug key shared by this PC and CI, so a
+// debug APK from either updates one from the other. Without it, debug builds
+// use this machine's own ~/.android/debug.keystore, as before.
 val signing = Properties().apply {
     val file = rootProject.file("keystore.properties")
     if (file.exists()) file.inputStream().use(::load)
@@ -56,7 +59,16 @@ android {
     }
 
     signingConfigs {
-        if (signing.isNotEmpty()) {
+        signing.getProperty("debugStoreFile")?.let { debugStore ->
+            create("sharedDebug") {
+                storeFile = file(debugStore)
+                // The Android debug-key conventions: not a secret, the key file is.
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+        if (signing.getProperty("storeFile") != null) {
             create("release") {
                 storeFile = file(signing.getProperty("storeFile"))
                 storePassword = signing.getProperty("storePassword")
@@ -80,6 +92,7 @@ android {
             // settings. The redirect scheme stays shared, so a login from the
             // debug app may ask which app should open the callback.
             applicationIdSuffix = ".debug"
+            signingConfigs.findByName("sharedDebug")?.let { signingConfig = it }
             // Debug builds come from any branch: say which.
             versionNameSuffix = " ($gitShortSha, $gitBranch)"
         }
