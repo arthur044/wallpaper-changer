@@ -18,6 +18,12 @@ import io.github.arthur044.wallpaperchanger.core.update.InstallOutcome
 class InstallResultReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val container = (context.applicationContext as WallpaperApp).container
+        val sessionId = intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1)
+        if (!container.apkInstaller.isCurrent(sessionId)) {
+            // An older session, abandoned by a retry: its "aborted" is old news.
+            Log.i(TAG, "Ignoring the result of session $sessionId")
+            return
+        }
         val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
         if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
             val confirm = confirmationIntent(intent)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

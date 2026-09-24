@@ -119,10 +119,12 @@ class AppContainer(app: Application) {
      */
     val pendingInstallConfirmation = MutableStateFlow<Intent?>(null)
 
+    val apkInstaller = ApkInstaller(app)
+
     /** In-app updates from the builds CI publishes on GitHub Releases. */
     val updates = UpdateController(
         source = UpdateClient(),
-        installer = ApkInstaller(app),
+        installer = apkInstaller,
         installed = InstalledBuild(
             packageName = app.packageName,
             versionCode = BuildConfig.VERSION_CODE,
