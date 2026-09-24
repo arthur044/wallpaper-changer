@@ -1,0 +1,38 @@
+# Spike (CI plan, step 1): does the Android project build on a GitHub runner
+# at all (AGP 9.4.1, Gradle 9.7.1, compileSdk 37)? Replaced by the release
+# and debug workflows in later steps.
+name: Android spike
+
+on:
+  push:
+    branches: [ci/android-spike]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  assemble-debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Assemble debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 7
