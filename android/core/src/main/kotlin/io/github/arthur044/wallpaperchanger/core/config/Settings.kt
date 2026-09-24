@@ -40,6 +40,17 @@ data class Settings(
     // alone - no foreground service, no ongoing notification, and no polling
     // when nothing plays on this phone.
     @SerialName("local_only") val localOnly: Boolean = false,
+    @SerialName("background_style") val backgroundStyle: BackgroundStyle = BackgroundStyle.SOLID,
+    // The art's shadow in its most vivid color instead of black.
+    @SerialName("art_glow") val artGlow: Boolean = false,
+    @SerialName("text_card") val textCard: TextCard = TextCard.NONE,
+    @SerialName("art_frame") val artFrame: ArtFrame = ArtFrame.NONE,
+    // How much the "blur" background is blurred: 0 nearly sharp, 100 a cloud of
+    // color; 26 is the original look. The edge darkening stays fixed.
+    @SerialName("blur_strength") val blurStrength: Int = DEFAULT_BLUR_STRENGTH,
+    // Android only: show the wallpaper through the app's own live wallpaper,
+    // which fades between images; a static wallpaper blinks black on every change.
+    @SerialName("smooth_transition") val smoothTransition: Boolean = false,
 ) {
     val webApiPollInterval: Duration get() = webApiPollIntervalSeconds.seconds
 
@@ -51,6 +62,7 @@ data class Settings(
         cornerRadius = cornerRadius.coerceIn(CORNER_RADIUS_RANGE),
         shadowBlurRadius = shadowBlurRadius.coerceIn(BLUR_RADIUS_RANGE),
         artOffsetYPct = artOffsetYPct.clampOr(ART_OFFSET_Y_PCT_RANGE, DEFAULTS.artOffsetYPct),
+        blurStrength = blurStrength.coerceIn(BLUR_STRENGTH_RANGE),
     )
 
     companion object {
@@ -59,6 +71,8 @@ data class Settings(
         val CORNER_RADIUS_RANGE = 0..200
         val BLUR_RADIUS_RANGE = 0..200
         val ART_OFFSET_Y_PCT_RANGE = -0.4..0.4
+        val BLUR_STRENGTH_RANGE = 0..100
+        const val DEFAULT_BLUR_STRENGTH = 26
 
         private val DEFAULTS = Settings()
     }

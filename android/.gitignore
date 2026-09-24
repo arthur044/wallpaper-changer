@@ -10,3 +10,6 @@ keystore.properties
 *.iml
 .idea/
 captures/
+
+# APKs gerados pelo build-apk.ps1
+dist/

@@ -50,4 +50,28 @@ class TrackAlbumIndexTest {
     fun `rejects a non-positive capacity`() {
         assertThrows<IllegalArgumentException> { TrackAlbumIndex(maxEntries = 0) }
     }
+
+    @org.junit.jupiter.api.Test
+    fun `a snapshot restored into a new index keeps entries and their order`() {
+        val first = TrackAlbumIndex(maxEntries = 3)
+        first.record(ResolvedAlbum("a1", null), listOf("x", "y"))
+        first.record(ResolvedAlbum("a2", null), listOf("z"))
+        first["x"] // used again: now the most recent
+
+        val restarted = TrackAlbumIndex(maxEntries = 3)
+        restarted.restore(first.snapshot())
+        restarted.record(ResolvedAlbum("a3", null), listOf("w")) // pushes out the least recent
+
+        org.junit.jupiter.api.Assertions.assertEquals(listOf("z", "x", "w"), restarted.snapshot().map { it.first })
+    }
+
+    @org.junit.jupiter.api.Test
+    fun `a forgotten track is gone`() {
+        val index = TrackAlbumIndex()
+        index.record(ResolvedAlbum("a1", null), listOf("x"))
+
+        org.junit.jupiter.api.Assertions.assertTrue(index.forget("x"))
+        org.junit.jupiter.api.Assertions.assertNull(index["x"])
+        org.junit.jupiter.api.Assertions.assertFalse(index.forget("x"))
+    }
 }

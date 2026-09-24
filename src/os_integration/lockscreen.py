@@ -17,6 +17,10 @@ _CSP_KEY = r"SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP"
 _SEE_MASK_NOCLOSEPROCESS = 0x00000040
 _SW_HIDE = 0
 _WAIT_TIMEOUT_MS = 30_000
+# schtasks.exe is a console program. The app runs under pythonw, which has no
+# console to share, so without this Windows opens one per call: a terminal
+# flashing on screen on every track change.
+_NO_WINDOW = subprocess.CREATE_NO_WINDOW
 
 
 def _pending_path_file() -> Path:
@@ -75,7 +79,7 @@ def _run_elevated(exe: str, params: str) -> bool:
 
 
 def is_task_installed() -> bool:
-    result = subprocess.run(["schtasks", "/query", "/tn", _TASK_NAME], capture_output=True)
+    result = subprocess.run(["schtasks", "/query", "/tn", _TASK_NAME], capture_output=True, creationflags=_NO_WINDOW)
     return result.returncode == 0
 
 
@@ -95,7 +99,7 @@ def install_task() -> bool:
 
 
 def uninstall_task() -> None:
-    subprocess.run(["schtasks", "/delete", "/tn", _TASK_NAME, "/f"], capture_output=True)
+    subprocess.run(["schtasks", "/delete", "/tn", _TASK_NAME, "/f"], capture_output=True, creationflags=_NO_WINDOW)
     logger.info("Lock screen scheduled task removed")
 
 
@@ -108,7 +112,7 @@ def request_update(path: Path) -> None:
         logger.warning("Could not write lock screen pending path: %s", exc)
         return
 
-    result = subprocess.run(["schtasks", "/run", "/tn", _TASK_NAME], capture_output=True)
+    result = subprocess.run(["schtasks", "/run", "/tn", _TASK_NAME], capture_output=True, creationflags=_NO_WINDOW)
     if result.returncode != 0:
         logger.warning("Failed to trigger lock screen task: %s", result.stderr.decode(errors="ignore"))
 

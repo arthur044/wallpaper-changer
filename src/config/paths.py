@@ -35,11 +35,16 @@ def config_file() -> Path:
     return config_dir() / "config.json"
 
 
-def album_base_path(album_id: str) -> Path:
-    """Permanent per-album base composite (background + art + shadow, no track text).
-    Written once per album and never overwritten, so re-visiting an album skips the
-    download and the expensive composition step entirely."""
+def track_index_file() -> Path:
+    """The "artist::title" -> album map, kept across restarts (spotify.track_index)."""
+    return data_dir() / "track_index.json"
+
+
+def album_base_path(key: str) -> Path:
+    """Permanent per-album base composite (background + art + shadow, no track text),
+    named by graphics.base_cache.base_cache_key. Written once per key and never
+    overwritten, so re-visiting an album skips the download and the expensive
+    composition step entirely; changing a setting that affects it changes the key."""
     albums_dir = cache_dir() / "album_bases"
     albums_dir.mkdir(parents=True, exist_ok=True)
-    safe_id = "".join(c for c in album_id if c.isalnum() or c in "-_") or "unknown"
-    return albums_dir / f"{safe_id}.png"
+    return albums_dir / f"{key}.png"

@@ -1,12 +1,16 @@
 import argparse
+import dataclasses
 import logging
 import sys
 import threading
 
-from src.config.paths import album_base_path
+from src.config.paths import album_base_path, track_index_file
 from src.config.settings import load_settings
+from src.graphics.base_cache import base_cache_key
+from src.graphics.layout import compute_layout
 from src.graphics.renderer import render_for_now_playing
 from src.os_integration import lockscreen
+from src.os_integration import restart
 from src.os_integration.autostart import install_autostart, uninstall_autostart
 from src.onboarding.state import needs_onboarding, should_abort_after_wizard
 from src.onboarding.wizard import run_wizard
@@ -17,6 +21,7 @@ from src.os_integration.wallpaper import next_output_path, set_wallpaper
 from src.spotify.auth import build_auth_manager, reauthenticate
 from src.spotify.client import NowPlaying
 from src.spotify.poller import Poller
+from src.spotify.track_index import TrackAlbumStore
 from src.utils.app_state import AppState
 from src.utils.logger import setup_logging
 
@@ -36,11 +41,15 @@ def _make_render_fn(settings):
             logger.warning("No album art URL for track %s, skipping render", now_playing.track_id)
             return
 
-        base_path = album_base_path(now_playing.album_id)
+        # The tray edits [settings] from its own thread. A copy keeps the cache
+        # key and the drawing on the same style when it changes mid-render.
+        snapshot = dataclasses.replace(settings)
+        layout = compute_layout(snapshot)
+        base_path = album_base_path(base_cache_key(now_playing.album_id, layout.canvas_size, snapshot))
         output_path = next_output_path()
-        render_for_now_playing(now_playing, settings, base_path, output_path)
-        set_wallpaper(output_path)
-        if settings.sync_lock_screen:
+        render_for_now_playing(now_playing, snapshot, layout, base_path, output_path)
+        set_wallpaper(output_path, smooth=snapshot.smooth_transition)
+        if snapshot.sync_lock_screen:
             lockscreen.request_update(output_path)
 
     return render
@@ -109,6 +118,7 @@ def main() -> int:
         reauth_fn=reauth,
         smtc_watcher=smtc_watcher,
         is_locked_fn=is_workstation_locked,
+        track_index=TrackAlbumStore(track_index_file()),
     )
 
     if smtc_watcher is not None:
@@ -144,12 +154,23 @@ def main() -> int:
         if smtc_watcher is not None:
             smtc_watcher.stop()
 
+    def on_restart() -> None:
+        logger.info("Restarting Spotify Wallpaper Engine")
+        # Stop this instance's poller first (letting a render in progress
+        # finish), so the two instances never write the wallpaper at once.
+        app_state.stop_event.set()
+        app_state.force_sync_event.set()
+        poll_thread.join(timeout=15.0)
+        on_exit()
+        restart.relaunch()
+
     tray = TrayApp(
         app_state,
         settings,
         on_reauthenticate=on_reauthenticate,
         on_exit=on_exit,
         on_setup=on_setup,
+        on_restart=on_restart,
     )
     tray.run()  # blocks until Exit is clicked
 

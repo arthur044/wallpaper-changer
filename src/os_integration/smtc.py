@@ -28,7 +28,7 @@ class SmtcNowPlaying:
 def _stable_key(primary: Optional[str], secondary: Optional[str]) -> str:
     """SMTC has no Spotify catalog id, so album/track identity is derived from
     metadata strings instead. Hashed (not slugified) so unicode titles never
-    collide with filesystem-unsafe characters — see paths.album_base_path,
+    collide with filesystem-unsafe characters — see base_cache.base_cache_key,
     which today keys on the Spotify Web API's album_id."""
     raw = f"{(primary or '').strip().lower()}::{(secondary or '').strip().lower()}"
     if raw == "::":

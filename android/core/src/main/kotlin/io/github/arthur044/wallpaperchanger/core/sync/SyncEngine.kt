@@ -44,6 +44,8 @@ class SyncEngine(
     /** Pre-warms the index for the whole album; without it only the played track is known. */
     private val albumTracks: AlbumTracksSource? = null,
     private val index: TrackAlbumIndex = TrackAlbumIndex(),
+    /** Keeps [index] across restarts: songs of albums seen before need no lookup. */
+    private val trackIndexStore: TrackIndexStore = TrackIndexStore.None,
     timeSource: TimeSource = TimeSource.Monotonic,
 ) {
     // Guards the API against "sync now" spam; the regular cadence is the wait.
@@ -55,6 +57,16 @@ class SyncEngine(
     private var undrawableTrackId: String? = null
     private var memoryLoaded = false
     private val redrawPending = AtomicBoolean(false)
+    // The track on the wallpaper, in memory only (a restart forgets it, like
+    // the desktop): what redraw() repaints when nothing is playing.
+    private var lastDrawn: NowPlaying? = null
+    // An album whose tracklist is fetched right after the render, not before it.
+    private var pendingTracklist: ResolvedAlbum? = null
+    // Tracks already forgotten once after failing to draw (see forgetOnce).
+    private val forgottenAfterFailure = mutableSetOf<String>()
+    // Set when the index changed; written once, at the end of the cycle, so
+    // the disk write never delays the wallpaper.
+    private var indexChanged = false
     private val latestLocal = AtomicReference<LocalTrack?>(null)
     private var backoff = Duration.ZERO
     private var resolveBackoff = Duration.ZERO
@@ -114,7 +126,7 @@ class SyncEngine(
      * silently: the "why it stopped" notification only fires on a clean stop.
      */
     internal suspend fun runOnce(): Duration? = try {
-        pollOnce()
+        pollOnce().also { saveIndexIfChanged() }
     } catch (e: CancellationException) {
         throw e
     } catch (e: Throwable) {
@@ -126,6 +138,7 @@ class SyncEngine(
     private suspend fun pollOnce(): Duration? {
         if (!memoryLoaded) {
             lastRenderedTrackId = memory.lastRenderedTrackId()
+            index.restore(trackIndexStore.load())
             memoryLoaded = true
         }
         val current = settings.first()
@@ -135,7 +148,9 @@ class SyncEngine(
             return interval
         }
         if (redrawPending.getAndSet(false)) {
-            val onScreen = (status.value as? SyncStatus.Showing)?.nowPlaying
+            // With the music paused the status is Idle, yet the wallpaper still
+            // shows the last track: a look change must repaint that one too.
+            val onScreen = (status.value as? SyncStatus.Showing)?.nowPlaying ?: lastDrawn
             if (onScreen != null && !render(onScreen)) return null
             // Then poll as usual (if the throttle allows): the track may have changed.
         }
@@ -213,7 +228,39 @@ class SyncEngine(
             PollDecision.NOOP -> mutableStatus.value = SyncStatus.Showing(nowPlaying)
             PollDecision.RENDER -> if (!render(nowPlaying)) return null
         }
+        fetchPendingTracklist()
         return interval
+    }
+
+    /** Best-effort: a failed tracklist only means the album's next song costs a lookup. */
+    private suspend fun fetchPendingTracklist() {
+        val album = pendingTracklist ?: return
+        pendingTracklist = null
+        val tracks = try {
+            albumTracks?.albumTracks(album.albumId).orEmpty()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: RateLimitedException) {
+            throttle.deferFor(e.retryAfter)
+            return
+        } catch (e: Exception) {
+            return
+        }
+        index.record(album, tracks.map { trackKey(it.artistName, it.name) })
+        indexChanged = true
+    }
+
+    private suspend fun saveIndexIfChanged() {
+        if (!indexChanged) return
+        indexChanged = false
+        trackIndexStore.save(index.snapshot())
+    }
+
+    // Maybe the saved art link stopped working: forget the track once, so the
+    // next lookup asks Spotify again instead of failing on the stale link.
+    private suspend fun forgetOnce(trackKey: String?) {
+        if (trackKey == null || !forgottenAfterFailure.add(trackKey)) return
+        if (index.forget(trackKey)) indexChanged = true
     }
 
     /**
@@ -235,12 +282,24 @@ class SyncEngine(
         backoff = Duration.ZERO
         val albumId = playing?.albumId ?: return Resolution.Unknown
         val album = ResolvedAlbum(albumId, playing.artUrl)
-        val keys = mutableListOf(trackKey(playing.artistName, playing.trackName))
+        val playingKey = trackKey(playing.artistName, playing.trackName)
+        if (playingKey == wantedKey) {
+            // The API names this very track: draw it now, and let the tracklist
+            // (which only saves calls for the album's other songs) follow.
+            index.record(album, listOf(playingKey))
+            indexChanged = true
+            pendingTracklist = album
+            return Resolution.Found(album)
+        }
+        // The API names another track: the tracklist may still place this one
+        // (the artist can be spelled differently locally), so it can't wait.
+        val keys = mutableListOf(playingKey)
         // Best-effort: a failed prefetch only costs one call on the next track.
         runCatching { albumTracks?.albumTracks(albumId).orEmpty() }
             .getOrDefault(emptyList())
             .mapTo(keys) { trackKey(it.artistName, it.name) }
         index.record(album, keys)
+        indexChanged = true
         // Unknown when the API is reporting another device: don't draw that track here.
         return index[wantedKey]?.let(Resolution::Found) ?: Resolution.Unknown
     }
@@ -277,9 +336,13 @@ class SyncEngine(
         } catch (e: Exception) {
             // Left unmarked, so the next poll sees a new track and tries again.
             mutableStatus.value = SyncStatus.RenderFailed(nowPlaying, e)
+            forgetOnce(nowPlaying.trackId)
             return true
         }
         lastRenderedTrackId = nowPlaying.trackId
+        lastDrawn = nowPlaying
+        // Drawn fine: if its link expires some day, it may be forgotten again.
+        nowPlaying.trackId?.let(forgottenAfterFailure::remove)
         memory.remember(nowPlaying.trackId)
         mutableStatus.value = SyncStatus.Showing(nowPlaying)
         return true

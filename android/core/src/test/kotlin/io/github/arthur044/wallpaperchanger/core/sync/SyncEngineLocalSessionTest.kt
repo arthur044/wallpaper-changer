@@ -1,6 +1,7 @@
 package io.github.arthur044.wallpaperchanger.core.sync
 
 import io.github.arthur044.wallpaperchanger.core.NowPlaying
+import io.github.arthur044.wallpaperchanger.core.ResolvedAlbum
 import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.spotify.AlbumTrack
 import io.github.arthur044.wallpaperchanger.core.spotify.AuthExpiredException
@@ -31,8 +32,10 @@ class SyncEngineLocalSessionTest {
     private val airbagLocally = LocalTrack("Airbag", "Radiohead", isPlaying = true)
     private val luckyLocally = LocalTrack("Lucky", "Radiohead", isPlaying = true)
 
+    private val store = FakeStore()
+
     private fun TestScope.engine() =
-        SyncEngine(source, sink, settings, albumTracks = tracks, timeSource = testScheduler.timeSource)
+        SyncEngine(source, sink, settings, albumTracks = tracks, trackIndexStore = store, timeSource = testScheduler.timeSource)
 
     @Test
     fun `the first track of an album is resolved once, then the album is free`() = runTest {
@@ -195,6 +198,111 @@ class SyncEngineLocalSessionTest {
     }
 
     @Test
+    fun `the wallpaper is drawn before the album's tracklist is fetched`() = runTest {
+        // The tracklist only saves calls for the album's other songs; the
+        // wallpaper shouldn't wait on it.
+        val engine = engine()
+        val order = mutableListOf<String>()
+        source.playing = { apiSaysAirbag }
+        tracks.byAlbum = mapOf("a1" to listOf(AlbumTrack("Airbag", "Radiohead"), AlbumTrack("Lucky", "Radiohead")))
+        tracks.onCall = { order += "tracklist" }
+        sink.onShow = { order += "drawn" }
+
+        engine.onLocalTrack(airbagLocally)
+        engine.runOnce()
+
+        assertEquals(listOf("drawn", "tracklist"), order)
+    }
+
+    @Test
+    fun `after a restart a song of a known album needs no lookup`() = runTest {
+        store.saved = listOf("radiohead::airbag" to ResolvedAlbum("a1", "https://i.scdn.co/image/a1"))
+        val engine = engine()
+
+        engine.onLocalTrack(airbagLocally)
+        engine.runOnce()
+
+        assertEquals(listOf("radiohead::airbag"), sink.shown)
+        assertEquals(0, source.calls)
+    }
+
+    @Test
+    fun `a newly resolved album is saved`() = runTest {
+        val engine = engine()
+        source.playing = { apiSaysAirbag }
+        tracks.byAlbum = mapOf("a1" to listOf(AlbumTrack("Airbag", "Radiohead"), AlbumTrack("Lucky", "Radiohead")))
+
+        engine.onLocalTrack(airbagLocally)
+        engine.runOnce()
+
+        assertEquals(setOf("radiohead::airbag", "radiohead::lucky"), store.saved.map { it.first }.toSet())
+    }
+
+    @Test
+    fun `a saved song that fails to draw is forgotten, once`() = runTest {
+        store.saved = listOf("radiohead::airbag" to ResolvedAlbum("a1", "https://gone"))
+        sink.fail = true
+        val engine = engine()
+
+        engine.onLocalTrack(airbagLocally)
+        engine.runOnce()
+
+        assertTrue(store.saved.isEmpty(), "forgotten, so the next attempt asks Spotify")
+    }
+
+    @Test
+    fun `the wallpaper is drawn before the index is written`() = runTest {
+        val events = mutableListOf<String>()
+        sink.onShow = { events += "show" }
+        store.onSave = { events += "save" }
+        source.playing = { apiSaysAirbag }
+        tracks.byAlbum = mapOf("a1" to listOf(AlbumTrack("Airbag", "Radiohead"), AlbumTrack("Lucky", "Radiohead")))
+        val engine = engine()
+
+        engine.onLocalTrack(airbagLocally)
+        engine.runOnce()
+
+        assertEquals(listOf("show", "save"), events, "one write, after the draw")
+    }
+
+    @Test
+    fun `a song is forgotten only once while it keeps failing`() = runTest {
+        store.saved = listOf("radiohead::airbag" to ResolvedAlbum("a1", "https://gone"))
+        sink.fail = true
+        source.playing = { apiSaysAirbag }
+        val engine = engine()
+
+        engine.onLocalTrack(airbagLocally)
+        engine.runOnce() // forgets the saved link
+        advanceTimeBy(6.seconds)
+        engine.runOnce() // looks it up again; the draw still fails
+
+        assertEquals(1, source.calls)
+        assertEquals(listOf("radiohead::airbag" to ResolvedAlbum("a1", "https://i.scdn.co/image/a1")), store.saved)
+    }
+
+    @Test
+    fun `a song that draws again can be forgotten again later`() = runTest {
+        // A link that works today can expire months from now.
+        store.saved = listOf("radiohead::airbag" to ResolvedAlbum("a1", "https://gone"))
+        sink.fail = true
+        source.playing = { apiSaysAirbag }
+        val engine = engine()
+        engine.onLocalTrack(airbagLocally)
+        engine.runOnce() // fails: forgotten
+        sink.fail = false
+        advanceTimeBy(6.seconds)
+        engine.runOnce() // looked up again, drawn
+        assertEquals(listOf("radiohead::airbag"), sink.shown)
+
+        sink.fail = true
+        engine.redraw() // e.g. a look change
+        engine.runOnce()
+
+        assertTrue(store.saved.isEmpty())
+    }
+
+    @Test
     fun `a failed tracklist prefetch still draws the current track`() = runTest {
         val engine = engine()
         source.playing = { apiSaysAirbag }
@@ -224,11 +332,13 @@ class SyncEngineLocalSessionTest {
     private class FakeAlbumTracks : AlbumTracksSource {
         var byAlbum: Map<String, List<AlbumTrack>> = emptyMap()
         var fail = false
+        var onCall: () -> Unit = {}
         var calls = 0
             private set
 
         override suspend fun albumTracks(albumId: String): List<AlbumTrack> {
             calls++
+            onCall()
             if (fail) throw TransientNetworkException("tracklist failed")
             return byAlbum[albumId].orEmpty()
         }
@@ -236,9 +346,25 @@ class SyncEngineLocalSessionTest {
 
     private class FakeSink : WallpaperSink {
         val shown = mutableListOf<String?>()
+        var onShow: () -> Unit = {}
+        var fail = false
 
         override suspend fun show(nowPlaying: NowPlaying) {
+            if (fail) throw IllegalStateException("could not draw")
+            onShow()
             shown += nowPlaying.trackId
+        }
+    }
+
+    private class FakeStore : TrackIndexStore {
+        var saved: List<Pair<String, ResolvedAlbum>> = emptyList()
+        var onSave: () -> Unit = {}
+
+        override suspend fun load(): List<Pair<String, ResolvedAlbum>> = saved
+
+        override suspend fun save(entries: List<Pair<String, ResolvedAlbum>>) {
+            onSave()
+            saved = entries
         }
     }
 }

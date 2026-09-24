@@ -1,6 +1,9 @@
 package io.github.arthur044.wallpaperchanger.core.cache
 
+import io.github.arthur044.wallpaperchanger.core.config.ArtFrame
+import io.github.arthur044.wallpaperchanger.core.config.BackgroundStyle
 import io.github.arthur044.wallpaperchanger.core.config.Settings
+import io.github.arthur044.wallpaperchanger.core.config.TextCard
 import io.github.arthur044.wallpaperchanger.core.render.CanvasSpec
 import io.github.arthur044.wallpaperchanger.core.render.PixelRect
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -44,6 +47,11 @@ class BaseCacheKeyTest {
             Settings(artOffsetYPct = -0.1),
             // Toggling the text moves the art, so the base changes too.
             Settings(showTrackInfo = false),
+            Settings(backgroundStyle = BackgroundStyle.MESH),
+            Settings(artGlow = true),
+            Settings(backgroundStyle = BackgroundStyle.BLUR),
+            Settings(artFrame = ArtFrame.SINGLE),
+            Settings(artFrame = ArtFrame.DOUBLE),
         ).forEach { changed ->
             assertNotEquals(key, baseCacheKey("1rG6IgNdwE1IGFuIKuYosz", phone, changed), "$changed")
         }
@@ -57,8 +65,20 @@ class BaseCacheKeyTest {
             syncLockScreen = true,
             useMediaSession = true,
             paused = true,
+            // Drawn on top per track, never baked into the base.
+            textCard = TextCard.GLASS,
         )
         assertEquals(key, baseCacheKey("1rG6IgNdwE1IGFuIKuYosz", phone, unrelated))
+    }
+
+    @Test
+    fun `blur strength only matters to the blurred background`() {
+        val blur = Settings(backgroundStyle = BackgroundStyle.BLUR)
+        assertNotEquals(
+            baseCacheKey("1rG6IgNdwE1IGFuIKuYosz", phone, blur),
+            baseCacheKey("1rG6IgNdwE1IGFuIKuYosz", phone, blur.copy(blurStrength = 80)),
+        )
+        assertEquals(key, baseCacheKey("1rG6IgNdwE1IGFuIKuYosz", phone, Settings(blurStrength = 80)))
     }
 
     @Test

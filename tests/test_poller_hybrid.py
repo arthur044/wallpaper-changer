@@ -24,13 +24,13 @@ def _smtc_snapshot(title="Mattel", is_playing=True):
     )
 
 
-def _web_api_now_playing(track_id="wt1"):
+def _web_api_now_playing(track_id="wt1", track_name="Web Track"):
     return NowPlaying(
         is_playing=True,
         track_id=track_id,
         album_id="wa1",
         art_url="http://x/y.jpg",
-        track_name="Web Track",
+        track_name=track_name,
         artist_name="Web Artist",
     )
 
@@ -67,7 +67,7 @@ def test_unlocked_with_smtc_active_resolves_art_via_web_api_then_renders(monkeyp
         monkeypatch,
         smtc_watcher=_StubSmtc(_smtc_snapshot()),
         is_locked=False,
-        fetch_result_or_exc=_web_api_now_playing(),
+        fetch_result_or_exc=_web_api_now_playing(track_name="Mattel"),
     )
 
     interval = poller._run_one_cycle()
@@ -129,7 +129,7 @@ def test_locked_with_smtc_active_still_resolves_and_renders(monkeypatch):
         monkeypatch,
         smtc_watcher=_StubSmtc(_smtc_snapshot()),
         is_locked=True,
-        fetch_result_or_exc=_web_api_now_playing(),
+        fetch_result_or_exc=_web_api_now_playing(track_name="Mattel"),
     )
 
     poller._run_one_cycle()

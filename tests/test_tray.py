@@ -77,3 +77,127 @@ def test_setup_menu_item_runs_the_injected_callback():
         tray._app_state.stop_event.wait(timeout=0.01)
 
     assert calls == [1]
+
+
+def _style_tray(monkeypatch, settings):
+    from src.os_integration import tray as tray_module
+
+    saved = []
+    monkeypatch.setattr(tray_module, "save_settings", lambda s: saved.append(s))
+    tray = TrayApp(AppState(), settings, on_reauthenticate=lambda: None, on_exit=lambda: None, on_setup=lambda: None)
+    return tray, saved
+
+
+def test_background_choice_is_saved_and_redraws_now(monkeypatch):
+    settings = Settings()
+    tray, saved = _style_tray(monkeypatch, settings)
+
+    tray._set_background("mesh")
+
+    assert settings.background_style == "mesh"
+    assert saved == [settings]
+    assert tray._app_state.force_sync_event.is_set()
+
+
+def test_same_background_choice_does_nothing(monkeypatch):
+    tray, saved = _style_tray(monkeypatch, Settings())
+
+    tray._set_background("solid")
+
+    assert saved == []
+    assert not tray._app_state.force_sync_event.is_set()
+
+
+def test_glow_and_glass_toggle_and_redraw(monkeypatch):
+    settings = Settings()
+    tray, saved = _style_tray(monkeypatch, settings)
+
+    tray._toggle_glow(tray._icon, None)
+    tray._toggle_glass(tray._icon, None)
+
+    assert settings.art_glow is True
+    assert settings.text_card == "glass"
+    assert len(saved) == 2
+    assert tray._app_state.force_sync_event.is_set()
+
+    tray._toggle_glass(tray._icon, None)
+    assert settings.text_card == "none"
+
+
+def test_restart_runs_the_callback_and_closes_the_tray(monkeypatch):
+    calls = []
+    tray = TrayApp(
+        AppState(),
+        Settings(),
+        on_reauthenticate=lambda: None,
+        on_exit=lambda: None,
+        on_setup=lambda: None,
+        on_restart=lambda: calls.append("restart"),
+    )
+    stopped = []
+    monkeypatch.setattr(tray._icon, "stop", lambda: stopped.append(1))
+
+    tray._restart(tray._icon, None)
+
+    assert calls == ["restart"]
+    assert stopped == [1]
+
+
+
+def test_blurred_background_is_a_background_choice(monkeypatch):
+    settings = Settings()
+    tray, saved = _style_tray(monkeypatch, settings)
+
+    tray._set_background("blur")
+
+    assert settings.background_style == "blur"
+    assert saved == [settings]
+
+
+def test_the_frame_is_a_three_way_choice(monkeypatch):
+    settings = Settings()
+    tray, saved = _style_tray(monkeypatch, settings)
+
+    tray._set_frame("single")
+    assert settings.art_frame == "single"
+    assert tray._app_state.force_sync_event.is_set()
+
+    tray._set_frame("double")
+    tray._set_frame("none")
+    assert settings.art_frame == "none"
+    assert len(saved) == 3
+
+
+def test_picking_the_current_frame_again_does_nothing(monkeypatch):
+    tray, saved = _style_tray(monkeypatch, Settings())
+
+    tray._set_frame("none")
+
+    assert saved == []
+
+
+
+def test_smooth_transition_toggles_and_redraws(monkeypatch):
+    settings = Settings()
+    tray, saved = _style_tray(monkeypatch, settings)
+
+    tray._toggle_smooth(tray._icon, None)
+    assert settings.smooth_transition is True
+    assert tray._app_state.force_sync_event.is_set()
+
+    tray._toggle_smooth(tray._icon, None)
+    assert settings.smooth_transition is False
+    assert len(saved) == 2
+
+
+
+def test_blur_strength_levels_are_saved_and_redrawn(monkeypatch):
+    settings = Settings()
+    tray, saved = _style_tray(monkeypatch, settings)
+
+    tray._set_blur_strength(60)
+    assert settings.blur_strength == 60
+    assert tray._app_state.force_sync_event.is_set()
+
+    tray._set_blur_strength(60)
+    assert len(saved) == 1, "picking the current level again changes nothing"

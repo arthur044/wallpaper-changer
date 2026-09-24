@@ -27,6 +27,27 @@ def test_request_update_writes_pending_path_and_triggers_task(monkeypatch, tmp_p
     assert calls == [["schtasks", "/run", "/tn", lockscreen._TASK_NAME]]
 
 
+def test_no_schtasks_call_opens_a_console_window(monkeypatch, tmp_path):
+    # The app runs under pythonw, which has no console: without CREATE_NO_WINDOW
+    # Windows gives each schtasks.exe a console of its own, a terminal that
+    # flashes on screen on every track change.
+    monkeypatch.setattr(lockscreen, "data_dir", lambda: tmp_path)
+    flags = []
+
+    def fake_run(args, **kwargs):
+        flags.append(kwargs.get("creationflags", 0))
+        return _fake_completed()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    lockscreen.request_update(tmp_path / "wallpaper_a.png")
+    lockscreen.is_task_installed()
+    lockscreen.uninstall_task()
+
+    assert len(flags) == 3
+    assert all(f & subprocess.CREATE_NO_WINDOW for f in flags)
+
+
 def test_request_update_logs_and_skips_run_when_write_fails(monkeypatch, tmp_path):
     monkeypatch.setattr(lockscreen, "data_dir", lambda: tmp_path / "does-not-exist")
     calls = []

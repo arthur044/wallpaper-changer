@@ -36,7 +36,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import io.github.arthur044.wallpaperchanger.R
+import io.github.arthur044.wallpaperchanger.core.config.ArtFrame
+import io.github.arthur044.wallpaperchanger.core.config.BackgroundStyle
 import io.github.arthur044.wallpaperchanger.core.config.Settings
+import io.github.arthur044.wallpaperchanger.core.config.TextCard
 import io.github.arthur044.wallpaperchanger.core.sync.SyncStatus
 import io.github.arthur044.wallpaperchanger.sync.describe
 import kotlin.math.roundToInt
@@ -49,6 +52,8 @@ data class MainUiState(
     val art: ImageBitmap? = null,
     /** Whether the user granted notification access, which "react instantly" needs. */
     val notificationAccess: Boolean = false,
+    /** Whether the home screen shows this app's live wallpaper, which the smooth transition needs. */
+    val liveWallpaperActive: Boolean = false,
     /** Debug builds only: the link to the debug and spike screens. */
     val showDebugTools: Boolean = false,
 )
@@ -63,6 +68,9 @@ class MainCallbacks(
     val onInstantChange: (Boolean) -> Unit = {},
     val onLocalOnlyChange: (Boolean) -> Unit = {},
     val onGrantNotificationAccess: () -> Unit = {},
+    /** Saved and redrawn like a look change; turning it on also opens the live wallpaper picker. */
+    val onSmoothTransitionChange: (Boolean) -> Unit = {},
+    val onPickLiveWallpaper: () -> Unit = {},
     val onConnect: () -> Unit = {},
     val onOpenDebug: () -> Unit = {},
 )
@@ -83,7 +91,7 @@ fun MainContent(state: MainUiState, callbacks: MainCallbacks, modifier: Modifier
             Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmall)
             if (!state.signedIn) SignedOutCard(callbacks.onConnect)
             StatusCard(state, callbacks)
-            LookSection(state.settings, callbacks.onLookChange)
+            LookSection(state, callbacks)
             InstantSection(state, callbacks)
             AdvancedSection(state.settings, callbacks.onSettingsChange)
             // Kept in the code, but only reachable from a debug build.
@@ -155,7 +163,9 @@ private fun AlbumArt(art: ImageBitmap?) {
 }
 
 @Composable
-private fun LookSection(settings: Settings, onLookChange: ((Settings) -> Settings) -> Unit) {
+private fun LookSection(state: MainUiState, callbacks: MainCallbacks) {
+    val settings = state.settings
+    val onLookChange = callbacks.onLookChange
     Section(stringResource(R.string.main_section_look)) {
         SettingSlider(
             label = stringResource(R.string.main_art_size),
@@ -181,6 +191,69 @@ private fun LookSection(settings: Settings, onLookChange: ((Settings) -> Setting
             onCommit = { b -> onLookChange { it.copy(shadowBlurRadius = b.roundToInt()) } },
             tag = TAG_SHADOW,
         )
+        ChoiceRow(
+            label = stringResource(R.string.main_background),
+            options = listOf(
+                BackgroundStyle.SOLID to stringResource(R.string.main_background_solid),
+                BackgroundStyle.MESH to stringResource(R.string.main_background_mesh),
+                BackgroundStyle.BLUR to stringResource(R.string.main_background_blur),
+            ),
+            selected = settings.backgroundStyle,
+            onSelect = { style -> onLookChange { it.copy(backgroundStyle = style) } },
+            tagPrefix = TAG_BACKGROUND,
+        )
+        if (settings.backgroundStyle == BackgroundStyle.BLUR) {
+            SettingSlider(
+                label = stringResource(R.string.main_blur_strength),
+                value = settings.blurStrength.toFloat(),
+                range = Settings.BLUR_STRENGTH_RANGE.toFloatRange(),
+                display = { stringResource(R.string.value_number, it.roundToInt()) },
+                onCommit = { v -> onLookChange { it.copy(blurStrength = v.roundToInt()) } },
+                tag = TAG_BLUR_STRENGTH,
+            )
+        }
+        ChoiceRow(
+            label = stringResource(R.string.main_frame),
+            options = listOf(
+                ArtFrame.NONE to stringResource(R.string.main_frame_none),
+                ArtFrame.SINGLE to stringResource(R.string.main_frame_single),
+                ArtFrame.DOUBLE to stringResource(R.string.main_frame_double),
+            ),
+            selected = settings.artFrame,
+            onSelect = { frame -> onLookChange { it.copy(artFrame = frame) } },
+            tagPrefix = TAG_FRAME,
+        )
+        SwitchRow(
+            label = stringResource(R.string.main_art_glow),
+            checked = settings.artGlow,
+            onCheckedChange = { on -> onLookChange { it.copy(artGlow = on) } },
+            modifier = Modifier.testTag(TAG_GLOW),
+        )
+        SwitchRow(
+            label = stringResource(R.string.main_glass_card),
+            checked = settings.textCard == TextCard.GLASS,
+            onCheckedChange = { on -> onLookChange { it.copy(textCard = if (on) TextCard.GLASS else TextCard.NONE) } },
+            // The card wraps the song and artist: without them there is nothing to put on it.
+            enabled = settings.showTrackInfo,
+            modifier = Modifier.testTag(TAG_GLASS),
+        )
+        SwitchRow(
+            label = stringResource(R.string.main_smooth_transition),
+            checked = settings.smoothTransition,
+            onCheckedChange = callbacks.onSmoothTransitionChange,
+            modifier = Modifier.testTag(TAG_SMOOTH),
+        )
+        if (settings.smoothTransition && !state.liveWallpaperActive) {
+            // Until it is picked, the wallpaper still changes the old way.
+            Text(
+                stringResource(R.string.main_smooth_transition_pick_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(onClick = callbacks.onPickLiveWallpaper, modifier = Modifier.testTag(TAG_PICK_LIVE)) {
+                Text(stringResource(R.string.main_pick_live_wallpaper))
+            }
+        }
         SettingSlider(
             label = stringResource(R.string.main_offset),
             value = (settings.artOffsetYPct * 100).toFloat(),
@@ -284,6 +357,13 @@ internal const val TAG_ART_SIZE = "artSize"
 internal const val TAG_CORNERS = "corners"
 internal const val TAG_SHADOW = "shadow"
 internal const val TAG_OFFSET = "offset"
+internal const val TAG_BACKGROUND = "background"
+internal const val TAG_FRAME = "frame"
+internal const val TAG_BLUR_STRENGTH = "blurStrength"
+internal const val TAG_GLOW = "artGlow"
+internal const val TAG_GLASS = "glassCard"
+internal const val TAG_SMOOTH = "smoothTransition"
+internal const val TAG_PICK_LIVE = "pickLiveWallpaper"
 internal const val TAG_TRACK_INFO = "trackInfo"
 internal const val TAG_LOCK_SCREEN = "lockScreen"
 internal const val TAG_POLL = "pollInterval"

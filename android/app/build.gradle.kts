@@ -51,6 +51,14 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Installs beside the release app instead of over it: the release
+            // is signed with another key, so updating it in place fails, and
+            // uninstalling it to make room would wipe the phone's login and
+            // settings. The redirect scheme stays shared, so a login from the
+            // debug app may ask which app should open the callback.
+            applicationIdSuffix = ".debug"
+        }
         release {
             signingConfig = signingConfigs.findByName("release")
             // R8 stays off: AppAuth, Tink and kotlinx.serialization would each

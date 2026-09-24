@@ -34,6 +34,7 @@ class TrayApp:
         on_reauthenticate: Callable[[], None],
         on_exit: Callable[[], None],
         on_setup: Callable[[], None],
+        on_restart: Callable[[], None] = lambda: None,
     ):
         self._app_state = app_state
         self._settings = settings
@@ -42,6 +43,7 @@ class TrayApp:
         # Deliberately not named _on_setup: that name belongs to the pystray
         # setup hook below, and an instance attribute would shadow it.
         self._launch_wizard = on_setup
+        self._on_restart = on_restart
         self._wizard_thread: Optional[threading.Thread] = None
         self._icon = pystray.Icon(
             "spotify_wallpaper_engine",
@@ -54,6 +56,7 @@ class TrayApp:
         return pystray.Menu(
             pystray.MenuItem(self._pause_label, self._toggle_pause),
             pystray.MenuItem("Force Sync", self._force_sync),
+            pystray.MenuItem("Style", self._build_style_menu()),
             pystray.MenuItem(
                 "Sync Lock Screen",
                 self._toggle_lock_sync,
@@ -66,7 +69,58 @@ class TrayApp:
             ),
             pystray.MenuItem("Setup...", self._setup),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Restart", self._restart),
             pystray.MenuItem("Exit", self._exit),
+        )
+
+    def _build_style_menu(self) -> pystray.Menu:
+        return pystray.Menu(
+            pystray.MenuItem(
+                "Solid background",
+                lambda icon, item: self._set_background("solid"),
+                checked=lambda item: self._settings.background_style == "solid",
+                radio=True,
+            ),
+            pystray.MenuItem(
+                "Mesh background",
+                lambda icon, item: self._set_background("mesh"),
+                checked=lambda item: self._settings.background_style == "mesh",
+                radio=True,
+            ),
+            pystray.MenuItem(
+                "Blurred art background",
+                lambda icon, item: self._set_background("blur"),
+                checked=lambda item: self._settings.background_style == "blur",
+                radio=True,
+            ),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Art glow", self._toggle_glow, checked=lambda item: self._settings.art_glow),
+            pystray.MenuItem("Blur strength", self._build_blur_menu()),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem(
+                "No frame",
+                lambda icon, item: self._set_frame("none"),
+                checked=lambda item: self._settings.art_frame == "none",
+                radio=True,
+            ),
+            pystray.MenuItem(
+                "Single glass frame",
+                lambda icon, item: self._set_frame("single"),
+                checked=lambda item: self._settings.art_frame == "single",
+                radio=True,
+            ),
+            pystray.MenuItem(
+                "Double glass frame",
+                lambda icon, item: self._set_frame("double"),
+                checked=lambda item: self._settings.art_frame == "double",
+                radio=True,
+            ),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Glass card", self._toggle_glass, checked=lambda item: self._settings.text_card == "glass"),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem(
+                "Smooth transition", self._toggle_smooth, checked=lambda item: self._settings.smooth_transition
+            ),
         )
 
     def _pause_label(self, item) -> str:
@@ -78,6 +132,62 @@ class TrayApp:
 
     def _force_sync(self, icon, item) -> None:
         self._app_state.force_sync_event.set()
+
+    def _set_background(self, style: str) -> None:
+        if self._settings.background_style == style:
+            return
+        self._settings.background_style = style
+        self._apply_style_change()
+
+    def _toggle_glow(self, icon, item) -> None:
+        self._settings.art_glow = not self._settings.art_glow
+        self._apply_style_change()
+
+    # Presets for the blurred background; any 0-100 value works from config.json.
+    _BLUR_LEVELS = (("Soft", 10), ("Medium (default)", 26), ("Strong", 50), ("Maximum", 100))
+
+    def _build_blur_menu(self) -> pystray.Menu:
+        return pystray.Menu(*(self._blur_item(name, value) for name, value in self._BLUR_LEVELS))
+
+    # A factory, not a lambda with value=value: pystray counts an action's
+    # parameters, defaults included, and rejects more than (icon, item).
+    def _blur_item(self, name: str, value: int) -> pystray.MenuItem:
+        return pystray.MenuItem(
+            name,
+            lambda icon, item: self._set_blur_strength(value),
+            checked=lambda item: self._settings.blur_strength == value,
+            radio=True,
+        )
+
+    def _set_blur_strength(self, value: int) -> None:
+        if self._settings.blur_strength == value:
+            return
+        self._settings.blur_strength = value
+        self._apply_style_change()
+
+    def _set_frame(self, frame: str) -> None:
+        if self._settings.art_frame == frame:
+            return
+        self._settings.art_frame = frame
+        self._apply_style_change()
+
+    def _toggle_smooth(self, icon, item) -> None:
+        self._settings.smooth_transition = not self._settings.smooth_transition
+        self._apply_style_change()
+
+    def _toggle_glass(self, icon, item) -> None:
+        self._settings.text_card = "none" if self._settings.text_card == "glass" else "glass"
+        self._apply_style_change()
+
+    def _apply_style_change(self) -> None:
+        # The render reads this same Settings object, and the base cache key
+        # includes the style, so a forced redraw is all it takes to show it.
+        save_settings(self._settings)
+        self._app_state.force_sync_event.set()
+
+    def _restart(self, icon, item) -> None:
+        self._on_restart()
+        icon.stop()
 
     def _reauthenticate(self, icon, item) -> None:
         threading.Thread(target=self._on_reauthenticate, daemon=True).start()

@@ -38,7 +38,7 @@ suspend fun renderSamples(context: Context, container: AppContainer): List<File>
         screens.flatMap { (name, screen) ->
             val spec = canvasSpec(screen)
             val layout = computeLayout(spec, settings, sourceArtSidePx = art.width)
-            val final = renderer.drawFinal(renderer.renderBase(art, layout), layout, playing.trackName, playing.artistName)
+            val final = renderer.drawFinal(renderer.renderBase(art, layout, settings), layout, playing.trackName, playing.artistName, settings.textCard)
             viewsOf(final, screen).map { (suffix, view) -> save(view, File(dir, "$name$suffix.png")) }
         }
     }

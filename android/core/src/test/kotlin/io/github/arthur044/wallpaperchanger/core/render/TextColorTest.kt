@@ -24,6 +24,18 @@ class TextColorTest {
     }
 
     @Test
+    fun `average color of pixels`() {
+        val pixels = intArrayOf(Rgb(0, 0, 0).argb, Rgb(200, 100, 50).argb)
+        assertEquals(Rgb(100, 50, 25), averageColor(pixels))
+    }
+
+    @Test
+    fun `average color rounds to the nearest level`() {
+        val pixels = intArrayOf(Rgb(0, 0, 0).argb, Rgb(1, 3, 255).argb)
+        assertEquals(Rgb(1, 2, 128), averageColor(pixels))
+    }
+
+    @Test
     fun `argb packing is opaque`() {
         assertEquals(0xFF102030.toInt(), Rgb(0x10, 0x20, 0x30).argb)
         assertEquals(Rgb(0x10, 0x20, 0x30), Rgb.fromArgb(0xFF102030.toInt()))
