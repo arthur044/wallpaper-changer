@@ -6,7 +6,9 @@ name: Android release
 
 on:
   push:
-    branches: [main]
+    # ci/android-spike: temporary, for dry runs until this workflow is on main
+    # (GitHub can't dispatch a workflow the default branch doesn't have).
+    branches: [main, ci/android-spike]
   workflow_dispatch:
 
 permissions:
