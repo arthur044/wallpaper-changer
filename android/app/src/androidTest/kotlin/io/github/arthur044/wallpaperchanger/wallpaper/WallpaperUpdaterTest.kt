@@ -33,6 +33,8 @@ class WallpaperUpdaterTest {
     private val port = RecordingPort()
     private val settings = MutableStateFlow(Settings())
     private val phone = CanvasSpec(1080, 2400, PixelRect(0, 63, 1080, 2274), density = 2.625f)
+    private val unfolded = CanvasSpec(2176, 2176, PixelRect(308, 308, 1868, 1868), density = 2.625f)
+    private var screen = phone
     private val png: ByteArray = ByteArrayOutputStream().also { out ->
         Bitmap.createBitmap(640, 640, Bitmap.Config.ARGB_8888)
             .apply { eraseColor(Color.rgb(200, 60, 40)) }
@@ -45,7 +47,7 @@ class WallpaperUpdaterTest {
         WallpaperApplier(port),
         settings,
         LiveWallpaper(frames) { liveActive },
-    ) { phone }
+    ) { screen }
 
     private val airbag = NowPlaying(true, "t1", "a1", "https://i.scdn.co/image/a1", "Airbag", "Radiohead")
 
@@ -79,8 +81,31 @@ class WallpaperUpdaterTest {
         updater.show(airbag)
 
         assertTrue("no static home wallpaper: it would blink black", port.flags.isEmpty())
-        val frame = checkNotNull(frames.latest.value)
+        val frame = checkNotNull(frames.latest.value.newest)
         assertEquals(1080 to 2400, frame.width to frame.height)
+    }
+
+    @Test
+    fun aFoldableOpenedAndClosedKeepsADrawingForEachScreen() = runTest {
+        settings.value = Settings(smoothTransition = true)
+        liveActive = true
+
+        updater.show(airbag)
+        screen = unfolded
+        updater.show(airbag) // the redraw after opening the phone
+
+        val shown = frames.latest.value
+        assertEquals(1080 to 2400, checkNotNull(shown.bestFor(1080, 2400)).let { it.width to it.height })
+        assertEquals(2176 to 2176, checkNotNull(shown.bestFor(2176, 1812)).let { it.width to it.height })
+    }
+
+    @Test
+    fun theStaticWallpaperIsRedrawnForTheOpenedScreen() = runTest {
+        updater.show(airbag)
+        screen = unfolded
+        updater.show(airbag)
+
+        assertEquals(listOf(Rect(0, 0, 1080, 2400), Rect(0, 0, 2176, 2176)), port.hints)
     }
 
     @Test
@@ -101,7 +126,7 @@ class WallpaperUpdaterTest {
         updater.show(airbag)
 
         assertEquals(listOf(WallpaperManager.FLAG_SYSTEM), port.flags)
-        assertTrue("ready for when it is picked", frames.latest.value != null)
+        assertTrue("ready for when it is picked", !frames.latest.value.isEmpty)
     }
 
     @Test
@@ -111,7 +136,7 @@ class WallpaperUpdaterTest {
         updater.show(airbag)
 
         assertEquals(listOf(WallpaperManager.FLAG_SYSTEM), port.flags)
-        assertTrue(frames.latest.value == null)
+        assertTrue(frames.latest.value.isEmpty)
     }
 
     @Test

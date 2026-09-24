@@ -10,6 +10,9 @@ import kotlin.time.Duration.Companion.seconds
  * Keys keep the desktop names so a desktop config can be read as-is; desktop
  * keys with no Android meaning (redirect_uri, scope, fallback_resolution,
  * log_level, ...) are simply ignored on read.
+ *
+ * A new setting that changes the drawing must also go into baseCacheKey (if
+ * it changes the base) and frameContent, or stale images will be reused.
  */
 @Serializable
 data class Settings(

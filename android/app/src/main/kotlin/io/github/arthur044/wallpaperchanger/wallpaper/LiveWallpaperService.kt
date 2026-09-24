@@ -11,11 +11,12 @@ import android.util.Log
 import android.view.Choreographer
 import android.view.SurfaceHolder
 import io.github.arthur044.wallpaperchanger.WallpaperApp
+import io.github.arthur044.wallpaperchanger.core.render.ScreenFrames
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.max
@@ -35,6 +36,7 @@ class LiveWallpaperService : WallpaperService() {
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         private val paint = Paint(Paint.FILTER_BITMAP_FLAG)
         private val matrix = Matrix()
+        private var frames = ScreenFrames.empty<Bitmap>()
         private var shown: Bitmap? = null
         private var fadingOut: Bitmap? = null
         private var fadeStart = 0L
@@ -45,10 +47,11 @@ class LiveWallpaperService : WallpaperService() {
 
         override fun onCreate(surfaceHolder: SurfaceHolder) {
             super.onCreate(surfaceHolder)
-            val frames = (application as WallpaperApp).container.liveFrames
+            val liveFrames = (application as WallpaperApp).container.liveFrames
             scope.launch {
-                withContext(Dispatchers.IO) { frames.current() }?.let { if (shown == null) show(it, fade = false) }
-                frames.latest.filterNotNull().collect { if (it !== shown) show(it, fade = shown != null && visible) }
+                val saved = withContext(Dispatchers.IO) { liveFrames.current() }
+                if (frames.isEmpty) pick(saved, fade = false)
+                liveFrames.latest.filterNot { it.isEmpty }.collect { pick(it, fade = shown != null && visible) }
             }
         }
 
@@ -56,7 +59,9 @@ class LiveWallpaperService : WallpaperService() {
             super.onSurfaceChanged(holder, format, width, height)
             this.width = width
             this.height = height
-            draw()
+            // Folded or unfolded: switch to the drawing made for this shape at once.
+            val best = frames.bestFor(width, height)
+            if (best != null && best !== shown) show(best, fade = false) else draw()
         }
 
         override fun onVisibilityChanged(visible: Boolean) {
@@ -80,6 +85,12 @@ class LiveWallpaperService : WallpaperService() {
             scope.cancel()
             Choreographer.getInstance().removeFrameCallback(nextFrame)
             super.onDestroy()
+        }
+
+        private fun pick(latest: ScreenFrames<Bitmap>, fade: Boolean) {
+            frames = latest
+            val best = latest.bestFor(width, height) ?: return
+            if (best !== shown) show(best, fade)
         }
 
         private fun show(image: Bitmap, fade: Boolean) {
@@ -117,7 +128,8 @@ class LiveWallpaperService : WallpaperService() {
                 ?: runCatching { holder.lockCanvas() }.onFailure { Log.w(TAG, "No canvas to draw on", it) }.getOrNull()
 
         // The image is drawn for this screen already; center-crop covers any
-        // surface that differs (a launcher asking for a wider one, rotation).
+        // surface that differs (a launcher asking for a wider one, rotation, or
+        // a foldable just opened, until the sync draws for the new screen).
         private fun drawFilling(canvas: Canvas, image: Bitmap, alpha: Int) {
             val scale = max(width.toFloat() / image.width, height.toFloat() / image.height)
             matrix.setScale(scale, scale)

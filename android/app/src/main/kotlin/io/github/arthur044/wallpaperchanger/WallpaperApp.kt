@@ -7,11 +7,13 @@ import io.github.arthur044.wallpaperchanger.auth.SpotifyAuth
 import io.github.arthur044.wallpaperchanger.core.config.SettingsRepository
 import io.github.arthur044.wallpaperchanger.core.spotify.ArtDownloader
 import io.github.arthur044.wallpaperchanger.core.render.canvasSpec
+import io.github.arthur044.wallpaperchanger.core.render.resizes
 import io.github.arthur044.wallpaperchanger.core.spotify.SpotifyApi
 import io.github.arthur044.wallpaperchanger.core.sync.FileRenderMemory
 import io.github.arthur044.wallpaperchanger.core.sync.FileTrackIndexStore
 import io.github.arthur044.wallpaperchanger.core.sync.SyncEngine
 import io.github.arthur044.wallpaperchanger.sync.SyncController
+import io.github.arthur044.wallpaperchanger.render.canvasSpecs
 import io.github.arthur044.wallpaperchanger.render.defaultDisplayWindowContext
 import io.github.arthur044.wallpaperchanger.render.screenMetrics
 import io.github.arthur044.wallpaperchanger.wallpaper.LiveWallpaper
@@ -27,6 +29,7 @@ import io.github.arthur044.wallpaperchanger.wallpaper.WallpaperApplier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.io.File
 
 class WallpaperApp : Application() {
@@ -63,7 +66,7 @@ class AppContainer(app: Application) {
     val applier = WallpaperApplier(SystemWallpaperPort(app))
 
     // Screen size is read from a window context: the service has no Activity.
-    private val screen by lazy { app.defaultDisplayWindowContext() }
+    private val screen = app.defaultDisplayWindowContext()
 
     /** The latest image, for the live wallpaper (the smooth-transition mode). */
     val liveFrames = LiveWallpaperFrames(File(app.filesDir, "live_wallpaper/frame.bin"))
@@ -101,6 +104,12 @@ class AppContainer(app: Application) {
     )
 
     val syncController = SyncController(app, settings, spotifyAuth, appScope)
+
+    init {
+        // A foldable opened or closed: redraw the track on screen for the new
+        // canvas. No Web API call; if the sync is stopped, it redraws on start.
+        appScope.launch { screen.canvasSpecs().resizes().collect { syncEngine.redraw() } }
+    }
 
     private companion object {
         const val TAG = "WallpaperApp"
