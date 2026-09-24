@@ -4,7 +4,7 @@ Documentação técnica do estado atual. Descreve **como o sistema funciona hoje
 foi construído. Uso e instalação estão no [README](README.md) e no
 [README do Android](android/README.md).
 
-Última revisão: 2026-09-24 · base: `main` @ `937ba47` (PR #3 mergeado)
+Última revisão: 2026-09-24 · base: `main` @ `0573ce5` + `fix/foldable-screen-change`
 
 ---
 
@@ -172,13 +172,23 @@ o loop, e o serviço mostra o motivo numa notificação.
 1. `WallpaperComposer` calcula `baseCacheKey` e consulta o `AlbumBaseCache`
    (`cacheDir/album_bases`). Se a base não existe, baixa a arte e desenha a base.
    `drawFinal` desenha o texto.
-2. `WallpaperUpdater` mede a tela a cada chamada (rotação, outro display):
+2. `WallpaperUpdater` mede a tela a cada chamada (rotação, outro display). Celular (< 600dp)
+   ganha canvas em retrato; tablet e dobrável aberto, um quadrado do lado maior com o conteúdo
+   no quadrado central, visível nas duas orientações (`canvasSpec`):
    - `smoothTransition` desligado → `WallpaperApplier` → `WallpaperManager.setBitmap`, na tela
      inicial e opcionalmente na de bloqueio;
    - ligado → publica o bitmap em `LiveWallpaperFrames`, que o `LiveWallpaperService` mostra
-     com crossfade de 300 ms. A tela de bloqueio continua estática. Enquanto o live wallpaper
+     com crossfade de 300 ms. Guarda um quadro por forma de tela (até 2, do mesmo conteúdo:
+     faixa + settings); o serviço mostra o de proporção mais próxima da superfície, então
+     fechar o dobrável troca na hora, sem esticar o desenho da outra tela. A tela de bloqueio continua estática. Enquanto o live wallpaper
      não é escolhido, a imagem também é aplicada como estática.
-3. `WallpaperBlockedException` (aparelho sem wallpaper ou política proibindo) para o sync.
+3. **Troca de tela (dobrável aberto/fechado):** o `AppContainer` observa mudanças de
+   configuração na window context (`canvasSpecs().resizes()`). Se o tamanho do canvas mudou,
+   chama `SyncEngine.redraw()`: redesenha a faixa na tela sem chamada à API. Rotação de
+   celular não conta (o canvas continua o mesmo). Com o sync parado, o redesenho fica
+   pendente até ele voltar. Após a morte do processo, a faixa na tela é esquecida e só a
+   próxima faixa redesenha.
+4. `WallpaperBlockedException` (aparelho sem wallpaper ou política proibindo) para o sync.
    `TrackNotDrawableException` (álbum sem imagem) marca a faixa como impossível de desenhar,
    para não tentar de novo a cada consulta.
 
@@ -207,7 +217,7 @@ o loop, e o serviço mostra o motivo numa notificação.
 | `files/spotify_auth_state.bin` | Estado do AppAuth, criptografado com AES-256-GCM (Tink, chave presa ao Keystore) |
 | `files/sync_state/last_track.txt` | Última faixa desenhada (sobrevive à morte do processo) |
 | `files/sync_state/track_index.json` | Índice faixa → álbum (DataStore) |
-| `files/live_wallpaper/frame.bin` | Último quadro em pixels crus (sem PNG, por custo) |
+| `files/live_wallpaper/frame.bin` | Último quadro em pixels crus (sem PNG, por custo). Só o mais novo; o quadro da outra tela do dobrável fica só em memória |
 | `cacheDir/album_bases/` | Bases por álbum, LRU com teto de 150 MB |
 
 Backup automático do Android desligado (`allowBackup=false`).
@@ -302,6 +312,7 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | Android: `targetSdk 36` com `compileSdk 37` | O AndroidX exige compileSdk 37. O target ficou em 36 de propósito (ver `app/lint.xml`) |
 | R8 desligado | AppAuth, Tink e a serialização precisariam de regras próprias. A build testada no aparelho é a sem R8 |
 | JaCoCo em vez de Kover | Kover 0.9.1 falha com Kotlin 2.4.20 |
+| Redesenhar ao mudar o tamanho da tela, não ao rotacionar | O wallpaper só é desenhado na troca de faixa; sem isso, abrir o dobrável mostrava o desenho da tela externa cortado, e fechar mostrava o quadrado da interna cortado nas laterais |
 | Debug com sufixo `.debug` | Instala ao lado do release sem apagar login e configurações (as chaves de assinatura diferem) |
 
 ---
@@ -330,6 +341,11 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
   faixa.
 - **Desktop:** só o monitor primário. Não há limite de ampliação da arte (a 4K, 640 px viram
   cerca de 1470 px).
+- **Dobráveis (não testado em aparelho real):** a primeira abertura com um álbum novo baixa
+  a arte de novo (a base do outro tamanho ainda não existe); até o redesenho chegar, o live
+  wallpaper mostra o quadro da outra tela cortado. Com a tela de bloqueio sincronizada, ela é
+  reaplicada a cada abrir/fechar e pisca. Não se sabe se a One UI guarda wallpapers
+  separados por tela nem se aceita `setBitmap` de terceiros nas duas.
 - **Mudar o estilo baixa a arte de novo** (a chave muda e a arte original não fica em cache).
 - **Lacunas de teste:** `SpotifyAuth` e `SyncController` sem testes (precisariam de
   Robolectric). Serviço, receiver e bloco só foram verificados manualmente no aparelho.

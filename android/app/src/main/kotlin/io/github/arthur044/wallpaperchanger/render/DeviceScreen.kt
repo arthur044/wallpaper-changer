@@ -1,14 +1,21 @@
 package io.github.arthur044.wallpaperchanger.render
 
+import android.content.ComponentCallbacks
 import android.content.Context
+import android.content.res.Configuration
 import android.hardware.display.DisplayManager
 import android.os.Build
 import android.util.DisplayMetrics
 import android.view.Display
 import android.view.WindowInsets
 import android.view.WindowManager
+import io.github.arthur044.wallpaperchanger.core.render.CanvasSpec
 import io.github.arthur044.wallpaperchanger.core.render.Insets
 import io.github.arthur044.wallpaperchanger.core.render.ScreenMetrics
+import io.github.arthur044.wallpaperchanger.core.render.canvasSpec
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlin.math.roundToInt
 
 /**
@@ -59,6 +66,26 @@ fun Context.defaultDisplayWindowContext(): Context {
     // Only used to read metrics: no view is ever added, so no overlay permission is needed.
     return createDisplayContext(display)
         .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
+}
+
+/**
+ * The canvas for this screen, now and after every configuration change: a
+ * foldable opened or closed changes the screen without any track changing.
+ * Use on a context from [defaultDisplayWindowContext], which follows its display.
+ */
+fun Context.canvasSpecs(): Flow<CanvasSpec> = callbackFlow {
+    val callbacks = object : ComponentCallbacks {
+        override fun onConfigurationChanged(newConfig: Configuration) {
+            trySend(canvasSpec(screenMetrics()))
+        }
+
+        @Deprecated("Deprecated in Java")
+        override fun onLowMemory() = Unit
+    }
+    registerComponentCallbacks(callbacks)
+    // Read after registering, so a change in between is not lost.
+    trySend(canvasSpec(screenMetrics()))
+    awaitClose { unregisterComponentCallbacks(callbacks) }
 }
 
 private const val STATUS_BAR_DP = 24

@@ -36,7 +36,7 @@ class WallpaperUpdater(
         val composed = composer.compose(nowPlaying, canvas(), current)
         val result = try {
             if (current.smoothTransition && live != null) {
-                showLive(live, composed.bitmap, current)
+                showLive(live, composed.bitmap, nowPlaying, current)
             } else {
                 applier.apply(composed.bitmap, includeLockScreen = current.syncLockScreen)
             }
@@ -51,8 +51,9 @@ class WallpaperUpdater(
         }
     }
 
-    private suspend fun showLive(live: LiveWallpaper, bitmap: Bitmap, current: Settings): ApplyResult {
-        withContext(Dispatchers.IO) { live.frames.publish(bitmap) }
+    private suspend fun showLive(live: LiveWallpaper, bitmap: Bitmap, nowPlaying: NowPlaying, current: Settings): ApplyResult {
+        // Same track and look drawn for the other screen of a foldable: both kept.
+        withContext(Dispatchers.IO) { live.frames.publish(bitmap, content = nowPlaying to current) }
         return when {
             !live.status.isActive() -> applier.apply(bitmap, includeLockScreen = current.syncLockScreen)
             current.syncLockScreen -> applier.applyToLockScreenOnly(bitmap)

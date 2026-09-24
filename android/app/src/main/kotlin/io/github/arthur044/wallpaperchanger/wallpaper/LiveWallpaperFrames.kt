@@ -2,9 +2,12 @@ package io.github.arthur044.wallpaperchanger.wallpaper
 
 import android.graphics.Bitmap
 import android.util.Log
+import io.github.arthur044.wallpaperchanger.core.render.ScreenFrames
+import io.github.arthur044.wallpaperchanger.core.render.SizedFrame
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
@@ -13,33 +16,39 @@ import java.nio.ByteBuffer
 
 /**
  * The latest wallpaper, handed from the sync (which draws it) to the live
- * wallpaper (which shows it), in the same process. Also kept on disk so the
- * live wallpaper has something to show right after a reboot, before the
- * first sync.
+ * wallpaper (which shows it), in the same process. One frame per screen shape
+ * (a foldable, closed and open), so the live wallpaper shows the drawing made
+ * for its surface. The newest frame is also kept on disk so the live
+ * wallpaper has something to show right after a reboot, before the first sync.
  *
  * Saved as raw pixels, not PNG: encoding a full phone screen costs hundreds
  * of milliseconds on every track, and the file is only read back here.
  * Blocking I/O: call [publish] and [current] off the main thread.
  */
 class LiveWallpaperFrames(private val file: File) {
-    private val latestFrame = MutableStateFlow<Bitmap?>(null)
+    private val latestFrames = MutableStateFlow(ScreenFrames.empty<Bitmap>())
 
-    /** The newest frame this process has seen; null until the first publish or load. */
-    val latest: StateFlow<Bitmap?> = latestFrame.asStateFlow()
+    /** The frames this process has seen; empty until the first publish or load. */
+    val latest: StateFlow<ScreenFrames<Bitmap>> = latestFrames.asStateFlow()
 
-    /** Keeps its own copy: the caller may recycle [bitmap] right after. */
-    fun publish(bitmap: Bitmap) {
+    /**
+     * Keeps its own copy: the caller may recycle [bitmap] right after.
+     * [content] names what is drawn (track and look): frames of other
+     * content are dropped, frames of the same content drawn for another
+     * screen are kept.
+     */
+    fun publish(bitmap: Bitmap, content: Any) {
         val copy = bitmap.copy(Bitmap.Config.ARGB_8888, false)
-        latestFrame.value = copy
+        latestFrames.update { it.with(SizedFrame(copy.width, copy.height, copy), content) }
         save(copy)
     }
 
-    /** The last published frame, from memory or else from disk; null if there never was one. */
-    fun current(): Bitmap? {
-        latestFrame.value?.let { return it }
-        val loaded = load() ?: return null
-        latestFrame.compareAndSet(null, loaded)
-        return latestFrame.value
+    /** The published frames, from memory or else from disk; empty if there never was one. */
+    fun current(): ScreenFrames<Bitmap> {
+        latestFrames.value.takeUnless { it.isEmpty }?.let { return it }
+        val loaded = load() ?: return latestFrames.value
+        latestFrames.compareAndSet(ScreenFrames.empty(), ScreenFrames.of(SizedFrame(loaded.width, loaded.height, loaded)))
+        return latestFrames.value
     }
 
     private fun save(bitmap: Bitmap) {
