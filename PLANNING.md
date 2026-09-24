@@ -210,11 +210,11 @@ app: seção "Atualizações" → UpdateClient (API do GitHub, sem token) → up
 
 | Componente | Papel |
 |---|---|
-| `UpdateController` (`:core`) | Lógica da seção: uma ação por vez. Fases `Checking` → `Downloading` → `Installing`, ou `UpToDate`, `Older`, `NoBuild`, `WrongPackage`, `NeedsPermission`, `Failed`. `Installing` não trava o botão: o sistema pode nunca responder (confirmação bloqueada em segundo plano ou fechada com Home) |
+| `UpdateController` (`:core`) | Lógica da seção: uma ação por vez. Fases `Checking` → `Downloading` → `Installing`, ou `UpToDate`, `Older`, `NoBuild`, `WrongPackage`, `NeedsPermission`, `Failed`. `Installing` não trava o botão: o sistema pode nunca responder (confirmação bloqueada em segundo plano ou fechada com Home). A lista de branches é buscada uma vez por processo; só "Atualizar lista" busca de novo, então reabrir ou girar a tela não gasta chamada |
 | `UpdateClient` (`:core`) | Release: `releases/latest`. Debug: lista as pré-releases `debug-*` (páginas de 100, até 5; cada página é uma chamada) e o `update.json` da branch escolhida. Baixa para `cacheDir/updates` |
 | `UpdateInfo` / `GithubReleases` (`:core`) | Parse e validação do `update.json` (SHA-256 com 64 hex, `versionCode` > 0, `apk` como nome de arquivo simples, porque vira caminho na pasta de download) e da resposta do GitHub |
-| `ApkInstaller` (`:app`) | Abre uma sessão do `PackageInstaller`, grava o APK e faz o commit. Pede "instalar apps desconhecidos" |
-| `InstallResultReceiver` (`:app`, não exportado) | Abre a confirmação do sistema e guarda o intent em `AppContainer.pendingInstallConfirmation`; a seção mostra "Confirmar instalação" para reabri-la. Limpa o intent e devolve o resultado ao controller |
+| `ApkInstaller` (`:app`) | Abandona as sessões anteriores do app (e a cópia do APK delas), abre uma nova no `PackageInstaller`, grava o APK e faz o commit. Pede "instalar apps desconhecidos" |
+| `InstallResultReceiver` (`:app`, não exportado) | Abre a confirmação do sistema e guarda o intent em `AppContainer.pendingInstallConfirmation`; a seção mostra "Confirmar instalação" para reabri-la (sessão expirada → erro na tela). Limpa o intent e devolve o resultado ao controller |
 
 O canal é o do build instalado: o release só olha o release, e o debug escolhe uma branch.
 Ele vem pré-selecionado com a própria branch (`BuildConfig.GIT_BRANCH`) enquanto ela tiver
