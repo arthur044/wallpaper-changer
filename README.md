@@ -128,3 +128,5 @@ src/graphics/              renderização da arte pro wallpaper (Pillow)
 tests/
 android/                   port Android (Kotlin): :core puro + :app, veja android/README.md
 ```
+
+Arquitetura, esquema de dados, decisões técnicas e estado atual: [PLANNING.md](PLANNING.md).
