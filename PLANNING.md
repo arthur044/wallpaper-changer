@@ -130,7 +130,7 @@ com `mesh` ou `art_glow` ligados.
 
 | Módulo | Conteúdo | Dependência de Android |
 |---|---|---|
-| `:core` | Settings, `SyncEngine`, `decide`, backoff, `ApiThrottle`, `TrackAlbumIndex`, cliente da API (OkHttp), port do ColorThief, layout, mesh, blur, moldura, vidro, chave de cache, eviction | Nenhuma (JVM pura, testável sem aparelho) |
+| `:core` | Settings, `SyncEngine`, `decide`, backoff, `ApiThrottle`, `TrackAlbumIndex`, cliente da API (OkHttp), port do ColorThief, layout, mesh, blur, moldura, vidro, chave de cache, eviction, quadros por forma de tela (`ScreenFrames`) | Nenhuma (JVM pura, testável sem aparelho) |
 | `:app` | OAuth (AppAuth + Tink), render em Canvas, cache de bases, aplicação do wallpaper, serviços, telas | Sim |
 
 DI manual: um `AppContainer` por processo (`WallpaperApp.kt`) com uma instância de cada
@@ -155,7 +155,7 @@ Componentes de apoio:
 
 1. Na primeira vez, carrega o `lastRenderedTrackId` (`FileRenderMemory`) e restaura o índice.
 2. Pausado → `Paused`.
-3. `redraw()` pendente (mudança de visual) → redesenha o que está na tela, sem API.
+3. `redraw()` pendente (mudança de visual ou do tamanho da tela) → redesenha o que está na tela, sem API.
 4. MediaSession tocando e opção ligada → `fromLocalSession`, o caminho híbrido. Uma faixa
    desconhecida faz uma chamada. Se a API ainda descreve outra faixa, a tracklist é buscada na
    hora para tentar achar esta. Se não achar, `Unknown` → backoff curto limitado ao intervalo.
@@ -178,18 +178,22 @@ o loop, e o serviço mostra o motivo numa notificação.
    - `smoothTransition` desligado → `WallpaperApplier` → `WallpaperManager.setBitmap`, na tela
      inicial e opcionalmente na de bloqueio;
    - ligado → publica o bitmap em `LiveWallpaperFrames`, que o `LiveWallpaperService` mostra
-     com crossfade de 300 ms. Guarda um quadro por forma de tela (até 2, do mesmo conteúdo:
-     faixa + settings visuais, `frameContent`); o serviço mostra o de proporção mais próxima da superfície, então
-     fechar o dobrável troca na hora, sem esticar o desenho da outra tela. A tela de bloqueio continua estática. Enquanto o live wallpaper
-     não é escolhido, a imagem também é aplicada como estática.
-3. **Troca de tela (dobrável aberto/fechado):** o `AppContainer` observa mudanças de
-   configuração e do display principal (`DisplayListener`, porque antes do Android 12 a window
-   context não recebe configuração) via `canvasSpecs().resizes()`. No Android 11 o `sw` sai
-   dos bounds da janela, não dos resources, que ficam presos à tela da criação. Se o tamanho do canvas mudou,
-   chama `SyncEngine.redraw()`: redesenha a faixa na tela sem chamada à API. Rotação de
-   celular não conta (o canvas continua o mesmo). Com o sync parado, o redesenho fica
-   pendente até ele voltar. Após a morte do processo, a faixa na tela é esquecida e só a
-   próxima faixa redesenha.
+     com crossfade de 300 ms. Guarda um quadro por forma de tela (`ScreenFrames`, até 2, todos
+     do mesmo conteúdo: faixa + settings visuais, `frameContent`). O serviço mostra o de
+     proporção mais próxima da superfície, então fechar o dobrável troca na hora, sem esticar
+     o desenho da outra tela. Conteúdo novo descarta os outros quadros. A tela de bloqueio
+     continua estática. Enquanto o live wallpaper não é escolhido, a imagem também é aplicada
+     como estática.
+3. **Troca de tela (dobrável aberto/fechado):** o `AppContainer` coleta
+   `canvasSpecs().resizes()` (`DeviceScreen.kt`). Gatilhos: `ComponentCallbacks` na window
+   context e, **só abaixo do Android 12**, um `DisplayListener` do display principal (antes
+   do 12 a window context não recebe configuração; do 12 em diante o listener dispararia a
+   cada troca de taxa de atualização). No Android 11 o `sw` sai dos bounds da janela, não
+   dos resources, que ficam presos à tela da criação. Se o tamanho do canvas mudou, chama
+   `SyncEngine.redraw()`: redesenha a faixa na tela sem chamada à API. Rotação de celular
+   não conta (o canvas continua o mesmo). Com o sync parado, o redesenho fica pendente até
+   ele voltar. Após a morte do processo, a faixa na tela é esquecida e só a próxima faixa
+   redesenha.
 4. `WallpaperBlockedException` (aparelho sem wallpaper ou política proibindo) para o sync.
    `TrackNotDrawableException` (álbum sem imagem) marca a faixa como impossível de desenhar,
    para não tentar de novo a cada consulta.
@@ -261,6 +265,9 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 - O Android inclui também a safe area, a densidade, `art_offset_y_pct` e `show_track_info`.
 - `BASE_RENDER_VERSION`: desktop **2**, Android **3** (numerações independentes). Incrementar
   quando o desenho da base mudar.
+- Setting nova que muda o desenho (Android) precisa entrar em `baseCacheKey` (se muda a base)
+  **e** em `frameContent`; senão, imagens velhas são reaproveitadas. O KDoc de `Settings`
+  avisa.
 - Um id que não seja base62 é trocado por `h` + hash, para não formar caminho.
 - Eviction: LRU por mtime até 150 MB, sem nunca apagar a base em uso. No desktop, arquivos no
   formato antigo `<album_id>.png` são apagados.

@@ -28,6 +28,10 @@ notificação permanente e sem consulta nenhuma quando não há nada tocando aqu
 guardada em `cacheDir/album_bases/`, com limite de 150 MB. Trocar de faixa dentro do
 mesmo álbum só redesenha o texto.
 
+**Tablets e dobráveis:** com a tela a partir de 600dp, o desenho é um quadrado do lado
+maior, visível nas duas orientações. Abrir ou fechar um dobrável redesenha a faixa atual
+sem chamar a API; girar o celular não redesenha. Ainda **não testado em dobrável real**.
+
 **Cor do fundo:** porte fiel do ColorThief do desktop (`core/render/ColorThief.kt`), para
 a mesma capa dar a mesma cor nas duas plataformas. Não troque por outro algoritmo sem
 comparar com valores gerados pelo código do desktop.
