@@ -251,6 +251,58 @@ class SyncEngineLocalSessionTest {
     }
 
     @Test
+    fun `the wallpaper is drawn before the index is written`() = runTest {
+        val events = mutableListOf<String>()
+        sink.onShow = { events += "show" }
+        store.onSave = { events += "save" }
+        source.playing = { apiSaysAirbag }
+        tracks.byAlbum = mapOf("a1" to listOf(AlbumTrack("Airbag", "Radiohead"), AlbumTrack("Lucky", "Radiohead")))
+        val engine = engine()
+
+        engine.onLocalTrack(airbagLocally)
+        engine.runOnce()
+
+        assertEquals(listOf("show", "save"), events, "one write, after the draw")
+    }
+
+    @Test
+    fun `a song is forgotten only once while it keeps failing`() = runTest {
+        store.saved = listOf("radiohead::airbag" to ResolvedAlbum("a1", "https://gone"))
+        sink.fail = true
+        source.playing = { apiSaysAirbag }
+        val engine = engine()
+
+        engine.onLocalTrack(airbagLocally)
+        engine.runOnce() // forgets the saved link
+        advanceTimeBy(6.seconds)
+        engine.runOnce() // looks it up again; the draw still fails
+
+        assertEquals(1, source.calls)
+        assertEquals(listOf("radiohead::airbag" to ResolvedAlbum("a1", "https://i.scdn.co/image/a1")), store.saved)
+    }
+
+    @Test
+    fun `a song that draws again can be forgotten again later`() = runTest {
+        // A link that works today can expire months from now.
+        store.saved = listOf("radiohead::airbag" to ResolvedAlbum("a1", "https://gone"))
+        sink.fail = true
+        source.playing = { apiSaysAirbag }
+        val engine = engine()
+        engine.onLocalTrack(airbagLocally)
+        engine.runOnce() // fails: forgotten
+        sink.fail = false
+        advanceTimeBy(6.seconds)
+        engine.runOnce() // looked up again, drawn
+        assertEquals(listOf("radiohead::airbag"), sink.shown)
+
+        sink.fail = true
+        engine.redraw() // e.g. a look change
+        engine.runOnce()
+
+        assertTrue(store.saved.isEmpty())
+    }
+
+    @Test
     fun `a failed tracklist prefetch still draws the current track`() = runTest {
         val engine = engine()
         source.playing = { apiSaysAirbag }
@@ -306,10 +358,12 @@ class SyncEngineLocalSessionTest {
 
     private class FakeStore : TrackIndexStore {
         var saved: List<Pair<String, ResolvedAlbum>> = emptyList()
+        var onSave: () -> Unit = {}
 
         override suspend fun load(): List<Pair<String, ResolvedAlbum>> = saved
 
         override suspend fun save(entries: List<Pair<String, ResolvedAlbum>>) {
+            onSave()
             saved = entries
         }
     }

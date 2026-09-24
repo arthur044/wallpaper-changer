@@ -55,4 +55,20 @@ class FileTrackIndexStoreTest {
         assertTrue(loaded.isEmpty())
         assertTrue(errors.isNotEmpty())
     }
+
+    @Test
+    fun `a file of the wrong shape starts empty`() = runTest {
+        for (content in listOf("[]", "42", "null", """{"version":1,"tracks":[{"key":"k"}]}""")) {
+            file.writeText(content)
+
+            assertTrue(withStore { it.load() }.isEmpty(), content)
+        }
+    }
+
+    @Test
+    fun `a file from an unknown version is ignored`() = runTest {
+        file.writeText("""{"version":99,"tracks":[{"key":"k","albumId":"a"}]}""")
+
+        assertTrue(withStore { it.load() }.isEmpty())
+    }
 }
