@@ -20,9 +20,9 @@ sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:?no Android SDK}}"
 apksigner="$(ls -d "$sdk"/build-tools/*/ | sort -V | tail -1)apksigner"
 
 certs="$("$apksigner" verify --print-certs "$apk")"
-# The signer label varies between build-tools versions ("Signer #1", or with
-# the SDK range for v3.1); every signer must carry the same certificate.
-got="$(sed -n 's/^Signer.* certificate SHA-256 digest: //p' <<< "$certs" | sort -u)"
+# The signer label varies between build-tools versions ("Signer #1", or one
+# per scheme like "V3.0 Signer:"); every signer must carry the same certificate.
+got="$(sed -n 's/^.*Signer.* certificate SHA-256 digest: //p' <<< "$certs" | sort -u)"
 if [ -z "$got" ]; then
   echo "No certificate found for $apk. apksigner said:" >&2
   echo "$certs" >&2
