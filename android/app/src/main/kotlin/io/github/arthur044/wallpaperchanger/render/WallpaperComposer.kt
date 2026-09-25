@@ -14,6 +14,9 @@ import kotlinx.coroutines.withContext
 
 class ComposedWallpaper(val bitmap: Bitmap, val reusedBase: Boolean)
 
+/** An album's base; [fromCache] is false when it was just drawn (and cached). */
+class ObtainedBase(val base: CachedBase, val fromCache: Boolean)
+
 /**
  * The full render path (renderer.render_for_now_playing): a new album is
  * downloaded and its base drawn and cached; another track on a cached album
@@ -31,6 +34,30 @@ class WallpaperComposer(
      * @throws io.github.arthur044.wallpaperchanger.core.spotify.TransientNetworkException if the art download fails.
      */
     suspend fun compose(nowPlaying: NowPlaying, canvas: CanvasSpec, settings: Settings): ComposedWallpaper {
+        val obtained = obtainBase(nowPlaying, canvas, settings)
+        val base = obtained.base
+        return try {
+            val layout = computeLayout(canvas, settings, base.sourceArtSidePx)
+            val final = withContext(cpu) {
+                renderer.drawFinal(base.base, layout, nowPlaying.trackName, nowPlaying.artistName, settings.textCard)
+            }
+            ComposedWallpaper(final, reusedBase = obtained.fromCache)
+        } finally {
+            // Only the final image outlives this call; the base is on disk now.
+            base.base.bitmap.recycle()
+        }
+    }
+
+    /**
+     * The album's base for this screen and look, without the track text: the
+     * cached one, or (just after a zoom or style change) drawn from a fresh
+     * download and cached, exactly as [compose] would. The caller owns the
+     * bitmap and must recycle it.
+     *
+     * @throws TrackNotDrawableException if it has no album, or no art and no base is cached.
+     * @throws io.github.arthur044.wallpaperchanger.core.spotify.TransientNetworkException if the art download fails.
+     */
+    suspend fun obtainBase(nowPlaying: NowPlaying, canvas: CanvasSpec, settings: Settings): ObtainedBase {
         // decide() keeps album-less tracks out of here, but say it the same way
         // as missing art if one ever arrives: retrying it would change nothing.
         val albumId = nowPlaying.albumId
@@ -38,17 +65,7 @@ class WallpaperComposer(
         val key = baseCacheKey(albumId, canvas, settings)
 
         val cached = withContext(io) { cache.get(key) }
-        val base = cached ?: drawAndCacheBase(nowPlaying, key, canvas, settings)
-        return try {
-            val layout = computeLayout(canvas, settings, base.sourceArtSidePx)
-            val final = withContext(cpu) {
-                renderer.drawFinal(base.base, layout, nowPlaying.trackName, nowPlaying.artistName, settings.textCard)
-            }
-            ComposedWallpaper(final, reusedBase = cached != null)
-        } finally {
-            // Only the final image outlives this call; the base is on disk now.
-            base.base.bitmap.recycle()
-        }
+        return ObtainedBase(cached ?: drawAndCacheBase(nowPlaying, key, canvas, settings), fromCache = cached != null)
     }
 
     private suspend fun drawAndCacheBase(
