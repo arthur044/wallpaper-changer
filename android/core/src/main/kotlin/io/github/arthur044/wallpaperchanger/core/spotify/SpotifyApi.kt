@@ -44,6 +44,8 @@ class SpotifyApi(
             artUrl = item.album?.images?.firstNotNullOfOrNull { it.url },
             trackName = item.name,
             artistName = item.artists.joinNames().ifEmpty { null },
+            albumName = item.album?.name,
+            durationMs = item.durationMs,
         )
     }
 
@@ -140,13 +142,14 @@ private class TrackDto(
     val name: String? = null,
     val artists: List<ArtistDto> = emptyList(),
     val album: AlbumDto? = null,
+    @SerialName("duration_ms") val durationMs: Long? = null,
 )
 
 @Serializable
 private class ArtistDto(val name: String? = null)
 
 @Serializable
-private class AlbumDto(val id: String? = null, val images: List<ImageDto> = emptyList())
+private class AlbumDto(val id: String? = null, val name: String? = null, val images: List<ImageDto> = emptyList())
 
 @Serializable
 private class ImageDto(val url: String? = null)

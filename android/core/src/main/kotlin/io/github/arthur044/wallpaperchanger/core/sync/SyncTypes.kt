@@ -27,7 +27,13 @@ fun interface WallpaperSink {
  * What Spotify's own session on this phone reports. It is free and instant, but
  * it only knows about playback on this device, so it is never the only source.
  */
-data class LocalTrack(val title: String?, val artist: String?, val isPlaying: Boolean)
+data class LocalTrack(
+    val title: String?,
+    val artist: String?,
+    val isPlaying: Boolean,
+    val album: String? = null,
+    val durationMs: Long? = null,
+)
 
 /** The tracks of an album, used to pre-warm the index after resolving one track. */
 fun interface AlbumTracksSource {

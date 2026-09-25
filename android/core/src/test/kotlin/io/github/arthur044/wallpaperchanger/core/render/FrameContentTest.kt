@@ -36,6 +36,13 @@ class FrameContentTest {
     }
 
     @Test
+    fun `album name and duration never touch pixels`() {
+        // They only feed the lyrics lookup: a MediaSession that reports them late
+        // must not redraw the wallpaper.
+        assertEquals(base, frameContent(airbag.copy(albumName = "OK Computer", durationMs = 287_000), Settings()))
+    }
+
+    @Test
     fun `another track is other content`() {
         assertNotEquals(base, frameContent(airbag.copy(trackId = "t2", trackName = "Lucky"), Settings()))
     }
