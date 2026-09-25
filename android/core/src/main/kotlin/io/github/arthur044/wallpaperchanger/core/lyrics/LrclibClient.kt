@@ -29,14 +29,27 @@ sealed interface Lyrics {
     data object NotFound : Lyrics
 }
 
-/** The track to look up. [album] and [durationMs] may be unknown (the phone's session). */
-data class LyricsQuery(val artist: String, val title: String, val album: String?, val durationMs: Long?) {
+/**
+ * The track to look up. [album] and [durationMs] may be unknown (the phone's
+ * session). [artists] are Spotify's names one by one, when known: LRCLIB files
+ * a track under its first artist, and [artist] joins them all ("A, B").
+ */
+data class LyricsQuery(
+    val artist: String,
+    val title: String,
+    val album: String?,
+    val durationMs: Long?,
+    val artists: List<String> = emptyList(),
+) {
+    /** Who to ask LRCLIB about: the first listed artist, never a split of the joined text. */
+    val primaryArtist: String get() = artists.firstOrNull { it.isNotBlank() } ?: artist
+
     companion object {
         /** Null when the track has no title or artist to ask about. */
         fun of(nowPlaying: NowPlaying): LyricsQuery? {
             val title = nowPlaying.trackName?.takeIf(String::isNotBlank) ?: return null
             val artist = nowPlaying.artistName?.takeIf(String::isNotBlank) ?: return null
-            return LyricsQuery(artist, title, nowPlaying.albumName, nowPlaying.durationMs)
+            return LyricsQuery(artist, title, nowPlaying.albumName, nowPlaying.durationMs, nowPlaying.artists)
         }
     }
 }
@@ -63,7 +76,7 @@ class LrclibClient(
 
     override suspend fun lyrics(query: LyricsQuery): Lyrics {
         val title = cleanTitle(query.title)
-        val artist = cleanArtist(query.artist)
+        val artist = cleanArtist(query.primaryArtist)
         if (title.isBlank() || artist.isBlank()) return Lyrics.NotFound
         val album = query.album?.trim().orEmpty()
         val seconds = (query.durationMs ?: 0) / 1000
@@ -158,6 +171,8 @@ private const val MAX_DRIFT_SECS = 30.0
 internal fun score(record: LrclibRecord, query: LyricsQuery): Int? {
     if (!looseMatch(record.trackName, cleanTitle(query.title))) return null
     var score = 0
+    // The joined names contain each artist, so a duet filed under its second
+    // artist matches too (loose matching accepts containment).
     if (looseMatch(record.artistName, cleanArtist(query.artist))) score += 1000
     val durationMs = query.durationMs ?: 0
     val duration = record.duration?.takeIf { it > 0 }

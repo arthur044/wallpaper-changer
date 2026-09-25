@@ -61,6 +61,28 @@ class LrclibClientTest {
     }
 
     @Test
+    fun `with several artists the lookup asks by the first, as Spotify lists them`() = runTest {
+        respond(404)
+        respond(200, "[]")
+        val duet = metropolis.copy(artist = "Dream Theater, Guest", artists = listOf("Dream Theater", "Guest"))
+
+        client.lyrics(duet)
+
+        assertEquals("Dream Theater", server.takeRequest().url.queryParameter("artist_name"))
+        assertEquals("Dream Theater", server.takeRequest().url.queryParameter("artist_name"))
+    }
+
+    @Test
+    fun `an artist with a comma in the name is never split`() = runTest {
+        respond(404)
+        respond(200, "[]")
+
+        client.lyrics(LyricsQuery("Tyler, The Creator", "Song", "Album", 200_000, listOf("Tyler, The Creator")))
+
+        assertEquals("Tyler, The Creator", server.takeRequest().url.queryParameter("artist_name"))
+    }
+
+    @Test
     fun `a miss on the exact lookup falls back to the search`() = runTest {
         respond(404, fixture("not_found.json"))
         respond(200, fixture("search_metropolis.json"))
@@ -200,6 +222,14 @@ class LrclibClientTest {
     }
 
     @Test
+    fun `a duet filed under its second artist still counts as the right artist`() {
+        val query = LyricsQuery("Artist, Guest", "Song", null, 200_000, listOf("Artist", "Guest"))
+        val cover = LrclibRecord(trackName = "Song", artistName = "Someone Else", duration = 200.0, syncedLyrics = "[00:01]a")
+        val duet = LrclibRecord(trackName = "Song", artistName = "Guest", duration = 225.0, plainLyrics = "a")
+        assertEquals(duet, pick(listOf(cover, duet), query))
+    }
+
+    @Test
     fun `synced-only words are used when there is no plain upload`() {
         val record = LrclibRecord(syncedLyrics = "[00:10.00] Second\n[00:05.00] First\n[00:15.00]\n[00:20.00] Third")
         assertEquals(Lyrics.Text(listOf("First", "Second", "", "Third")), record.lyrics())
@@ -207,8 +237,8 @@ class LrclibClientTest {
 
     @Test
     fun `a query needs a title and an artist`() {
-        val playing = NowPlaying(true, "t1", "a1", null, "Airbag", "Radiohead", "OK Computer", 287_000)
-        assertEquals(LyricsQuery("Radiohead", "Airbag", "OK Computer", 287_000), LyricsQuery.of(playing))
+        val playing = NowPlaying(true, "t1", "a1", null, "Airbag", "Radiohead", "OK Computer", 287_000, listOf("Radiohead"))
+        assertEquals(LyricsQuery("Radiohead", "Airbag", "OK Computer", 287_000, listOf("Radiohead")), LyricsQuery.of(playing))
         assertNull(LyricsQuery.of(playing.copy(trackName = " ")))
         assertNull(LyricsQuery.of(playing.copy(artistName = null)))
     }

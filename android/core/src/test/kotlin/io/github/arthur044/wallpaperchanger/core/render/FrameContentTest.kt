@@ -40,6 +40,7 @@ class FrameContentTest {
         // They only feed the lyrics lookup: a MediaSession that reports them late
         // must not redraw the wallpaper.
         assertEquals(base, frameContent(airbag.copy(albumName = "OK Computer", durationMs = 287_000), Settings()))
+        assertEquals(base, frameContent(airbag.copy(artists = listOf("Radiohead")), Settings()))
     }
 
     @Test

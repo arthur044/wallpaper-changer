@@ -46,6 +46,7 @@ class SpotifyApi(
             artistName = item.artists.joinNames().ifEmpty { null },
             albumName = item.album?.name,
             durationMs = item.durationMs,
+            artists = item.artists.names(),
         )
     }
 
@@ -127,8 +128,9 @@ class SpotifyApi(
     }
 }
 
-private fun List<ArtistDto>.joinNames(): String =
-    mapNotNull { it.name?.takeIf(String::isNotBlank) }.joinToString(", ")
+private fun List<ArtistDto>.names(): List<String> = mapNotNull { it.name?.takeIf(String::isNotBlank) }
+
+private fun List<ArtistDto>.joinNames(): String = names().joinToString(", ")
 
 @Serializable
 private class CurrentlyPlayingDto(

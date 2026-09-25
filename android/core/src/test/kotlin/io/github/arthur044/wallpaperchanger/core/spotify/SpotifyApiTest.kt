@@ -52,6 +52,7 @@ class SpotifyApiTest {
                 artistName = "Radiohead, Guest",
                 albumName = "OK Computer",
                 durationMs = 287_000,
+                artists = listOf("Radiohead", "Guest"),
             ),
             api.currentlyPlaying(),
         )
