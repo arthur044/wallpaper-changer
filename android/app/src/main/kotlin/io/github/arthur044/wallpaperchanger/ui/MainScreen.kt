@@ -25,7 +25,10 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import io.github.arthur044.wallpaperchanger.AppContainer
 import io.github.arthur044.wallpaperchanger.BuildConfig
 import io.github.arthur044.wallpaperchanger.core.spotify.ArtSource
@@ -56,6 +59,15 @@ fun MainScreen(
     LaunchedEffect(Unit) { container.updates.loadBranches() }
     var signedIn by remember { mutableStateOf(true) }
     LaunchedEffect(status) { signedIn = container.spotifyAuth.status().signedIn }
+
+    // The lyrics are looked up ahead of the share button, only while this
+    // screen is visible: stopped (closed, locked, another screen) cancels it.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            container.lyrics.follow(container.syncEngine.status)
+        }
+    }
 
     val artUrl = (status as? SyncStatus.Showing)?.nowPlaying?.artUrl
     val art by produceState<ImageBitmap?>(null, artUrl) {

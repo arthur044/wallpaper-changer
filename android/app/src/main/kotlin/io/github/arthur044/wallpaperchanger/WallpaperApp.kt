@@ -6,6 +6,9 @@ import android.util.Log
 import io.github.arthur044.wallpaperchanger.auth.EncryptedTokenStore
 import io.github.arthur044.wallpaperchanger.auth.SpotifyAuth
 import io.github.arthur044.wallpaperchanger.core.config.SettingsRepository
+import io.github.arthur044.wallpaperchanger.core.lyrics.LrclibClient
+import io.github.arthur044.wallpaperchanger.core.lyrics.LyricsPrefetch
+import io.github.arthur044.wallpaperchanger.core.lyrics.LyricsSlot
 import io.github.arthur044.wallpaperchanger.core.spotify.ArtDownloader
 import io.github.arthur044.wallpaperchanger.core.render.canvasSpec
 import io.github.arthur044.wallpaperchanger.core.render.resizes
@@ -111,6 +114,12 @@ class AppContainer(app: Application) {
     )
 
     val syncController = SyncController(app, settings, spotifyAuth, appScope)
+
+    /**
+     * Lyrics for the share screen, in memory only. Only the main screen asks,
+     * while it is visible (LyricsPrefetch.follow); the sync never does.
+     */
+    val lyrics = LyricsPrefetch(LyricsSlot(LrclibClient(userAgent = "WallpaperChanger/${BuildConfig.VERSION_NAME} (Android)")))
 
     /**
      * The installer's confirmation screen while an update waits for it. Kept
