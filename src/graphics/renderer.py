@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from typing import List, Optional, Tuple
+from urllib.parse import urlsplit
 
 import requests
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageStat
@@ -24,6 +25,7 @@ from src.spotify.client import NowPlaying
 logger = logging.getLogger(__name__)
 
 _DOWNLOAD_TIMEOUT_SECONDS = 10
+_SPOTIFY_ART_DOMAINS = ("scdn.co", "spotifycdn.com")
 _TEXT_MAX_WIDTH_PCT = 0.8
 
 _SHADOW_ALPHA = 140
@@ -55,10 +57,23 @@ _FRAME_RIMS = {
 _MAX_BLUR_DOWNSCALE = 4
 
 
+def is_spotify_art_url(url: str) -> bool:
+    """HTTPS on scdn.co / spotifycdn.com or a subdomain of them (album art is on i.scdn.co)."""
+    parts = urlsplit(url)
+    host = (parts.hostname or "").lower()
+    return parts.scheme == "https" and any(host == d or host.endswith("." + d) for d in _SPOTIFY_ART_DOMAINS)
+
+
 def download_art(url: str) -> bytes:
-    response = requests.get(url, timeout=_DOWNLOAD_TIMEOUT_SECONDS)
-    response.raise_for_status()
-    return response.content
+    # Only Spotify's image CDN, checked again after redirects: the bytes go to the
+    # image decoder, so a forged API answer must not point it at an arbitrary host.
+    if not is_spotify_art_url(url):
+        raise ValueError(f"Art URL outside Spotify's CDN: {urlsplit(url).netloc}")
+    with requests.get(url, timeout=_DOWNLOAD_TIMEOUT_SECONDS, stream=True) as response:
+        if not is_spotify_art_url(response.url):
+            raise ValueError(f"Art redirected outside Spotify's CDN: {urlsplit(response.url).netloc}")
+        response.raise_for_status()
+        return response.content
 
 
 def _rounded_mask(size: int, radius: int) -> Image.Image:
