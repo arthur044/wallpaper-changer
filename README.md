@@ -101,8 +101,10 @@ para Kotlin, não substituído — trocá-lo por outro muda as cores).
 
 **Além disso, no Android:** guia de primeiro uso que valida o Client ID e explica a
 Redirect URI; volta a sincronizar sozinho depois de reiniciar o celular, atualizar o app
-ou ter o processo morto; e um modo "sem notificação fixa", que dispensa o serviço em
-primeiro plano quando a detecção instantânea está ligada.
+ou ter o processo morto; um modo "sem notificação fixa", que dispensa o serviço em
+primeiro plano quando a detecção instantânea está ligada; e **"Compartilhar letra"**, que
+monta uma imagem 9:16 com a capa e os versos escolhidos da faixa atual, pronta para
+Stories ou WhatsApp. Esse recurso é exclusivo do Android.
 
 **Requisitos do Spotify, que valem para quem for instalar:**
 

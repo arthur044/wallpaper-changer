@@ -33,6 +33,15 @@ maior, visível nas duas orientações. Abrir ou fechar um dobrável redesenha a
 sem chamar a API; mudar o tamanho de exibição (zoom) também. Girar o celular não redesenha.
 O redesenho do dobrável foi validado em aparelho real.
 
+**Compartilhar letra** (só no Android) — com uma faixa na tela, o cartão de status da
+tela principal mostra "Compartilhar letra". Toque nas linhas para escolher os versos; a
+prévia usa a mesma arte e o mesmo fundo do wallpaper, com os versos num cartão de vidro
+sobre a capa, em 9:16 (quadrada em tablet ou dobrável aberto). "Compartilhar" abre o menu
+do Android. As letras vêm do [LRCLIB](https://lrclib.net), um serviço comunitário, então
+podem faltar ou ter erros. A letra só é buscada com a tela principal aberta, fica apenas em
+memória, e a imagem é um único arquivo temporário, apagado no próximo compartilhamento ou
+quando o app abre.
+
 **Cor do fundo:** porte fiel do ColorThief do desktop (`core/render/ColorThief.kt`), para
 a mesma capa dar a mesma cor nas duas plataformas. Não troque por outro algoritmo sem
 comparar com valores gerados pelo código do desktop.
@@ -171,8 +180,8 @@ empurre para `cache/color_parity/` no aparelho, com um `expected.txt` de linhas
 
 | Módulo | Conteúdo |
 |---|---|
-| `core` | Kotlin puro, sem Android: decisão de polling, backoff, configurações, cliente da API, layout, cor, chave de cache e o motor de sincronização |
-| `app` | Android: OAuth (AppAuth + Tink), renderização em Canvas, cache em disco, serviço, bloco das Configurações rápidas, telas |
+| `core` | Kotlin puro, sem Android: decisão de polling, backoff, configurações, cliente da API, layout, cor, chave de cache, o motor de sincronização, cliente do LRCLIB e layout da imagem de letra |
+| `app` | Android: OAuth (AppAuth + Tink), renderização em Canvas, cache em disco, serviço, bloco das Configurações rápidas, telas, imagem e tela de compartilhar letra |
 
 As telas de debug e a medição do MediaSession continuam no código, acessíveis **apenas em
 builds de debug** (`BuildConfig.DEBUG`), pelo link no fim da tela principal.
@@ -182,4 +191,9 @@ builds de debug** (`BuildConfig.DEBUG`), pelo link no fim da tela principal.
 - A sessão do Spotify fica criptografada com uma chave do Android Keystore
   (`files/spotify_auth_state.bin`); o token nunca é registrado em log nem exibido.
 - O backup automático do Android está desligado.
-- O app fala só com `accounts.spotify.com`, `api.spotify.com` e o CDN de capas.
+- O app fala só com `accounts.spotify.com`, `api.spotify.com`, o CDN de capas, `lrclib.net`
+  (título, artista, álbum e duração da faixa, só com a tela principal aberta) e
+  `api.github.com`/GitHub Releases (só ao verificar ou baixar uma atualização).
+- A letra nunca é gravada no aparelho. A imagem compartilhada fica em `cache/share` até o
+  próximo compartilhamento ou a próxima abertura do app, e só o app escolhido no menu de
+  compartilhar recebe permissão para lê-la.
