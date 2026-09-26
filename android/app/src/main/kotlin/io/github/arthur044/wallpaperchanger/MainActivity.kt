@@ -33,6 +33,8 @@ class MainActivity : ComponentActivity() {
         // background restart: bring syncing back if it was left on.
         if (savedInstanceState == null) {
             lifecycleScope.launch { container.syncController.resumeIfEnabled() }
+            // A share image from last time is not kept: nothing persists for it.
+            lifecycleScope.launch { container.lyricsShare.clearFiles() }
         }
         setContent {
             AppTheme {

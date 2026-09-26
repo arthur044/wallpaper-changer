@@ -85,7 +85,9 @@ class ShareLayoutTest {
         assertTrue(card.contains(share.thumb), "thumb ${share.thumb} in $card")
         assertTrue(share.header.textLeft >= share.thumb.right)
         assertTrue(share.header.textLeft + share.header.maxWidth <= card.right)
-        assertTrue(share.verses.area.top >= share.thumb.bottom, "verses below the header")
+        assertTrue(share.verses.area.top >= share.thumb.bottom, "verses below the thumbnail")
+        assertTrue(share.verses.area.top >= share.header.bottom, "verses below the header text")
+        assertTrue(share.header.bottom <= card.bottom)
         assertTrue(card.contains(share.verses.area), "verses ${share.verses.area} in $card")
         assertTrue(share.verses.minSizePx <= share.verses.maxSizePx)
         assertTrue(share.verses.maxLines >= 1)
@@ -169,6 +171,12 @@ class ShareLayoutTest {
         assertTrue(tiny.verses.minSizePx >= 1080 * 0.028f - 0.5f, "min ${tiny.verses.minSizePx}")
         assertTrue(tiny.header.titleSizePx >= 1080 * 0.022f - 0.5f, "title ${tiny.header.titleSizePx}")
         assertTrue(tiny.verses.maxLines >= 1)
+    }
+
+    @Test
+    fun `a stanza break at either end of a selection is not drawn`() {
+        assertEquals(listOf("a", "", "b"), versesToDraw(listOf("", "a", "", "b", "")))
+        assertEquals(emptyList<String>(), versesToDraw(listOf("", "")))
     }
 
     companion object {

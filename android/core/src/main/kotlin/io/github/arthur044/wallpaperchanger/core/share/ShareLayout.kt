@@ -47,6 +47,8 @@ data class ShareHeader(
     /** Tops of the line boxes; the renderer places baselines from its font metrics. */
     val titleTop: Int,
     val artistTop: Int,
+    /** Bottom of the artist's line box. */
+    val bottom: Int,
     val textLeft: Int,
     val maxWidth: Int,
 )
@@ -122,6 +124,7 @@ fun shareLayout(canvas: CanvasSpec, settings: Settings, sourceArtSidePx: Int): S
         artistSizePx = artistSize,
         titleTop = titleTop,
         artistTop = titleTop + titleLine,
+        bottom = titleTop + titleLine + artistLine,
         textLeft = textLeft,
         maxWidth = (card.right - pad - textLeft).coerceAtLeast(0),
     )
@@ -158,3 +161,7 @@ private fun crop(canvas: CanvasSpec, block: PixelRect): PixelRect {
     val top = (block.top - (cropHeight - block.height) / 2).coerceIn(0, height - cropHeight)
     return PixelRect(0, top, width, top + cropHeight)
 }
+
+/** The selected lines as drawn: a stanza break at either end would only be empty space. */
+fun versesToDraw(selected: List<String>): List<String> =
+    selected.dropWhile(String::isBlank).dropLastWhile(String::isBlank)

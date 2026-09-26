@@ -9,6 +9,11 @@ import io.github.arthur044.wallpaperchanger.core.config.SettingsRepository
 import io.github.arthur044.wallpaperchanger.core.lyrics.LrclibClient
 import io.github.arthur044.wallpaperchanger.core.lyrics.LyricsPrefetch
 import io.github.arthur044.wallpaperchanger.core.lyrics.LyricsSlot
+import io.github.arthur044.wallpaperchanger.core.render.CanvasSpec
+import io.github.arthur044.wallpaperchanger.share.LyricsShare
+import io.github.arthur044.wallpaperchanger.share.ShareFiles
+import io.github.arthur044.wallpaperchanger.share.ShareRenderer
+import kotlinx.coroutines.flow.first
 import io.github.arthur044.wallpaperchanger.core.spotify.ArtDownloader
 import io.github.arthur044.wallpaperchanger.core.render.canvasSpec
 import io.github.arthur044.wallpaperchanger.core.render.resizes
@@ -88,9 +93,11 @@ class AppContainer(app: Application) {
         applier,
         settings.settings,
         LiveWallpaper(liveFrames, liveWallpaperStatus),
-    ) {
-        canvasSpec(screen.screenMetrics())
-    }
+        canvas = ::currentCanvas,
+    )
+
+    /** The wallpaper's canvas for this screen right now; the share image uses the same. */
+    fun currentCanvas(): CanvasSpec = canvasSpec(screen.screenMetrics())
 
     private val renderMemory = FileRenderMemory.create(
         file = File(app.filesDir, "sync_state/last_track.txt"),
@@ -120,6 +127,15 @@ class AppContainer(app: Application) {
      * while it is visible (LyricsPrefetch.follow); the sync never does.
      */
     val lyrics = LyricsPrefetch(LyricsSlot(LrclibClient(userAgent = "WallpaperChanger/${BuildConfig.VERSION_NAME} (Android)")))
+
+    /** Lyrics share images, from the wallpaper's cached base; one temporary file at most. */
+    val lyricsShare = LyricsShare(
+        composer = composer,
+        renderer = ShareRenderer(renderer),
+        files = ShareFiles.forApp(app),
+        canvas = ::currentCanvas,
+        settings = { settings.settings.first() },
+    )
 
     /**
      * The installer's confirmation screen while an update waits for it. Kept
