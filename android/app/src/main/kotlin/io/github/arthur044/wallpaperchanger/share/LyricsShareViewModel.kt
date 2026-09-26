@@ -75,10 +75,12 @@ class LyricsShareViewModel(app: Application) : AndroidViewModel(app) {
     private var previewJob: Job? = null
     private val jobs = mutableListOf<Job>()
     private var openedAt = 0L
+    private var firstPreviewLogged = false
 
     fun open(nowPlaying: NowPlaying) {
         if (mutableState.value.open) return
         openedAt = System.nanoTime()
+        firstPreviewLogged = false
         mutableState.value = ShareUiState(open = true, nowPlaying = nowPlaying)
         val prefetch = container.lyrics
         // Normally already looked up; if not (the track has just changed), ask now.
@@ -134,7 +136,9 @@ class LyricsShareViewModel(app: Application) : AndroidViewModel(app) {
         previewJob = viewModelScope.launch {
             delay(PREVIEW_DEBOUNCE_MS) // taps in a row draw once
             val image = current.draw(selection.of(lines))
-            if (mutableState.value.preview == null) {
+            // Once per opening: clearing the selection and choosing again is not a first preview.
+            if (!firstPreviewLogged) {
+                firstPreviewLogged = true
                 Log.d(TAG, "button to first preview: ${(System.nanoTime() - openedAt) / 1_000_000} ms")
             }
             mutableState.update { it.copy(preview = image, previewOf = selection) }
