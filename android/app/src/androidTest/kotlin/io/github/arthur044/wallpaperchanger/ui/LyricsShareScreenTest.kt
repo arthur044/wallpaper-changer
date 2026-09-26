@@ -5,7 +5,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -50,9 +56,13 @@ class LyricsShareScreenTest {
         previewOf = VerseSelection(0, 1),
     )
 
+    // Fixed density and font scale: the phone's own zoom and font size would
+    // otherwise decide how much room the lines get.
     private fun showIn(width: Int, height: Int, state: ShareUiState, callbacks: ShareCallbacks) {
         rule.setContent {
-            AppTheme { Box(Modifier.size(width.dp, height.dp)) { LyricsShareScreen(state, callbacks) } }
+            CompositionLocalProvider(LocalDensity provides Density(2.625f, fontScale = 1f)) {
+                AppTheme { Box(Modifier.size(width.dp, height.dp)) { LyricsShareScreen(state, callbacks) } }
+            }
         }
     }
 
@@ -64,6 +74,9 @@ class LyricsShareScreenTest {
         showIn(840, 360, choosingWithPreview(), ShareCallbacks(onTap = { tapped = it }, onShare = { shared = true }))
 
         rule.onNodeWithTag(TAG_SHARE_BUTTON).assertIsDisplayed().performClick()
+        // Stacked, the preview left the lines a sliver: they need room of their own.
+        rule.onNodeWithTag(TAG_SHARE_LINES).assertHeightIsAtLeast(MIN_LINES_HEIGHT)
+        rule.onNodeWithTag(TAG_SHARE_LINES).performScrollToNode(hasText("Placeholder line three"))
         rule.onNodeWithText("Placeholder line three").assertIsDisplayed().performClick()
 
         assertTrue(shared)
@@ -76,6 +89,7 @@ class LyricsShareScreenTest {
         showIn(360, 520, choosingWithPreview(), ShareCallbacks(onShare = { shared = true }))
 
         rule.onNodeWithTag(TAG_SHARE_BUTTON).assertIsDisplayed().performClick()
+        rule.onNodeWithTag(TAG_SHARE_LINES).assertHeightIsAtLeast(MIN_LINES_HEIGHT)
 
         assertTrue(shared)
     }
@@ -147,5 +161,10 @@ class LyricsShareScreenTest {
 
         assertFalse(tapped)
         rule.onNodeWithTag(TAG_SHARE_BUTTON).assertIsNotEnabled()
+    }
+
+    private companion object {
+        // Two lines and a bit: enough to see and scroll the lyrics.
+        val MIN_LINES_HEIGHT = 100.dp
     }
 }

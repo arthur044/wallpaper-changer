@@ -5,10 +5,8 @@ import android.util.Log
 import io.github.arthur044.wallpaperchanger.core.NowPlaying
 import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.render.CanvasSpec
-import io.github.arthur044.wallpaperchanger.core.share.ShareLayout
 import io.github.arthur044.wallpaperchanger.core.share.shareLayout
 import io.github.arthur044.wallpaperchanger.core.share.versesToDraw
-import io.github.arthur044.wallpaperchanger.render.CachedBase
 import io.github.arthur044.wallpaperchanger.render.WallpaperComposer
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +14,26 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+
+/** One track's share image, from choosing verses to the saved file. */
+interface ShareDrawing {
+    /** Whether these consecutive lines fit the card at some size. */
+    fun fits(verses: List<String>): Boolean
+
+    /**
+     * The image for [verses] (the caller owns it).
+     *
+     * @throws IllegalArgumentException if they are empty or don't fit.
+     * @throws IllegalStateException after [close].
+     */
+    suspend fun draw(verses: List<String>): Bitmap
+
+    /** [image] as the one share file (the previous one is deleted). */
+    suspend fun save(image: Bitmap): File
+
+    /** Waits for a draw in progress, then releases what the drawing holds. */
+    suspend fun close()
+}
 
 /**
  * Makes lyrics share images from the wallpaper's cached base: no download in
@@ -34,35 +52,37 @@ class LyricsShare(
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) {
     /**
-     * A session for [nowPlaying] on this screen and look: holds its base until
+     * A drawing for [nowPlaying] on this screen and look: holds its base until
      * closed, so choosing verses and redrawing the preview cost no disk read.
      *
      * @throws io.github.arthur044.wallpaperchanger.core.sync.TrackNotDrawableException if no base can be had.
      * @throws io.github.arthur044.wallpaperchanger.core.spotify.TransientNetworkException if the art download fails.
      */
-    suspend fun open(nowPlaying: NowPlaying): ShareSession {
+    suspend fun open(nowPlaying: NowPlaying): ShareDrawing {
         val started = System.nanoTime()
         val spec = canvas()
         val current = settings()
-        val obtained = composer.obtainBase(nowPlaying, spec, current)
-        val layout = shareLayout(spec, current, obtained.base.sourceArtSidePx)
-        Log.d(TAG, "base ${if (obtained.fromCache) "from cache" else "drawn"} in ${msSince(started)} ms")
-        return ShareSession(obtained.base, layout, nowPlaying, current, this)
+        val base = composer.obtainBase(nowPlaying, spec, current)
+        val layout = shareLayout(spec, current, base.base.sourceArtSidePx)
+        Log.d(TAG, "base ${if (base.fromCache) "from cache" else "drawn"} in ${msSince(started)} ms")
+        return ShareSession(
+            base = base.base.base.bitmap,
+            fitsCheck = { renderer.versesFit(layout, versesToDraw(it)) },
+            render = { verses ->
+                withContext(cpu) {
+                    val drawStarted = System.nanoTime()
+                    renderer.draw(base.base, layout, nowPlaying, versesToDraw(verses), current.textCard)
+                        .also { Log.d(TAG, "drawn in ${msSince(drawStarted)} ms") }
+                }
+            },
+            store = ::save,
+        )
     }
 
     /** Deletes a share file left over (opening the app). */
     suspend fun clearFiles() = withContext(io) { files.clear() }
 
-    internal suspend fun draw(session: ShareSession, verses: List<String>): Bitmap = withContext(cpu) {
-        val started = System.nanoTime()
-        renderer.draw(session.base, session.layout, session.nowPlaying, versesToDraw(verses), session.settings.textCard)
-            .also { Log.d(TAG, "drawn in ${msSince(started)} ms") }
-    }
-
-    internal fun fits(session: ShareSession, verses: List<String>): Boolean =
-        renderer.versesFit(session.layout, versesToDraw(verses))
-
-    internal suspend fun save(image: Bitmap): File = withContext(io) {
+    private suspend fun save(image: Bitmap): File = withContext(io) {
         val started = System.nanoTime()
         files.write(image, format).also { Log.d(TAG, "${format.name} ${it.length() / 1024} KB in ${msSince(started)} ms") }
     }
@@ -75,39 +95,30 @@ class LyricsShare(
 }
 
 /**
- * One track's share: its base, its layout, and the image drawn from the
- * chosen verses. [close] releases the base; drawing after that fails.
+ * A [ShareDrawing] over a base bitmap it owns: [close] recycles [base], after
+ * a draw in progress (the mutex), and drawing after that fails.
  */
 class ShareSession internal constructor(
-    internal val base: CachedBase,
-    val layout: ShareLayout,
-    val nowPlaying: NowPlaying,
-    internal val settings: Settings,
-    private val share: LyricsShare,
-) {
+    private val base: Bitmap,
+    private val fitsCheck: (List<String>) -> Boolean,
+    private val render: suspend (List<String>) -> Bitmap,
+    private val store: suspend (Bitmap) -> File,
+) : ShareDrawing {
     private val lock = Mutex()
     private var closed = false
 
-    /** Whether these consecutive lines fit the card at some size. */
-    fun fits(verses: List<String>): Boolean = share.fits(this, verses)
+    override fun fits(verses: List<String>): Boolean = fitsCheck(verses)
 
-    /**
-     * The image for [verses] (the caller recycles it).
-     *
-     * @throws IllegalArgumentException if they are empty or don't fit.
-     */
-    suspend fun draw(verses: List<String>): Bitmap = lock.withLock {
+    override suspend fun draw(verses: List<String>): Bitmap = lock.withLock {
         check(!closed) { "Share session closed" }
-        share.draw(this, verses)
+        render(verses)
     }
 
-    /** [image] as the one share file (the previous one is deleted). */
-    suspend fun save(image: Bitmap): File = share.save(image)
+    override suspend fun save(image: Bitmap): File = store(image)
 
-    /** Waits for a draw in progress, then releases the base. */
-    suspend fun close() = lock.withLock {
+    override suspend fun close() = lock.withLock {
         if (closed) return@withLock
         closed = true
-        base.base.bitmap.recycle()
+        base.recycle()
     }
 }

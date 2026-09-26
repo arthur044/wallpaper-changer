@@ -140,4 +140,5 @@
     <string name="share_save_failed">Couldn\'t save the image. Try again.</string>
     <string name="share_source">Lyrics from LRCLIB</string>
     <string name="share_action">Share</string>
+    <string name="share_sheet_failed">Couldn\'t open the share options on this phone.</string>
 </resources>

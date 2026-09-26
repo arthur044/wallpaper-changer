@@ -134,4 +134,5 @@
     <string name="share_save_failed">Não foi possível salvar a imagem. Tente de novo.</string>
     <string name="share_source">Letras do LRCLIB</string>
     <string name="share_action">Compartilhar</string>
+    <string name="share_sheet_failed">Não foi possível abrir as opções de compartilhar neste celular.</string>
 </resources>

@@ -154,6 +154,9 @@ private fun ColumnScope.Picker(state: ShareUiState, callbacks: ShareCallbacks) {
     if (state.saveFailed) {
         Text(stringResource(R.string.share_save_failed), color = MaterialTheme.colorScheme.error)
     }
+    if (state.shareSheetFailed) {
+        Text(stringResource(R.string.share_sheet_failed), color = MaterialTheme.colorScheme.error)
+    }
     Text(stringResource(R.string.share_source), style = MaterialTheme.typography.labelSmall)
     Button(
         onClick = callbacks.onShare,

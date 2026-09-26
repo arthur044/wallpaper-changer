@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.os.Build
+import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -114,7 +115,11 @@ fun MainScreen(
             LaunchedEffect(file) {
                 val title = chooserTitle
                 runCatching { context.startActivity(shareImageIntent(context, file, container.lyricsShare.format, title)) }
-                share.onShareSheetShown()
+                    .onSuccess { share.onShareSheetShown() }
+                    .onFailure { e ->
+                        Log.w("LyricsShare", "Could not open the share sheet", e)
+                        share.onShareSheetFailed()
+                    }
             }
         }
         LyricsShareScreen(

@@ -24,6 +24,7 @@ import io.github.arthur044.wallpaperchanger.core.share.ShareLayout
 import io.github.arthur044.wallpaperchanger.core.share.ShareVerses
 import io.github.arthur044.wallpaperchanger.render.CachedBase
 import io.github.arthur044.wallpaperchanger.render.WallpaperRenderer
+import io.github.arthur044.wallpaperchanger.render.baselineCenteredIn
 
 /**
  * Draws the lyrics share image on a copy of the wallpaper's base: the
@@ -152,7 +153,7 @@ class ShareRenderer(private val renderer: WallpaperRenderer) {
             this.color = color
         }
         val shown = TextUtils.ellipsize(text, paint, layout.header.maxWidth.toFloat(), TextUtils.TruncateAt.END).toString()
-        canvas.drawText(shown, layout.header.textLeft.toFloat(), baselineIn(paint, top, bottom), paint)
+        canvas.drawText(shown, layout.header.textLeft.toFloat(), paint.baselineCenteredIn(top, bottom), paint)
     }
 
     // One line box per wrapped line, of exactly the height the layout counted.
@@ -165,14 +166,8 @@ class ShareRenderer(private val renderer: WallpaperRenderer) {
             val line = text.substring(broken.getLineStart(i), broken.getLineEnd(i)).trimEnd()
             if (line.isEmpty()) continue
             val top = verses.area.top + i * lineHeight
-            canvas.drawText(line, verses.area.left.toFloat(), baselineIn(paint, top, top + lineHeight), paint)
+            canvas.drawText(line, verses.area.left.toFloat(), paint.baselineCenteredIn(top, top + lineHeight), paint)
         }
-    }
-
-    // Centers the glyphs' full extent in the line box, as the wallpaper text does.
-    private fun baselineIn(paint: Paint, top: Int, bottom: Int): Float {
-        val metrics = paint.fontMetrics
-        return top + ((bottom - top) - (metrics.descent - metrics.ascent)) / 2f - metrics.ascent
     }
 
     private fun averageColorIn(bitmap: Bitmap, area: PixelRect): Rgb {
