@@ -5,6 +5,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,6 +35,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.min
 import io.github.arthur044.wallpaperchanger.R
 import io.github.arthur044.wallpaperchanger.share.SharePhase
 import io.github.arthur044.wallpaperchanger.share.ShareUiState
@@ -94,8 +98,30 @@ private fun Message(text: String, onRetry: (() -> Unit)? = null) {
     }
 }
 
+// Side by side when the screen is wider than tall (a phone on its side): stacked,
+// the preview would take the height and push the lines and the button off screen.
 @Composable
 private fun Choosing(state: ShareUiState, callbacks: ShareCallbacks, modifier: Modifier) {
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        if (maxWidth > maxHeight) {
+            Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                PreviewOrWait(state, Modifier.weight(1f).fillMaxHeight())
+                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Picker(state, callbacks)
+                }
+            }
+        } else {
+            val previewHeight = min(PREVIEW_MAX_HEIGHT, maxHeight * PREVIEW_SHARE_OF_HEIGHT)
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                PreviewOrWait(state, Modifier.fillMaxWidth().heightIn(max = previewHeight))
+                Picker(state, callbacks)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PreviewOrWait(state: ShareUiState, modifier: Modifier) {
     val preview = state.preview
     if (preview != null) {
         val image = remember(preview) { preview.asImageBitmap() }
@@ -103,17 +129,22 @@ private fun Choosing(state: ShareUiState, callbacks: ShareCallbacks, modifier: M
             image,
             stringResource(R.string.share_preview_description),
             contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxWidth().heightIn(max = PREVIEW_MAX_HEIGHT).testTag(TAG_SHARE_PREVIEW),
+            modifier = modifier.testTag(TAG_SHARE_PREVIEW),
         )
     } else if (!state.ready || state.selection != null) {
         Waiting(stringResource(R.string.share_preparing))
     }
+}
+
+// The lines take whatever height is left, so the button below always shows.
+@Composable
+private fun ColumnScope.Picker(state: ShareUiState, callbacks: ShareCallbacks) {
     Text(
         stringResource(if (state.tooLong) R.string.share_too_long else R.string.share_hint),
         style = MaterialTheme.typography.bodySmall,
         color = if (state.tooLong) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    LazyColumn(modifier.fillMaxWidth().testTag(TAG_SHARE_LINES)) {
+    LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag(TAG_SHARE_LINES)) {
         itemsIndexed(state.lines) { index, line ->
             VerseLine(line, selected = state.selection?.range?.contains(index) == true, enabled = state.ready) {
                 callbacks.onTap(index)
@@ -153,6 +184,7 @@ private fun VerseLine(line: String, selected: Boolean, enabled: Boolean, onTap: 
 }
 
 private val PREVIEW_MAX_HEIGHT = 280.dp
+private const val PREVIEW_SHARE_OF_HEIGHT = 0.4f
 const val TAG_SHARE_LOADING = "share_loading"
 const val TAG_SHARE_MESSAGE = "share_message"
 const val TAG_SHARE_PREVIEW = "share_preview"

@@ -1,6 +1,12 @@
 package io.github.arthur044.wallpaperchanger.ui
 
+import android.graphics.Bitmap
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
@@ -36,6 +42,42 @@ class LyricsShareScreenTest {
 
     private fun show(state: ShareUiState, callbacks: ShareCallbacks = ShareCallbacks()) {
         rule.setContent { AppTheme { LyricsShareScreen(state, callbacks) } }
+    }
+
+    // A 9:16 preview, as the real one; its size is what squeezed the rest out.
+    private fun choosingWithPreview() = state(SharePhase.CHOOSING, selection = VerseSelection(0, 1)).copy(
+        preview = Bitmap.createBitmap(108, 192, Bitmap.Config.ARGB_8888),
+        previewOf = VerseSelection(0, 1),
+    )
+
+    private fun showIn(width: Int, height: Int, state: ShareUiState, callbacks: ShareCallbacks) {
+        rule.setContent {
+            AppTheme { Box(Modifier.size(width.dp, height.dp)) { LyricsShareScreen(state, callbacks) } }
+        }
+    }
+
+    @Test
+    fun inLandscapeTheLinesAndTheShareButtonStayReachable() {
+        var tapped: Int? = null
+        var shared = false
+        // The A71 on its side: 2400 x 1080 px at 2.625, minus the bars.
+        showIn(840, 360, choosingWithPreview(), ShareCallbacks(onTap = { tapped = it }, onShare = { shared = true }))
+
+        rule.onNodeWithTag(TAG_SHARE_BUTTON).assertIsDisplayed().performClick()
+        rule.onNodeWithText("Placeholder line three").assertIsDisplayed().performClick()
+
+        assertTrue(shared)
+        assertEquals(3, tapped)
+    }
+
+    @Test
+    fun onAShortPortraitScreenTheShareButtonStaysReachable() {
+        var shared = false
+        showIn(360, 520, choosingWithPreview(), ShareCallbacks(onShare = { shared = true }))
+
+        rule.onNodeWithTag(TAG_SHARE_BUTTON).assertIsDisplayed().performClick()
+
+        assertTrue(shared)
     }
 
     @Test
