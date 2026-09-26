@@ -46,6 +46,13 @@ class LyricsPrefetch(private val slot: LyricsSlot) {
             .collectLatest(::lookUp)
     }
 
+    /**
+     * Looks [nowPlaying] up now: the share screen's "try again", or a track
+     * the early lookup hasn't reached. A kept answer asks nobody, and a lookup
+     * already out for it is waited for, not repeated. Main screen only, too.
+     */
+    suspend fun request(nowPlaying: NowPlaying) = lookUp(nowPlaying)
+
     private suspend fun lookUp(nowPlaying: NowPlaying) {
         val trackId = nowPlaying.trackId
         val known = trackId?.let(slot::peek)

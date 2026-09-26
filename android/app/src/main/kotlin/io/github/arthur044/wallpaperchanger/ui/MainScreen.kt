@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.os.Build
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -23,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
@@ -31,6 +33,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import io.github.arthur044.wallpaperchanger.AppContainer
 import io.github.arthur044.wallpaperchanger.BuildConfig
+import io.github.arthur044.wallpaperchanger.R
+import io.github.arthur044.wallpaperchanger.share.LyricsShareViewModel
+import io.github.arthur044.wallpaperchanger.share.shareImageIntent
 import io.github.arthur044.wallpaperchanger.core.spotify.ArtSource
 import io.github.arthur044.wallpaperchanger.core.sync.SyncStatus
 import io.github.arthur044.wallpaperchanger.core.update.InstallOutcome
@@ -45,6 +50,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun MainScreen(
     container: AppContainer,
+    share: LyricsShareViewModel,
     onConnect: () -> Unit,
     onOpenDebug: () -> Unit,
     modifier: Modifier = Modifier,
@@ -98,6 +104,27 @@ fun MainScreen(
         onPauseOrDispose { }
     }
 
+    // The share screen lives inside this one, so the early lookup above keeps
+    // following while it is open.
+    val shareState by share.state.collectAsState()
+    if (shareState.open) {
+        BackHandler(onBack = share::close)
+        val chooserTitle = stringResource(R.string.share_title)
+        shareState.shareFile?.let { file ->
+            LaunchedEffect(file) {
+                val title = chooserTitle
+                runCatching { context.startActivity(shareImageIntent(context, file, container.lyricsShare.format, title)) }
+                share.onShareSheetShown()
+            }
+        }
+        LyricsShareScreen(
+            state = shareState,
+            callbacks = ShareCallbacks(onBack = share::close, onTap = share::tap, onShare = share::share, onRetry = share::retry),
+            modifier = modifier,
+        )
+        return
+    }
+
     val current = settings ?: return // first read of the settings file
     MainContent(
         state = MainUiState(
@@ -111,6 +138,7 @@ fun MainScreen(
             showDebugTools = BuildConfig.DEBUG,
             update = update,
             updateConfirmationPending = pendingConfirmation != null,
+            canShareLyrics = status is SyncStatus.Showing,
         ),
         callbacks = MainCallbacks(
             onSyncEnabledChange = { on ->
@@ -155,6 +183,7 @@ fun MainScreen(
             onPickLiveWallpaper = { context.pickLiveWallpaper() },
             onConnect = onConnect,
             onOpenDebug = onOpenDebug,
+            onShareLyrics = { (status as? SyncStatus.Showing)?.nowPlaying?.let(share::open) },
             update = UpdateCallbacks(
                 onUpdate = container.updates::update,
                 onSelectBranch = container.updates::selectBranch,

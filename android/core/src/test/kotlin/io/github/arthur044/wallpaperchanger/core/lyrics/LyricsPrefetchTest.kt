@@ -157,6 +157,50 @@ class LyricsPrefetchTest {
         assertEquals(2, source.asked.size)
     }
 
+    @Test
+    fun `trying again after a failure asks again`() = runTest {
+        source.answer = { throw LyricsUnavailableException("offline") }
+        followWhileOpen()
+        status.value = SyncStatus.Showing(airbag)
+        runCurrent()
+
+        source.answer = { words }
+        prefetch.request(airbag)
+
+        assertEquals(LyricsState.Ready("t1", words), prefetch.state.value)
+        assertEquals(2, source.asked.size)
+    }
+
+    @Test
+    fun `asking for lyrics already kept asks nobody`() = runTest {
+        source.answer = { words }
+        followWhileOpen()
+        status.value = SyncStatus.Showing(airbag)
+        runCurrent()
+
+        prefetch.request(airbag)
+
+        assertEquals(1, source.asked.size)
+    }
+
+    @Test
+    fun `asking while the early lookup is still out waits for it`() = runTest {
+        val answer = CompletableDeferred<Lyrics>()
+        source.answer = { answer.await() }
+        followWhileOpen()
+        status.value = SyncStatus.Showing(airbag)
+        runCurrent()
+
+        val button = backgroundScope.launch { prefetch.request(airbag) }
+        runCurrent()
+        answer.complete(words)
+        runCurrent()
+
+        assertTrue(button.isCompleted)
+        assertEquals(1, source.asked.size)
+        assertEquals(LyricsState.Ready("t1", words), prefetch.state.value)
+    }
+
     private class FakeSource : LyricsSource {
         val asked = mutableListOf<String>()
         var cancelled = 0

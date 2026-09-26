@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
@@ -17,6 +18,7 @@ import androidx.lifecycle.lifecycleScope
 import io.github.arthur044.wallpaperchanger.debug.AuthDebugScreen
 import io.github.arthur044.wallpaperchanger.debug.MediaSpikeScreen
 import io.github.arthur044.wallpaperchanger.onboarding.OnboardingScreen
+import io.github.arthur044.wallpaperchanger.share.LyricsShareViewModel
 import io.github.arthur044.wallpaperchanger.ui.AppTheme
 import io.github.arthur044.wallpaperchanger.ui.MainScreen
 import kotlinx.coroutines.flow.first
@@ -25,6 +27,9 @@ import kotlinx.coroutines.launch
 private enum class Screen { ONBOARDING, MAIN, DEBUG, SPIKE }
 
 class MainActivity : ComponentActivity() {
+    // Outlives rotation, folding and zoom changes: the share screen keeps its lyrics and image.
+    private val share: LyricsShareViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -54,6 +59,7 @@ class MainActivity : ComponentActivity() {
                         Screen.ONBOARDING -> OnboardingScreen(container, onFinished = { screen = Screen.MAIN }, modifier)
                         Screen.MAIN -> MainScreen(
                             container,
+                            share,
                             onConnect = { screen = Screen.ONBOARDING },
                             onOpenDebug = { screen = Screen.DEBUG },
                             modifier = modifier,
