@@ -13,12 +13,12 @@ class LyricsTextTest {
         // The cut is found in a lower-cased copy and applied to the original.
         // Turkish 'İ' lower-cases to two chars ('i' + combining dot), so every
         // offset past it points one char too far and the letters between stay.
-        assertEquals("İİ", cleanTitle("İİ feat. Someone"))
-        assertEquals("İzel", cleanArtist("İzel feat. Someone"))
+        assertEquals("\u0130\u0130", cleanTitle("\u0130\u0130 feat. Someone"))
+        assertEquals("\u0130zel", cleanArtist("\u0130zel feat. Someone"))
         // Capital sharp s: shorter in UTF-8 (the bug spotifast hit), same in UTF-16.
-        assertEquals("ẞ café", cleanTitle("ẞ café feat. Someone"))
+        assertEquals("\u1e9e caf\u00e9", cleanTitle("\u1e9e caf\u00e9 feat. Someone"))
         // A character outside the BMP (two chars) before the marker.
-        assertEquals("🎵 Song", cleanTitle("🎵 Song ft. Someone"))
+        assertEquals("\ud83c\udfb5 Song", cleanTitle("\ud83c\udfb5 Song ft. Someone"))
 
         assertEquals("Song", cleanTitle("Song feat. Someone"))
         assertEquals("Song", cleanTitle("Song ft. Someone"))
@@ -36,7 +36,7 @@ class LyricsTextTest {
         assertEquals("Song (Part One)", cleanTitle("Song (Part One)"))
         assertEquals("Hyphen - Ated", cleanTitle("Hyphen - Ated"))
         assertEquals("(Remastered)", cleanTitle("(Remastered)"), "never empty")
-        assertEquals("Feature", cleanTitle("Feat​ure"))
+        assertEquals("Feature", cleanTitle("Feat\u200bure"))
         assertEquals("Left Behind", cleanTitle("Left Behind"), "a 'ft' inside a word is no marker")
     }
 
@@ -51,12 +51,12 @@ class LyricsTextTest {
         assertEquals("TOOL", cleanArtist("TOOL;Tool"))
         assertEquals("Artist", cleanArtist("Artist feat. Guest"))
         assertEquals("Artist", cleanArtist("Artist (feat. Guest)"))
-        assertEquals("Beyoncé", cleanArtist("Beyoncé"))
+        assertEquals("Beyonc\u00e9", cleanArtist("Beyonc\u00e9"))
     }
 
     @Test
     fun `matching is loose about case, accents and punctuation`() {
-        assertTrue(looseMatch("Beyoncé", "beyonce"))
+        assertTrue(looseMatch("Beyonc\u00e9", "beyonce"))
         assertTrue(looseMatch("Rock & Roll", "rock and roll"))
         assertTrue(looseMatch("Don't Stop", "dont stop"))
         assertTrue(looseMatch("Song (Live)", "Song"))
@@ -70,7 +70,7 @@ class LyricsTextTest {
         val spotify = cleanTitle("Metropolis - Part I: \"The Miracle and the Sleeper\"")
         listOf(
             "Metropolis, Part I: The Miracle and the Sleeper",
-            "Metropolis—Part I “The Miracle and the Sleeper”",
+            "Metropolis\u2014Part I \u201cThe Miracle and the Sleeper\u201d",
             "Metropolis - Part I (The Miracle And The Sleeper)",
         ).forEach { assertTrue(looseMatch(it, spotify), it) }
     }

@@ -34,13 +34,16 @@ class LyricsSlot(private val source: LyricsSource) {
 
     /**
      * The kept answer for this track, or a lookup. [Lyrics.NotFound] when the
-     * track has nothing to look up by.
+     * track has nothing to look up by. With [claim], this track becomes the one
+     * showing (the early lookup); without it (a screen asking about the track it
+     * was opened for), the track showing and its kept answer are left alone, and
+     * the answer is kept only if it is for the track showing.
      *
      * @throws LyricsUnavailableException when the lookup failed (nothing is kept).
      */
-    suspend fun lyricsFor(nowPlaying: NowPlaying): Lyrics {
+    suspend fun lyricsFor(nowPlaying: NowPlaying, claim: Boolean = true): Lyrics {
         val trackId = nowPlaying.trackId ?: return Lyrics.NotFound
-        onTrack(trackId)
+        if (claim) onTrack(trackId)
         return lookups.withLock {
             peek(trackId) ?: lookUp(trackId, nowPlaying)
         }

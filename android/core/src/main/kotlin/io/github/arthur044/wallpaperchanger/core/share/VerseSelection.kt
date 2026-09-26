@@ -51,3 +51,14 @@ private fun nextVerse(lines: List<String>, from: Int, step: Int): Int {
     while (lines[i].isBlank()) i += step
     return i
 }
+
+/**
+ * The selection a share screen starts with: the first verse that fits the card
+ * on its own, so a first line too long for a small card doesn't leave the
+ * screen with nothing chosen. Null when no verse fits alone.
+ */
+fun firstSelection(lines: List<String>, fits: (VerseSelection) -> Boolean): VerseSelection? =
+    lines.indices.asSequence()
+        .filter { lines[it].isNotBlank() }
+        .map { VerseSelection(it, it) }
+        .firstOrNull(fits)

@@ -71,6 +71,15 @@ class VerseSelectionTest {
     }
 
     @Test
+    fun `a share screen starts on the first verse that fits alone`() {
+        assertEquals(VerseSelection(0, 0), firstSelection(lines, always))
+        // A small card: the first verses wrap too much to fit on their own.
+        assertEquals(VerseSelection(4, 4), firstSelection(lines) { it.first >= 4 })
+        assertNull(firstSelection(lines) { false })
+        assertNull(firstSelection(listOf("", " ")) { true })
+    }
+
+    @Test
     fun `shrinking is never refused`() {
         val result = VerseSelection(0, 2).tap(2, lines) { false }
         assertFalse(result.refused)

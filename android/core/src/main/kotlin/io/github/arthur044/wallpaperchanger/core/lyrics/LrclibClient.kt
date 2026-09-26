@@ -20,7 +20,11 @@ import kotlin.time.toJavaDuration
 /** What the lyrics lookup found for a track. */
 sealed interface Lyrics {
     /** Plain (unsynced) lines; a blank string separates stanzas. Never empty. */
-    data class Text(val lines: List<String>) : Lyrics
+    data class Text(val lines: List<String>) : Lyrics {
+        init {
+            require(lines.isNotEmpty()) { "Lyrics.Text needs at least one line" }
+        }
+    }
 
     /** The database knows the track has no words. */
     data object Instrumental : Lyrics

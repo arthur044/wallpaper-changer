@@ -3,6 +3,7 @@ package io.github.arthur044.wallpaperchanger.core.lyrics
 import io.github.arthur044.wallpaperchanger.core.NowPlaying
 import io.github.arthur044.wallpaperchanger.core.sync.SyncStatus
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,22 +50,37 @@ class LyricsPrefetch(private val slot: LyricsSlot) {
     /**
      * Looks [nowPlaying] up now: the share screen's "try again", or a track
      * the early lookup hasn't reached. A kept answer asks nobody, and a lookup
-     * already out for it is waited for, not repeated. Main screen only, too.
+     * already out for it is waited for, not repeated. It does not make
+     * [nowPlaying] the track showing, so an older track's screen never drops
+     * the answer kept for the current one. Main screen only, too.
      */
-    suspend fun request(nowPlaying: NowPlaying) = lookUp(nowPlaying)
+    suspend fun request(nowPlaying: NowPlaying): LyricsState = lookUp(nowPlaying, claim = false)
 
-    private suspend fun lookUp(nowPlaying: NowPlaying) {
+    /**
+     * The lyrics of [nowPlaying] for a screen bound to it (the share screen):
+     * loading (unless already kept), then the answer to its own request. The
+     * screen asks itself instead of watching [state]: the early lookup may be
+     * out for this track when the screen opens, then be cancelled by a track
+     * change, and [state] keeps only the latest value, for whichever track.
+     */
+    fun watch(nowPlaying: NowPlaying): Flow<LyricsState> = flow {
+        if (nowPlaying.trackId?.let(slot::peek) == null) emit(LyricsState.Loading(nowPlaying.trackId))
+        emit(request(nowPlaying))
+    }
+
+    private suspend fun lookUp(nowPlaying: NowPlaying, claim: Boolean = true): LyricsState {
         val trackId = nowPlaying.trackId
         val known = trackId?.let(slot::peek)
-        if (known != null) {
-            mutableState.value = LyricsState.Ready(trackId, known)
-            return
-        }
+        if (known != null) return publish(LyricsState.Ready(trackId, known))
         mutableState.value = LyricsState.Loading(trackId)
-        mutableState.value = try {
-            LyricsState.Ready(trackId, slot.lyricsFor(nowPlaying))
+        val answer = try {
+            LyricsState.Ready(trackId, slot.lyricsFor(nowPlaying, claim))
         } catch (e: LyricsUnavailableException) {
             LyricsState.Unavailable(trackId)
         }
+        return publish(answer)
     }
+
+    private fun publish(answer: LyricsState): LyricsState = answer.also { mutableState.value = it }
 }
+

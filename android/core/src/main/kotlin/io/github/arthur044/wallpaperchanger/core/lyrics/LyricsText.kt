@@ -28,7 +28,7 @@ private val WHITESPACE = Regex("\\s+")
  * zero-width joiner or non-joiner, which hold emoji sequences and Indic and
  * Persian words together.
  */
-private fun isDisposable(c: Char): Boolean = c == '​' || c in '⁠'..'⁤' || c == '﻿'
+private fun isDisposable(c: Char): Boolean = c == '\u200b' || c in '\u2060'..'\u2064' || c == '\ufeff'
 
 /** Whether [text] contains [phrase] as whole words, case-insensitively. */
 private fun hasPhrase(text: String, phrase: String): Boolean {
@@ -140,7 +140,7 @@ internal fun normalize(text: String): String {
     }
     text.codePoints().forEach { raw ->
         when (val c = fold(raw)) {
-            '\''.code, '’'.code, '`'.code -> Unit
+            '\''.code, '\u2019'.code, '`'.code -> Unit
             '&'.code -> " and ".forEach { push(it.code) }
             else -> push(c)
         }
@@ -166,7 +166,13 @@ private fun fold(c: Int): Int {
     return plain.code
 }
 
-/** Same words after [normalize], or one containing the other. */
+/**
+ * Same words after [normalize], or one containing the other. Containment is by
+ * characters, not whole words ("love" is in "lovesong"), exactly as spotifast
+ * does: kept for parity. What makes a wrong hit unlikely is the rest of the
+ * score: the right artist is +1000 and a length more than 30 s off rules a
+ * candidate out.
+ */
 internal fun looseMatch(left: String, right: String): Boolean {
     val a = normalize(left)
     val b = normalize(right)

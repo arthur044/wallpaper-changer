@@ -201,15 +201,54 @@ class LyricsPrefetchTest {
         assertEquals(LyricsState.Ready("t1", words), prefetch.state.value)
     }
 
+    @Test
+    fun `a share screen opened mid-lookup still gets its track after the track changes`() = runTest {
+        // Airbag's early lookup is out when the screen opens, then Lucky starts:
+        // the early lookup follows Lucky and drops Airbag's. The screen, bound to
+        // Airbag, must not wait forever for an answer nobody is asking for.
+        val never = CompletableDeferred<Lyrics>()
+        var airbagAsked = 0
+        source.answer = { query ->
+            if (query.title == "Airbag" && airbagAsked++ == 0) never.await() else words
+        }
+        followWhileOpen()
+        status.value = SyncStatus.Showing(airbag)
+        runCurrent()
+        val seen = mutableListOf<LyricsState>()
+        backgroundScope.launch { prefetch.watch(airbag).collect { seen += it } }
+        runCurrent()
+
+        status.value = SyncStatus.Showing(lucky)
+        runCurrent()
+
+        assertEquals(LyricsState.Ready("t1", words), seen.last())
+        assertTrue(seen.all { it !is LyricsState.None && (it as? LyricsState.Ready)?.trackId != "t2" })
+    }
+
+    @Test
+    fun `asking for an older track keeps the answer of the track on screen`() = runTest {
+        source.answer = { words }
+        followWhileOpen()
+        status.value = SyncStatus.Showing(airbag)
+        runCurrent()
+        status.value = SyncStatus.Showing(lucky)
+        runCurrent()
+
+        prefetch.request(airbag) // "Try again" on a screen still bound to Airbag
+        prefetch.request(lucky)
+
+        assertEquals(listOf("Airbag", "Lucky", "Airbag"), source.asked)
+    }
+
     private class FakeSource : LyricsSource {
         val asked = mutableListOf<String>()
         var cancelled = 0
-        var answer: suspend () -> Lyrics = { Lyrics.NotFound }
+        var answer: suspend (LyricsQuery) -> Lyrics = { Lyrics.NotFound }
 
         override suspend fun lyrics(query: LyricsQuery): Lyrics {
             asked += query.title
             try {
-                return answer()
+                return answer(query)
             } catch (e: CancellationException) {
                 cancelled++
                 throw e
