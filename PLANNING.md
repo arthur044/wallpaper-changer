@@ -4,7 +4,7 @@ Documentação técnica do estado atual. Descreve **como o sistema funciona hoje
 foi construído. Uso e instalação estão no [README](README.md) e no
 [README do Android](android/README.md).
 
-Última revisão: 2026-09-24 · base: `main` @ `6413230` (PR #7 mergeado)
+Última revisão: 2026-09-25 · base: `feat/share-lyrics` (PR #9, aberto) sobre `main` @ `011114b`
 
 ---
 
@@ -21,11 +21,14 @@ o mesmo comportamento e o mesmo visual:
 | Código | `main.py`, `src/` | `android/` (módulos `:core` e `:app`) |
 | Interface | Ícone na bandeja (pystray) + assistente Tkinter | Compose: onboarding, tela principal, bloco nas Configurações rápidas |
 | Render | Pillow | `android.graphics.Canvas` |
-| Testes | 217 (pytest) | 306 (JUnit 5 no `:core`, JUnit 4 e instrumentados no `:app`) |
+| Testes | 217 (pytest) | 552: 403 JUnit 5 no `:core`; 20 unitários e 129 instrumentados no `:app` |
 
 **Regra de paridade:** tudo o que é visual (cor de fundo, mesh, glow, blur, moldura, cartão)
 é **portado** do desktop para o Android, não reimplementado. Os valores são conferidos contra
 números gerados pelo código Python.
+
+**Exceção (decisão do usuário):** "Compartilhar letra" (§2.5) existe só no Android e fica
+fora da regra de paridade.
 
 ---
 
@@ -130,12 +133,13 @@ com `mesh` ou `art_glow` ligados.
 
 | Módulo | Conteúdo | Dependência de Android |
 |---|---|---|
-| `:core` | Settings, `SyncEngine`, `decide`, backoff, `ApiThrottle`, `TrackAlbumIndex`, cliente da API (OkHttp), port do ColorThief, layout, mesh, blur, moldura, vidro, chave de cache, eviction, quadros por forma de tela (`ScreenFrames`), atualização do app (`update/`) | Nenhuma (JVM pura, testável sem aparelho) |
-| `:app` | OAuth (AppAuth + Tink), render em Canvas, cache de bases, aplicação do wallpaper, serviços, telas, instalador de atualizações | Sim |
+| `:core` | Settings, `SyncEngine`, `decide`, backoff, `ApiThrottle`, `TrackAlbumIndex`, cliente da API (OkHttp), port do ColorThief, layout, mesh, blur, moldura, vidro, chave de cache, eviction, quadros por forma de tela (`ScreenFrames`), atualização do app (`update/`), letras (`lyrics/`: cliente LRCLIB, resposta em memória, pré-busca) e layout do compartilhamento (`share/`) | Nenhuma (JVM pura, testável sem aparelho) |
+| `:app` | OAuth (AppAuth + Tink), render em Canvas, cache de bases, aplicação do wallpaper, serviços, telas, instalador de atualizações, imagem e tela de compartilhar letra (`share/`, `ui/LyricsShareScreen.kt`) | Sim |
 
 DI manual: um `AppContainer` por processo (`WallpaperApp.kt`) com uma instância de cada
 dependência longa: `SettingsRepository`, `SpotifyAuth`, `SpotifyApi`, `WallpaperComposer`,
-`WallpaperUpdater`, `SyncEngine`, `SyncController`, `LiveWallpaperFrames`, `UpdateController`.
+`WallpaperUpdater`, `SyncEngine`, `SyncController`, `LiveWallpaperFrames`, `UpdateController`,
+`LyricsPrefetch` e `LyricsShare`.
 
 **Quem roda o `SyncEngine`** (nunca os dois ao mesmo tempo: `run()` usa um `Mutex`):
 
@@ -223,6 +227,44 @@ O canal é o do build instalado: o release só olha o release, e o debug escolhe
 Ele vem pré-selecionado com a própria branch (`BuildConfig.GIT_BRANCH`) enquanto ela tiver
 build. Um `update.json` de outro pacote é recusado (`WrongPackage`).
 
+### 2.5 Android: compartilhar letra
+
+Só no Android (fora da regra de paridade). O botão "Compartilhar letra" fica no cartão de
+status da tela principal, **só com `SyncStatus.Showing`**. A notificação não tem esse botão.
+
+```
+tela principal visível ─► LyricsPrefetch.follow ─► LyricsSlot (1 resposta, em memória)
+                                                      │  LrclibClient (lrclib.net/api)
+botão ─► LyricsShareScreen ─► ShareScreenModel ─► LyricsPrefetch.watch(faixa)
+             escolha de versos ─► ShareLayout (:core) ─► ShareRenderer ─► prévia
+             "Compartilhar"   ─► ShareFiles (1 JPEG em cache/share) ─► FileProvider ─► share sheet
+```
+
+| Componente | Papel |
+|---|---|
+| `LrclibClient` (`:core`) | `/get` quando álbum **e** duração são conhecidos; senão (ou sem resultado) `/search` ranqueado como o spotifast. Pede pelo **primeiro artista** da lista da API Web; no modo local (MediaSession) só existe o texto já juntado. 404/400 = sem letra; outras falhas = "sem rede". Não passa pelo `ApiThrottle` (429 e backoff são do Spotify). `callTimeout` de 20 s |
+| Ranking do `/search` | Título precisa bater (comparação solta). Artista certo +1000. Duração com diferença > 30 s descarta; senão +(30 − diferença) × 10. Sincronizada +200, só texto +50. Empate: vence a primeira |
+| `LyricsSlot` (`:core`) | Uma resposta em memória, "não encontrada" incluída. Descartada na troca de faixa. Nada vai para o disco |
+| `LyricsPrefetch` (`:core`) | `follow`: roda em `repeatOnLifecycle(STARTED)` na `MainScreen`, busca ao abrir e a cada troca de faixa. O serviço de sync **nunca** pede letra. `watch(faixa)`: a tela de compartilhar pede a da própria faixa, sem custo se já está guardada ou em andamento |
+| `ShareLayout`, `VerseSelection` (`:core`) | Geometria da imagem e escolha dos versos |
+| `WallpaperComposer.obtainBase` | Entrega a base do wallpaper **do cache** (normalmente sem download). Depois de mudar zoom ou estilo, desenha e guarda a base igual ao wallpaper |
+| `ShareRenderer` (`:app`) | Cartão de vidro exatamente sobre a arte desenhada (sem a moldura), miniatura recortada da base, cabeçalho, versos e o texto inferior do próprio wallpaper |
+| `ShareFiles` (`:app`) | No máximo um arquivo, JPEG q95. Apagado quando o próximo é gravado e quando o app abre. Nunca usa o cache de álbuns |
+| `LyricsShareViewModel` / `ShareScreenModel` (`:app`) | Estado no escopo da activity: rotação, dobra e zoom mantêm letra, seleção e imagem. No modo paisagem, as partes ficam lado a lado |
+
+**Enquadramento da imagem:** recorte 9:16 centrado no bloco arte → texto
+(`art_offset_y_pct` nunca corta o cartão). Uma tela já 9:16 não é recortada. Canvas
+quadrado (tablet, dobrável aberto) gera imagem quadrada. O texto do cartão escala com o
+cartão, não com a densidade; os pisos são frações da largura da imagem.
+
+**Isolamento:** compartilhar nunca toca no sync, no `ScreenFrames`, no `frameContent` nem no
+`baseCacheKey`. Os campos novos de `NowPlaying` ficam fora do `frameContent`, e o
+`BASE_RENDER_VERSION` não mudou.
+
+**Medido no A71 (release):** base do cache 75–119 ms (sem cache, desenhada: ~1,3 s);
+desenho 41–51 ms com a base já pronta; JPEG de 161–198 KB em 31–42 ms; do botão à primeira
+prévia ~370–540 ms com a letra já buscada (inclui um debounce de 250 ms).
+
 ---
 
 ## 3. Esquema de dados
@@ -251,8 +293,9 @@ build. Um `update.json` de outro pacote é recusado (`WrongPackage`).
 | `files/live_wallpaper/frame.bin` | Último quadro em pixels crus (sem PNG, por custo). Só o mais novo; o quadro da outra tela do dobrável fica só em memória |
 | `cacheDir/album_bases/` | Bases por álbum, LRU com teto de 150 MB |
 | `cacheDir/updates/` | APK de atualização baixado (só um: a pasta é esvaziada antes; `.part` até o SHA-256 conferir) |
+| `cacheDir/share/letra-<ms>.jpg` | Imagem de compartilhar letra (só uma; nome novo a cada vez). Única pasta servida pelo `FileProvider` (`${applicationId}.share`, `res/xml/share_paths.xml`, não exportado, leitura concedida só ao app escolhido) |
 
-Backup automático do Android desligado (`allowBackup=false`).
+Backup automático do Android desligado (`allowBackup=false`). Letras nunca vão para o disco.
 
 **Chaves de assinatura (fora do repositório):**
 
@@ -325,7 +368,8 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 
 | Tipo | Campos |
 |---|---|
-| `NowPlaying` | `is_playing`, `track_id`, `album_id`, `art_url`, `track_name`, `artist_name` |
+| `NowPlaying` | `is_playing`, `track_id`, `album_id`, `art_url`, `track_name`, `artist_name`. No Android também `albumName`, `durationMs` e `artists` (nomes um a um), que só alimentam a busca de letra: podem faltar e ficam fora do `frameContent` |
+| `LyricsQuery` / `Lyrics` (Android) | Título, artista(s), álbum, duração → `Text(linhas)`, `Instrumental` ou `NotFound` |
 | `SmtcNowPlaying` / `LocalTrack` | `title`, `artist`, (`album_*`), `is_playing` |
 | `AppStatus` (desktop) | `IDLE`, `RUNNING`, `PAUSED`, `ERROR` |
 
@@ -370,6 +414,13 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | Consultas ao GitHub sem token | Repositório público, e um token no app seria um segredo em todo celular. O limite de 60 por hora basta para um botão manual |
 | SHA-256 conferido antes de instalar | O APK precisa ser o que o `update.json` descreve. Se não bater, o arquivo é apagado e nunca vai para o instalador |
 | Instalação por sessão do `PackageInstaller` | `ACTION_INSTALL_PACKAGE` está obsoleto desde o Android 10. A sessão devolve um status por código, que a tela traduz |
+| Letras do LRCLIB, com o ranking do spotifast | Sem conta nem chave. O ranking já é conhecido; artista e duração tornam improvável um acerto errado |
+| Buscar letra só com a tela principal visível | Ninguém compartilha sem abrir o app. O sync em segundo plano não gasta rede nem bateria com letras, e a letra já está pronta quando o botão é tocado |
+| Uma resposta em memória, nada em disco | Uma faixa por vez basta para compartilhar. Não guarda texto protegido no aparelho |
+| Imagem feita da base em cache do wallpaper | Sem download novo no caso normal, e a imagem tem o mesmo visual do wallpaper. O compartilhamento não mexe em nada do sync |
+| JPEG q95 em vez de PNG | 31–42 ms e ~180 KB no A71; o PNG custaria centenas de ms sem ganho visível no Stories/WhatsApp |
+| `FileProvider` restrito a `cache/share`, um arquivo | O app escolhido só consegue ler aquela imagem. Não acumula arquivos |
+| Estado num ViewModel no escopo da activity | Rotação, dobra e zoom recriam a tela sem perder letra, seleção nem imagem |
 
 ---
 
@@ -386,6 +437,12 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | #5 | Android: redesenho ao abrir ou fechar dobráveis, um quadro do live wallpaper por forma de tela |
 | #6 | CI: canais release/debug no GitHub Releases, `versionCode` = contagem de commits, atualização no app |
 | #7 | Android: redesenho ao mudar o tamanho de exibição (zoom/DPI), sem chamada à API. Validado no build de release |
+
+**Pronto, aguardando merge:** #9, "Compartilhar letra" (Android, §2.5). Testado no A71
+(Instagram Stories, WhatsApp, rotação durante a seleção) e aprovado na revisão. O merge
+**precisa ser merge commit, não squash**: o release da branch já está no celular, e uma
+`main` "squashada" teria `versionCode` menor que o instalado, então a atualização no app a
+recusaria.
 
 ### 5.2 Limitações conhecidas
 
@@ -425,6 +482,19 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 - **Zoom no Android < 12:** a densidade vem dos resources da window context, que podem ficar
   presos à configuração da criação. Não tratado.
 - **Mudar o estilo baixa a arte de novo** (a chave muda e a arte original não fica em cache).
+- **Compartilhar letra (#9):**
+  - o botão some com a música pausada (`Idle`), embora o wallpaper ainda mostre a faixa.
+    **Decisão pendente do usuário**;
+  - o LRCLIB é mantido pela comunidade: a letra pode faltar ou estar errada. A comparação
+    solta aceita trechos contidos ("love" em "lovesong"), mantida pela paridade com o
+    spotifast;
+  - com a arte pequena, o cartão também fica pequeno: o piso da fonte e a seleção ficam
+    limitados ao que cabe (a tela abre no primeiro verso que cabe sozinho);
+  - a busca da própria tela de compartilhar roda no `viewModelScope`, não sob `STARTED`: se
+    o usuário sair, ela pode continuar até o `callTimeout` de 20 s;
+  - bitmaps de prévias antigas ficam para o GC de propósito (reciclar um que o Compose
+    ainda pode estar desenhando é mais arriscado);
+  - `LyricsPrefetch.state` não tem mais leitor em produção (a tela usa `watch()`). Mantido.
 - **Lacunas de teste:** `SpotifyAuth` e `SyncController` sem testes (precisariam de
   Robolectric). Serviço, receiver e bloco só foram verificados manualmente no aparelho.
   `DesktopColorParityTest` precisa de capas reais fora do repositório, então a paridade de cor
@@ -432,7 +502,9 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 
 ### 5.3 Próximas prioridades
 
-1. **Cache em disco da arte original e das cores**, para mudar de estilo sem baixar a arte de
+1. **Merge do #9** (merge commit) e validação no release da `main`.
+2. **Decidir** se "Compartilhar letra" aparece também com a música pausada.
+3. **Cache em disco da arte original e das cores**, para mudar de estilo sem baixar a arte de
    novo nem recalcular a paleta.
 
 Descartados por decisão do usuário (2026-09-24): limite de ampliação da arte no desktop,

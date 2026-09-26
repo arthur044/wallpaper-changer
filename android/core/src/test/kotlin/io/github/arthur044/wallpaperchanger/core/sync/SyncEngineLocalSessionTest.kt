@@ -58,6 +58,18 @@ class SyncEngineLocalSessionTest {
     }
 
     @Test
+    fun `the local session's album name and duration reach what is drawn`() = runTest {
+        val engine = engine()
+        source.playing = { apiSaysAirbag }
+
+        engine.onLocalTrack(airbagLocally.copy(album = "OK Computer", durationMs = 287_000))
+        engine.runOnce()
+
+        assertEquals("OK Computer", sink.last?.albumName)
+        assertEquals(287_000L, sink.last?.durationMs)
+    }
+
+    @Test
     fun `a local track change is drawn at once, without waiting for a poll`() = runTest {
         val engine = engine()
         source.playing = { apiSaysAirbag }
@@ -346,6 +358,7 @@ class SyncEngineLocalSessionTest {
 
     private class FakeSink : WallpaperSink {
         val shown = mutableListOf<String?>()
+        var last: NowPlaying? = null
         var onShow: () -> Unit = {}
         var fail = false
 
@@ -353,6 +366,7 @@ class SyncEngineLocalSessionTest {
             if (fail) throw IllegalStateException("could not draw")
             onShow()
             shown += nowPlaying.trackId
+            last = nowPlaying
         }
     }
 

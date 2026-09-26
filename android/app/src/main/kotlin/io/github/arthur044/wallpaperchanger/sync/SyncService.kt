@@ -10,7 +10,6 @@ import android.util.Log
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import io.github.arthur044.wallpaperchanger.WallpaperApp
-import io.github.arthur044.wallpaperchanger.core.sync.LocalTrack
 import io.github.arthur044.wallpaperchanger.media.MediaSessionProbe
 import io.github.arthur044.wallpaperchanger.media.notificationAccessGranted
 import kotlinx.coroutines.CoroutineScope
@@ -95,7 +94,7 @@ class SyncService : Service() {
                     return@collectLatest
                 }
                 MediaSessionProbe(this).snapshots().collect { snapshot ->
-                    engine.onLocalTrack(LocalTrack(snapshot.title, snapshot.artist, snapshot.isPlaying))
+                    engine.onLocalTrack(snapshot.toLocalTrack())
                 }
             }
     }

@@ -54,6 +54,22 @@ class MainContentTest {
     }
 
     @Test
+    fun theShareButtonShowsOnlyWithATrackOnTheWallpaper() {
+        var opened = false
+        show(state().copy(canShareLyrics = true), MainCallbacks(onShareLyrics = { opened = true }))
+
+        rule.onNodeWithTag(TAG_SHARE_LYRICS).performScrollTo().performClick()
+
+        assertTrue(opened)
+    }
+
+    @Test
+    fun noTrackNoShareButton() {
+        show(state(status = SyncStatus.Idle))
+        rule.onNodeWithTag(TAG_SHARE_LYRICS).assertDoesNotExist()
+    }
+
+    @Test
     fun syncOffSaysSoWhateverTheLastStatus() {
         show(state(syncEnabled = false))
         rule.onNodeWithTag(TAG_STATUS).assertTextEquals(context.getString(R.string.sync_status_off))

@@ -113,6 +113,45 @@ class WallpaperComposerTest {
         assertFalse(first.sameAs(second))
     }
 
+    // --- obtainBase (the share image starts from the same base) ------------
+
+    @Test
+    fun obtainingABaseThatIsNotCachedDrawsAndCachesIt() = runTest {
+        val obtained = composer.obtainBase(airbag, phone, Settings())
+        try {
+            assertFalse(obtained.fromCache)
+            assertEquals(1080, obtained.base.base.bitmap.width)
+            assertEquals(640, obtained.base.sourceArtSidePx)
+        } finally {
+            obtained.base.base.bitmap.recycle()
+        }
+
+        // The wallpaper then reuses it: drawing it for a share is not wasted.
+        assertTrue(composer.compose(lucky, phone, Settings()).reusedBase)
+        assertEquals(1, art.downloads)
+    }
+
+    @Test
+    fun obtainingTheBaseOfTheWallpaperDownloadsNothing() = runTest {
+        composer.compose(airbag, phone, Settings())
+
+        val obtained = composer.obtainBase(lucky, phone, Settings())
+        try {
+            assertTrue(obtained.fromCache)
+            assertEquals(640, obtained.base.sourceArtSidePx)
+        } finally {
+            obtained.base.base.bitmap.recycle()
+        }
+        assertEquals(1, art.downloads)
+    }
+
+    @Test
+    fun obtainingABaseForATrackWithNoAlbumIsReportedAsUndrawable() = runTest {
+        val thrown = runCatching { composer.obtainBase(airbag.copy(albumId = null), phone, Settings()) }.exceptionOrNull()
+
+        assertTrue("got $thrown", thrown is TrackNotDrawableException)
+    }
+
     private class CountingArtSource : ArtSource {
         var downloads = 0
             private set

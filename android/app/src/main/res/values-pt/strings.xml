@@ -117,4 +117,22 @@
     <string name="update_failed_other">A instalação falhou: %1$s</string>
     <string name="update_older_release">%1$s é mais antigo que o build instalado: não há o que atualizar.</string>
     <string name="update_confirm">Confirmar instalação</string>
+
+    <string name="share_lyrics_button">Compartilhar letra</string>
+    <string name="share_title">Compartilhar letra</string>
+    <string name="share_back">Voltar</string>
+    <string name="share_loading">Procurando a letra…</string>
+    <string name="share_preparing">Preparando a imagem…</string>
+    <string name="share_no_lyrics">Nenhuma letra encontrada para esta faixa.</string>
+    <string name="share_instrumental">Esta faixa é instrumental.</string>
+    <string name="share_no_network">Não foi possível falar com o serviço de letras. Confira a conexão.</string>
+    <string name="share_retry">Tentar de novo</string>
+    <string name="share_image_unavailable">Não foi possível preparar a imagem. Tente de novo quando o wallpaper atualizar.</string>
+    <string name="share_hint">Toque nas linhas para escolher; toque na linha seguinte para acrescentar.</string>
+    <string name="share_too_long">É tudo o que cabe no cartão.</string>
+    <string name="share_preview_description">Prévia da imagem a compartilhar</string>
+    <string name="share_save_failed">Não foi possível salvar a imagem. Tente de novo.</string>
+    <string name="share_source">Letras do LRCLIB</string>
+    <string name="share_action">Compartilhar</string>
+    <string name="share_sheet_failed">Não foi possível abrir as opções de compartilhar neste celular.</string>
 </resources>

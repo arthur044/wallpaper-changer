@@ -207,10 +207,7 @@ class WallpaperRenderer {
             textAlign = Paint.Align.CENTER
         }
         val shown = TextUtils.ellipsize(text, paint, maxWidth.toFloat(), TextUtils.TruncateAt.END).toString()
-        val metrics = paint.fontMetrics
-        // Vertically centers the glyphs' full extent inside the line box.
-        val baseline = top + ((bottom - top) - (metrics.descent - metrics.ascent)) / 2f - metrics.ascent
-        return TextLine(shown, paint, baseline)
+        return TextLine(shown, paint, paint.baselineCenteredIn(top, bottom))
     }
 
     // The glyphs' tight box: centered width from measureText (getTextBounds
@@ -340,6 +337,12 @@ class WallpaperRenderer {
         private val BOLD: Typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
         private val REGULAR: Typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
     }
+}
+
+/** The baseline that vertically centers the glyphs' full extent in the line box [top, bottom). */
+internal fun Paint.baselineCenteredIn(top: Int, bottom: Int): Float {
+    val metrics = fontMetrics
+    return top + ((bottom - top) - (metrics.descent - metrics.ascent)) / 2f - metrics.ascent
 }
 
 private fun PixelRect.toRectF() = RectF(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat())

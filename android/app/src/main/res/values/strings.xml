@@ -123,4 +123,22 @@
     <string name="update_failed_other">The install failed: %1$s</string>
     <string name="update_older_release">%1$s is older than the installed build: there\'s nothing to update.</string>
     <string name="update_confirm">Confirm install</string>
+
+    <string name="share_lyrics_button">Share lyrics</string>
+    <string name="share_title">Share lyrics</string>
+    <string name="share_back">Back</string>
+    <string name="share_loading">Looking for the lyrics…</string>
+    <string name="share_preparing">Preparing the image…</string>
+    <string name="share_no_lyrics">No lyrics found for this track.</string>
+    <string name="share_instrumental">This track is instrumental.</string>
+    <string name="share_no_network">Couldn\'t reach the lyrics service. Check your connection.</string>
+    <string name="share_retry">Try again</string>
+    <string name="share_image_unavailable">Couldn\'t prepare the image. Try again once the wallpaper has updated.</string>
+    <string name="share_hint">Tap lines to choose them; tap the next line to add it.</string>
+    <string name="share_too_long">That\'s all that fits on the card.</string>
+    <string name="share_preview_description">Preview of the image to share</string>
+    <string name="share_save_failed">Couldn\'t save the image. Try again.</string>
+    <string name="share_source">Lyrics from LRCLIB</string>
+    <string name="share_action">Share</string>
+    <string name="share_sheet_failed">Couldn\'t open the share options on this phone.</string>
 </resources>

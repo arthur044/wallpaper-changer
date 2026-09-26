@@ -7,6 +7,7 @@ import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.os.Handler
 import android.os.Looper
+import io.github.arthur044.wallpaperchanger.core.sync.LocalTrack
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -18,7 +19,10 @@ data class MediaSnapshot(
     val album: String?,
     val isPlaying: Boolean,
     val atMillis: Long,
-)
+    val durationMs: Long? = null,
+) {
+    fun toLocalTrack() = LocalTrack(title, artist, isPlaying, album, durationMs)
+}
 
 const val SPOTIFY_PACKAGE = "com.spotify.music"
 
@@ -44,6 +48,8 @@ class MediaSessionProbe(private val context: Context, private val now: () -> Lon
                     album = metadata.getString(MediaMetadata.METADATA_KEY_ALBUM),
                     isPlaying = controller.playbackState?.state == PlaybackState.STATE_PLAYING,
                     atMillis = now(),
+                    // getLong answers 0 for a key the session never set.
+                    durationMs = metadata.getLong(MediaMetadata.METADATA_KEY_DURATION).takeIf { it > 0 },
                 ),
             )
         }

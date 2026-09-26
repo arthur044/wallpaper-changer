@@ -50,9 +50,21 @@ class SpotifyApiTest {
                 artUrl = "https://i.scdn.co/image/640",
                 trackName = "Airbag",
                 artistName = "Radiohead, Guest",
+                albumName = "OK Computer",
+                durationMs = 287_000,
+                artists = listOf("Radiohead", "Guest"),
             ),
             api.currentlyPlaying(),
         )
+    }
+
+    @Test
+    fun `a track without album name or duration leaves them unknown`() = runTest {
+        respond(200, """{"is_playing": true, "item": {"id": "t1", "name": "Airbag", "album": {"id": "a1"}}}""")
+
+        val playing = api.currentlyPlaying()
+        assertNull(playing?.albumName)
+        assertNull(playing?.durationMs)
     }
 
     @Test
@@ -181,6 +193,7 @@ class SpotifyApiTest {
                 "id": "t1",
                 "name": "Airbag",
                 "type": "track",
+                "duration_ms": 287000,
                 "artists": [{"name": "Radiohead"}, {"name": "Guest"}],
                 "album": {
                   "id": "a1",

@@ -222,6 +222,8 @@ class SyncEngine(
             artUrl = album.artUrl,
             trackName = local.title,
             artistName = local.artist,
+            albumName = local.album,
+            durationMs = local.durationMs,
         )
         when (decide(nowPlaying, lastRenderedTrackId)) {
             PollDecision.IDLE -> mutableStatus.value = SyncStatus.Idle

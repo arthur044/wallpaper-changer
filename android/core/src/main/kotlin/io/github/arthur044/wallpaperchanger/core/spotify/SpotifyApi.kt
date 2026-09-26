@@ -44,6 +44,9 @@ class SpotifyApi(
             artUrl = item.album?.images?.firstNotNullOfOrNull { it.url },
             trackName = item.name,
             artistName = item.artists.joinNames().ifEmpty { null },
+            albumName = item.album?.name,
+            durationMs = item.durationMs,
+            artists = item.artists.names(),
         )
     }
 
@@ -125,8 +128,9 @@ class SpotifyApi(
     }
 }
 
-private fun List<ArtistDto>.joinNames(): String =
-    mapNotNull { it.name?.takeIf(String::isNotBlank) }.joinToString(", ")
+private fun List<ArtistDto>.names(): List<String> = mapNotNull { it.name?.takeIf(String::isNotBlank) }
+
+private fun List<ArtistDto>.joinNames(): String = names().joinToString(", ")
 
 @Serializable
 private class CurrentlyPlayingDto(
@@ -140,13 +144,14 @@ private class TrackDto(
     val name: String? = null,
     val artists: List<ArtistDto> = emptyList(),
     val album: AlbumDto? = null,
+    @SerialName("duration_ms") val durationMs: Long? = null,
 )
 
 @Serializable
 private class ArtistDto(val name: String? = null)
 
 @Serializable
-private class AlbumDto(val id: String? = null, val images: List<ImageDto> = emptyList())
+private class AlbumDto(val id: String? = null, val name: String? = null, val images: List<ImageDto> = emptyList())
 
 @Serializable
 private class ImageDto(val url: String? = null)

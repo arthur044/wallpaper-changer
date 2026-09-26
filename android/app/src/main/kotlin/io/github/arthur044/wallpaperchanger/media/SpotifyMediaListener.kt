@@ -6,7 +6,6 @@ import android.service.notification.NotificationListenerService
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
 import io.github.arthur044.wallpaperchanger.WallpaperApp
-import io.github.arthur044.wallpaperchanger.core.sync.LocalTrack
 import io.github.arthur044.wallpaperchanger.sync.screenOnFlow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -57,7 +56,7 @@ class SpotifyMediaListener : NotificationListenerService() {
     private suspend fun syncWhileScreenOn() = coroutineScope {
         launch {
             MediaSessionProbe(this@SpotifyMediaListener).snapshots().collect { snapshot ->
-                container.syncEngine.onLocalTrack(LocalTrack(snapshot.title, snapshot.artist, snapshot.isPlaying))
+                container.syncEngine.onLocalTrack(snapshot.toLocalTrack())
             }
         }
         screenOnFlow().collectLatest { on ->

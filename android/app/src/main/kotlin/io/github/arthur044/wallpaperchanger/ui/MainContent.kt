@@ -22,6 +22,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -61,6 +62,8 @@ data class MainUiState(
     val update: UpdateState? = null,
     /** The installer's confirmation screen can be reopened. */
     val updateConfirmationPending: Boolean = false,
+    /** A track is on the wallpaper, so its lyrics can be shared. */
+    val canShareLyrics: Boolean = false,
 )
 
 class MainCallbacks(
@@ -78,6 +81,7 @@ class MainCallbacks(
     val onPickLiveWallpaper: () -> Unit = {},
     val onConnect: () -> Unit = {},
     val onOpenDebug: () -> Unit = {},
+    val onShareLyrics: () -> Unit = {},
     val update: UpdateCallbacks = UpdateCallbacks(),
 )
 
@@ -149,6 +153,12 @@ private fun StatusCard(state: MainUiState, callbacks: MainCallbacks) {
                 enabled = state.syncEnabled,
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(stringResource(R.string.main_sync_now)) }
+            if (state.canShareLyrics) {
+                OutlinedButton(
+                    onClick = callbacks.onShareLyrics,
+                    modifier = Modifier.fillMaxWidth().testTag(TAG_SHARE_LYRICS),
+                ) { Text(stringResource(R.string.share_lyrics_button)) }
+            }
         }
     }
 }
@@ -355,11 +365,12 @@ private fun ClosedFloatingPointRange<Double>.toPercentRange() = (start * 100).to
 
 private fun IntRange.toFloatRange() = first.toFloat()..last.toFloat()
 
-private val MAX_CONTENT_WIDTH = 600.dp
+internal val MAX_CONTENT_WIDTH = 600.dp
 private val ART_SIZE = 88.dp
 
 internal const val TAG_STATUS = "status"
 internal const val TAG_SYNC_SWITCH = "syncSwitch"
+internal const val TAG_SHARE_LYRICS = "shareLyrics"
 internal const val TAG_ART_SIZE = "artSize"
 internal const val TAG_CORNERS = "corners"
 internal const val TAG_SHADOW = "shadow"
