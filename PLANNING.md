@@ -4,7 +4,7 @@ Documentação técnica do estado atual. Descreve **como o sistema funciona hoje
 foi construído. Uso e instalação estão no [README](README.md) e no
 [README do Android](android/README.md).
 
-Última revisão: 2026-09-25 · base: `feat/share-lyrics` (PR #9, aberto) sobre `main` @ `011114b`
+Última revisão: 2026-09-25 · base: `fix/art-host-allowlist` sobre `main` @ `04720fa`
 
 ---
 
@@ -399,6 +399,7 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | Fade no Android via live wallpaper próprio | `setBitmap` pisca preto a cada troca, comportamento do sistema. O quadro vai em pixels crus porque codificar PNG custa centenas de ms |
 | Tela de bloqueio no Windows via Scheduled Task elevada | A chave `PersonalizationCSP` fica em HKLM. A task pede UAC uma vez só |
 | Tokens: Credential Manager / Keystore + Tink | Nunca em texto puro no disco. OAuth PKCE, sem client secret |
+| Arte só de `https` em `scdn.co`/`spotifycdn.com`, conferido também depois de redirects | Os bytes vão direto ao decodificador de imagem. Uma resposta da API forjada não pode apontá-lo para outro host. Nas 114 capas do índice do desktop, todas vinham de `i.scdn.co`. URL recusada é tratada como falha de download comum |
 | Client ID por usuário | Desde 15/05/2025 o Spotify só dá cota estendida a empresas grandes. Cada pessoa usa o próprio app em modo desenvolvimento (Premium, até 5 contas) |
 | Android: `targetSdk 36` com `compileSdk 37` | O AndroidX exige compileSdk 37. O target ficou em 36 de propósito (ver `app/lint.xml`) |
 | R8 desligado | AppAuth, Tink e a serialização precisariam de regras próprias. A build testada no aparelho é a sem R8 |
@@ -437,12 +438,7 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | #5 | Android: redesenho ao abrir ou fechar dobráveis, um quadro do live wallpaper por forma de tela |
 | #6 | CI: canais release/debug no GitHub Releases, `versionCode` = contagem de commits, atualização no app |
 | #7 | Android: redesenho ao mudar o tamanho de exibição (zoom/DPI), sem chamada à API. Validado no build de release |
-
-**Pronto, aguardando merge:** #9, "Compartilhar letra" (Android, §2.5). Testado no A71
-(Instagram Stories, WhatsApp, rotação durante a seleção) e aprovado na revisão. O merge
-**precisa ser merge commit, não squash**: o release da branch já está no celular, e uma
-`main` "squashada" teria `versionCode` menor que o instalado, então a atualização no app a
-recusaria.
+| #9 | Android: "Compartilhar letra" (§2.5). Testado no A71 (Instagram Stories, WhatsApp, rotação durante a seleção) |
 
 ### 5.2 Limitações conhecidas
 
