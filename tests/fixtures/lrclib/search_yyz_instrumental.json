@@ -1,0 +1,26 @@
+[
+  {
+    "id": 37103834,
+    "name": "YYZ",
+    "trackName": "YYZ",
+    "artistName": "Rush",
+    "albumName": "RIO",
+    "duration": 297.0,
+    "instrumental": true,
+    "hasWordSync": false,
+    "plainLyrics": null,
+    "syncedLyrics": null
+  },
+  {
+    "id": 34617318,
+    "name": "YYZ",
+    "trackName": "YYZ",
+    "artistName": "Rush",
+    "albumName": "Moving Pictures (Remastered 2022)",
+    "duration": 266.0,
+    "instrumental": true,
+    "hasWordSync": false,
+    "plainLyrics": null,
+    "syncedLyrics": null
+  }
+]
