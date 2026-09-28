@@ -124,6 +124,21 @@ def test_glow_and_glass_toggle_and_redraw(monkeypatch):
     assert settings.text_card == "none"
 
 
+def test_lyrics_widget_item_runs_the_toggle_and_shows_its_state():
+    visible = [False]
+
+    def toggle():
+        visible[0] = not visible[0]
+
+    tray = _tray(on_toggle_lyrics_widget=toggle, is_lyrics_widget_visible=lambda: visible[0])
+    item = next(item for item in tray._build_menu().items if item.text == "Lyrics widget")
+
+    assert item.checked is False
+    tray._toggle_lyrics_widget(tray._icon, None)
+    assert visible == [True]
+    assert item.checked is True
+
+
 def test_restart_runs_the_callback_and_closes_the_tray(monkeypatch):
     calls = []
     tray = TrayApp(

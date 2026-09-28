@@ -35,6 +35,8 @@ class TrayApp:
         on_exit: Callable[[], None],
         on_setup: Callable[[], None],
         on_restart: Callable[[], None] = lambda: None,
+        on_toggle_lyrics_widget: Callable[[], None] = lambda: None,
+        is_lyrics_widget_visible: Callable[[], bool] = lambda: False,
     ):
         self._app_state = app_state
         self._settings = settings
@@ -44,6 +46,8 @@ class TrayApp:
         # setup hook below, and an instance attribute would shadow it.
         self._launch_wizard = on_setup
         self._on_restart = on_restart
+        self._on_toggle_lyrics_widget = on_toggle_lyrics_widget
+        self._is_lyrics_widget_visible = is_lyrics_widget_visible
         self._wizard_thread: Optional[threading.Thread] = None
         self._icon = pystray.Icon(
             "spotify_wallpaper_engine",
@@ -61,6 +65,11 @@ class TrayApp:
                 "Sync Lock Screen",
                 self._toggle_lock_sync,
                 checked=lambda item: self._settings.sync_lock_screen,
+            ),
+            pystray.MenuItem(
+                "Lyrics widget",
+                self._toggle_lyrics_widget,
+                checked=lambda item: self._is_lyrics_widget_visible(),
             ),
             pystray.MenuItem(
                 "Re-authenticate",
@@ -185,6 +194,9 @@ class TrayApp:
         save_settings(self._settings)
         self._app_state.force_sync_event.set()
 
+    def _toggle_lyrics_widget(self, icon, item) -> None:
+        self._on_toggle_lyrics_widget()
+
     def _restart(self, icon, item) -> None:
         self._on_restart()
         icon.stop()
@@ -232,8 +244,12 @@ class TrayApp:
         self._icon.update_menu()
 
     def run(self) -> None:
-        # Blocking call — must run on the main thread (Win32 message loop requirement on Windows).
+        # Blocking. On Windows pystray pumps its messages on whichever thread
+        # calls this, so it runs on its own thread: the main one belongs to Qt.
         self._icon.run(setup=self._on_setup)
+
+    def stop(self) -> None:
+        self._icon.stop()
 
     def _on_setup(self, icon: pystray.Icon) -> None:
         icon.visible = True

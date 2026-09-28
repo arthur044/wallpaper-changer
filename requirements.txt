@@ -6,6 +6,9 @@ pystray>=0.19.5
 keyring>=24.3.0
 pywin32>=306
 winsdk>=1.0.0b10
+# Lyrics widget window. Essentials = QtCore/QtGui/QtWidgets only (~211 MB
+# installed); the full PySide6 adds the Addons (WebEngine, 3D...) unused here.
+PySide6-Essentials>=6.11.2
 
 # dev / test only
 pytest>=7.4.0

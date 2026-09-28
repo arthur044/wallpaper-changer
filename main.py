@@ -9,6 +9,7 @@ from src.config.settings import load_settings
 from src.graphics.base_cache import base_cache_key
 from src.graphics.layout import compute_layout
 from src.graphics.renderer import render_for_now_playing
+from src.lyrics_widget.qt_host import QtHost
 from src.os_integration import lockscreen
 from src.os_integration import restart
 from src.os_integration.autostart import install_autostart, uninstall_autostart
@@ -87,6 +88,10 @@ def main() -> int:
         if should_abort_after_wizard(completed, settings.client_id):
             logger.info("Setup cancelled and no client_id configured; nothing to run")
             return 1
+
+    # Before the poller starts: its first render sets the DPI awareness, and Qt
+    # has to set it first (see QtHost). After the wizard: its Tk root is gone.
+    qt_host = QtHost()
 
     app_state = AppState()
 
@@ -171,8 +176,14 @@ def main() -> int:
         on_exit=on_exit,
         on_setup=on_setup,
         on_restart=on_restart,
+        on_toggle_lyrics_widget=qt_host.toggle_widget,
+        is_lyrics_widget_visible=qt_host.is_widget_visible,
     )
-    tray.run()  # blocks until Exit is clicked
+    tray_thread = qt_host.run_tray_in_thread(tray.run)
+    qt_host.exec()  # blocks until Exit or Restart ends the tray loop
+    if tray_thread.is_alive():  # Qt ended on its own: take the tray icon down too
+        tray.stop()
+    tray_thread.join(timeout=5.0)
 
     return 0
 
