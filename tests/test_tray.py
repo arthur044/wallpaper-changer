@@ -271,3 +271,26 @@ def test_blur_strength_levels_are_saved_and_redrawn(monkeypatch):
 
     tray._set_blur_strength(60)
     assert len(saved) == 1, "picking the current level again changes nothing"
+
+
+def test_running_version_is_in_the_tooltip_and_a_disabled_menu_item():
+    tray = TrayApp(
+        AppState(),
+        Settings(),
+        on_reauthenticate=lambda: None,
+        on_exit=lambda: None,
+        on_setup=lambda: None,
+        version="f93217c (2026-09-29)",
+    )
+
+    assert tray._icon.title == "Spotify Wallpaper Engine - f93217c (2026-09-29)"
+    item = next(item for item in tray._build_menu().items if "f93217c" in item.text)
+    assert item.text == "Version f93217c (2026-09-29)"
+    assert item.enabled is False
+
+
+def test_without_a_version_the_tray_keeps_its_plain_title():
+    tray = _tray()
+
+    assert tray._icon.title == "Spotify Wallpaper Engine"
+    assert not any(item.visible for item in tray._build_menu().items if item.text.startswith("Version"))

@@ -13,6 +13,7 @@ from src.graphics.renderer import render_for_now_playing
 from src.lyrics_widget.colors import TintHolder
 from src.lyrics_widget.qt_host import QtHost
 from src.os_integration import lockscreen
+from src.os_integration import app_version
 from src.os_integration import restart
 from src.os_integration import single_instance
 from src.os_integration.autostart import install_autostart, uninstall_autostart
@@ -197,6 +198,7 @@ def _run_app(settings) -> int:
         on_setup=on_setup,
         on_restart=on_restart,
         lyrics_widget=qt_host,
+        version=app_version.version_label(app_version.read_version(app_version.app_dir())),
     )
     tray_thread = qt_host.run_tray_in_thread(tray.run)
     qt_host.exec()  # blocks until Exit or Restart ends the tray loop

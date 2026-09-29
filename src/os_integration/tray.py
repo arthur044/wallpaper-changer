@@ -55,6 +55,7 @@ class TrayApp:
         on_setup: Callable[[], None],
         on_restart: Callable[[], None] = lambda: None,
         lyrics_widget: Optional[LyricsWidgetControls] = None,
+        version: str = "",
     ):
         self._app_state = app_state
         self._settings = settings
@@ -65,11 +66,12 @@ class TrayApp:
         self._launch_wizard = on_setup
         self._on_restart = on_restart
         self._lyrics_widget = lyrics_widget
+        self._version = version
         self._wizard_thread: Optional[threading.Thread] = None
         self._icon = pystray.Icon(
             "spotify_wallpaper_engine",
             _build_icon_image(_ICON_COLORS[AppStatus.RUNNING]),
-            "Spotify Wallpaper Engine",
+            f"Spotify Wallpaper Engine - {version}" if version else "Spotify Wallpaper Engine",
             menu=self._build_menu(),
         )
 
@@ -95,6 +97,12 @@ class TrayApp:
             ),
             pystray.MenuItem("Setup...", self._setup),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem(
+                f"Version {self._version}",
+                None,
+                enabled=False,
+                visible=bool(self._version),
+            ),
             pystray.MenuItem("Restart", self._restart),
             pystray.MenuItem("Exit", self._exit),
         )
