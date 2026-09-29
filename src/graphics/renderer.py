@@ -359,9 +359,21 @@ def _draw_track_info(
         draw.text(line.position, line.text, font=line.font, fill=color)
 
 
+def sample_widget_tint(base_image: Image.Image) -> Tuple[int, int, int]:
+    """The wallpaper's color in its bottom-right quarter, where the lyrics
+    widget starts: the dominant color on a solid background, the local one on
+    a mesh or blur. Read from the base already in memory (cached or new), so
+    it costs ~2-4 ms at 1080p and never a second ColorThief quantization."""
+    width, height = base_image.size
+    corner = base_image.crop((width // 2, height // 2, width, height))
+    return corner.resize((1, 1), Image.BOX).getpixel((0, 0))[:3]
+
+
 def render_for_now_playing(
     now_playing: NowPlaying, settings: Settings, layout: ArtLayout, base_path: Path, output_path: Path
-) -> None:
+) -> Tuple[int, int, int]:
+    """Renders and saves the wallpaper; returns the album's color for the
+    lyrics widget (see sample_widget_tint)."""
     if base_path.exists():
         base_image = Image.open(base_path).convert("RGB")
         mark_used(base_path)
@@ -374,6 +386,7 @@ def render_for_now_playing(
         prune_album_bases(base_path.parent, keep=base_path)
         logger.info("Rendered new base art for album %s", now_playing.album_id)
 
+    tint = sample_widget_tint(base_image)
     final_image = base_image.copy()
     if settings.show_track_info:
         _draw_track_info(final_image, layout, settings.text_card, now_playing.track_name, now_playing.artist_name)
@@ -383,3 +396,4 @@ def render_for_now_playing(
     # to encode, at level 1 well under half. The cached base stays at the default.
     final_image.save(output_path, format="PNG", compress_level=1)
     logger.info("Rendered wallpaper to %s", output_path)
+    return tint

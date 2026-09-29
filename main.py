@@ -3,12 +3,14 @@ import dataclasses
 import logging
 import sys
 import threading
+from typing import Optional
 
 from src.config.paths import album_base_path, track_index_file
 from src.config.settings import load_settings, save_settings
 from src.graphics.base_cache import base_cache_key
 from src.graphics.layout import compute_layout
 from src.graphics.renderer import render_for_now_playing
+from src.lyrics_widget.colors import TintHolder
 from src.lyrics_widget.qt_host import QtHost
 from src.os_integration import lockscreen
 from src.os_integration import restart
@@ -36,7 +38,7 @@ def _build_client(settings):
     return Spotify(auth_manager=auth_manager)
 
 
-def _make_render_fn(settings):
+def _make_render_fn(settings, tint: Optional[TintHolder] = None):
     def render(now_playing: NowPlaying) -> None:
         if not now_playing.art_url or not now_playing.album_id:
             logger.warning("No album art URL for track %s, skipping render", now_playing.track_id)
@@ -48,7 +50,9 @@ def _make_render_fn(settings):
         layout = compute_layout(snapshot)
         base_path = album_base_path(base_cache_key(now_playing.album_id, layout.canvas_size, snapshot))
         output_path = next_output_path()
-        render_for_now_playing(now_playing, snapshot, layout, base_path, output_path)
+        album_color = render_for_now_playing(now_playing, snapshot, layout, base_path, output_path)
+        if tint is not None:
+            tint.set(album_color)  # the lyrics widget's background follows the album
         set_wallpaper(output_path, smooth=snapshot.smooth_transition)
         if snapshot.sync_lock_screen:
             lockscreen.request_update(output_path)
@@ -91,7 +95,8 @@ def main() -> int:
 
     # Before the poller starts: its first render sets the DPI awareness, and Qt
     # has to set it first (see QtHost). After the wizard: its Tk root is gone.
-    qt_host = QtHost(settings, save=save_settings)
+    album_tint = TintHolder()
+    qt_host = QtHost(settings, save=save_settings, tint=album_tint)
 
     app_state = AppState()
 
@@ -120,7 +125,7 @@ def main() -> int:
         client=client,
         settings=settings,
         app_state=app_state,
-        render_fn=_make_render_fn(settings),
+        render_fn=_make_render_fn(settings, album_tint),
         reauth_fn=reauth,
         smtc_watcher=smtc_watcher,
         is_locked_fn=is_workstation_locked,

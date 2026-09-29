@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 from src.config.settings import Settings
 from src.lyrics.lrclib import Lyrics, LyricsQuery, LyricsUnavailableError, LrclibClient
 from src.lyrics.slot import LyricsSlot
+from src.lyrics_widget.colors import DEFAULT_BACKGROUND, TintHolder, widget_background
 from src.lyrics_widget.controller import FetchRequest, LyricsWidgetController
 from src.lyrics_widget.geometry import DEFAULT_SIZE, default_position, edges_at, hide_for_full_screen, restore_rect
 from src.lyrics_widget.view_model import (
@@ -30,7 +31,7 @@ from src.os_integration.window_layer import set_window_layer
 logger = logging.getLogger(__name__)
 
 _CORNER_RADIUS = 18
-_BACKGROUND = QColor(18, 18, 18, 190)
+_BACKGROUND_ALPHA = 200
 _TEXT = QColor(255, 255, 255)
 _CURRENT_ALPHA = 255
 _OTHER_ALPHA = 110
@@ -111,6 +112,7 @@ class LyricsWindow(QWidget):
         self.setMouseTracking(True)
         self._on_user_moved = on_user_moved
         self._on_top = False
+        self._background = QColor(*DEFAULT_BACKGROUND, _BACKGROUND_ALPHA)
         self._interacting = False
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
@@ -135,6 +137,16 @@ class LyricsWindow(QWidget):
     @property
     def view(self) -> View:
         return self._view
+
+    @property
+    def background(self) -> QColor:
+        return QColor(self._background)
+
+    def set_background(self, rgb) -> None:
+        color = QColor(*rgb, _BACKGROUND_ALPHA)
+        if color != self._background:
+            self._background = color
+            self.update()
 
     def apply_layer(self, locked: bool, on_top: bool) -> None:
         # setWindowFlags hides the window; it comes back as it was.
@@ -262,7 +274,7 @@ class LyricsWindow(QWidget):
         painter.setRenderHint(QPainter.TextAntialiasing)
         outline = QPainterPath()
         outline.addRoundedRect(QRectF(self.rect()), _CORNER_RADIUS, _CORNER_RADIUS)
-        painter.fillPath(outline, _BACKGROUND)
+        painter.fillPath(outline, self._background)
 
         message = self._view.message
         if message is not None:
@@ -336,6 +348,7 @@ class QtHost:
         settings: Optional[Settings] = None,
         save: Optional[Callable[[Settings], None]] = None,
         lyrics_source: Optional[LyricsSource] = None,
+        tint: Optional[TintHolder] = None,
     ) -> None:
         self._app = QApplication.instance() or QApplication([])
         # The widget is the only window; hiding it must not end the app.
@@ -349,6 +362,7 @@ class QtHost:
         self._on_top = self._settings.lyrics_widget_on_top
         self._full_screen = False
         self._ticks = 0
+        self._tint = tint
         self._watcher = None
         self._controller = LyricsWidgetController(has_source=False)
         self._slot = LyricsSlot(lyrics_source if lyrics_source is not None else LrclibClient().lyrics)
@@ -516,6 +530,8 @@ class QtHost:
         if self._ticks % _FULL_SCREEN_CHECK_TICKS == 0:
             self._full_screen = hide_for_full_screen(self.is_on_top(), notification_state())
         self._ticks += 1
+        if self._tint is not None:
+            window.set_background(widget_background(self._tint.get()))
         window.set_view(view)
         if view.phase == Phase.HIDDEN or self._full_screen:
             window.hide()

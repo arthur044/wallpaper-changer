@@ -238,6 +238,23 @@ def test_the_layer_is_set_on_windows_itself_whenever_the_window_shows(monkeypatc
     host.toggle_widget()
 
 
+def test_the_window_takes_the_album_color_darkened_for_contrast():
+    from src.lyrics_widget.colors import TintHolder, widget_background
+
+    tint = TintHolder()
+    host = QtHost(Settings(), lyrics_source=lambda query: NotFound(), tint=tint)
+    host.toggle_widget()
+    QApplication.processEvents()
+
+    tint.set((240, 150, 30))  # a light album
+    host._tick()
+
+    expected = widget_background((240, 150, 30))
+    color = host._window.background
+    assert (color.red(), color.green(), color.blue()) == expected
+    host.toggle_widget()
+
+
 class _Saves:
     def __init__(self):
         self.count = 0
