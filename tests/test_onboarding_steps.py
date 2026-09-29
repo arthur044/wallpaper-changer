@@ -151,8 +151,13 @@ class _FakeLockscreen:
         self.calls.append("install_task")
         return self.install_succeeds
 
+    def ensure_task(self):
+        self.calls.append("ensure_task")
+        return self.task_installed or self.install_task()
+
     def uninstall_task(self):
         self.calls.append("uninstall_task")
+        return True
 
 
 def _patch_options(monkeypatch, lock, autostart_error=None):

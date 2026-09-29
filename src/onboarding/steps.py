@@ -144,7 +144,7 @@ def apply_options(settings: Settings, autostart: bool, sync_lock_screen: bool) -
             return ApplyOptionsResult(autostart_error=str(exc))
 
     if sync_lock_screen and not settings.sync_lock_screen:
-        if not (lockscreen.is_task_installed() or lockscreen.install_task()):
+        if not lockscreen.ensure_task():
             logger.warning("Lock screen sync not enabled: task installation was declined or failed")
             return ApplyOptionsResult(lockscreen_declined=True)
     elif settings.sync_lock_screen and not sync_lock_screen:

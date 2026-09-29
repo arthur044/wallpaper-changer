@@ -273,12 +273,14 @@ class TrayApp:
 
     def _apply_lock_sync_toggle(self) -> None:
         if self._settings.sync_lock_screen:
+            # Off either way: without the setting nothing triggers the task,
+            # a leftover one only runs at logon with nothing pending.
             lockscreen.uninstall_task()
             self._settings.sync_lock_screen = False
             save_settings(self._settings)
             return
 
-        if lockscreen.is_task_installed() or lockscreen.install_task():
+        if lockscreen.ensure_task():
             self._settings.sync_lock_screen = True
             save_settings(self._settings)
         else:
