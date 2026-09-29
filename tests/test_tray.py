@@ -294,3 +294,53 @@ def test_without_a_version_the_tray_keeps_its_plain_title():
 
     assert tray._icon.title == "Spotify Wallpaper Engine"
     assert not any(item.visible for item in tray._build_menu().items if item.text.startswith("Version"))
+
+
+class _InlineUpdater:
+    """Stands in for Updater: one update available, applied on request."""
+
+    def __init__(self):
+        from src.os_integration.updater import Action, ApplyResult, Decision
+
+        self._decision = Decision(Action.UPDATE, target="bbbbbbb", commits=2)
+        self._result = ApplyResult(self._decision, restart=True)
+
+    def check(self):
+        return self._decision
+
+    def apply(self):
+        return self._result
+
+
+def _update_item(tray):
+    return next(item for item in tray._build_menu().items if item.visible and "update" in item.text.lower())
+
+
+def test_update_item_checks_then_applies_through_restart(monkeypatch):
+    calls = []
+    tray = TrayApp(
+        AppState(),
+        Settings(),
+        on_reauthenticate=lambda: None,
+        on_exit=lambda: None,
+        on_setup=lambda: None,
+        on_restart=lambda: calls.append("restart"),
+        updater=_InlineUpdater(),
+    )
+    monkeypatch.setattr(tray._update_menu, "_spawn", lambda fn: fn())
+    stopped = []
+    monkeypatch.setattr(tray._icon, "stop", lambda: stopped.append(1))
+
+    assert _update_item(tray).text == "Check for updates"
+    _update_item(tray)(tray._icon)
+    assert _update_item(tray).text == "Update to bbbbbbb (2 commits)"
+    assert calls == []
+
+    _update_item(tray)(tray._icon)
+    assert calls == ["restart"] and stopped == [1]
+
+
+def test_without_an_updater_the_update_item_is_hidden():
+    tray = _tray()
+
+    assert not any(item.visible and "update" in item.text.lower() for item in tray._build_menu().items)

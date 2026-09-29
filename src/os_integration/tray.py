@@ -7,6 +7,8 @@ from PIL import Image, ImageDraw
 
 from src.config.settings import Settings, save_settings
 from src.os_integration import lockscreen
+from src.os_integration.update_menu import UpdateMenu
+from src.os_integration.updater import Updater
 from src.utils.app_state import AppState, AppStatus
 
 logger = logging.getLogger(__name__)
@@ -56,6 +58,7 @@ class TrayApp:
         on_restart: Callable[[], None] = lambda: None,
         lyrics_widget: Optional[LyricsWidgetControls] = None,
         version: str = "",
+        updater: Optional[Updater] = None,
     ):
         self._app_state = app_state
         self._settings = settings
@@ -74,6 +77,15 @@ class TrayApp:
             f"Spotify Wallpaper Engine - {version}" if version else "Spotify Wallpaper Engine",
             menu=self._build_menu(),
         )
+        self._update_menu: Optional[UpdateMenu] = None
+        if updater is not None:
+            self._update_menu = UpdateMenu(
+                updater,
+                app_state,
+                # Same path as the Restart item: stop the poller, relaunch, close the tray.
+                on_restart=lambda: self._restart(self._icon, None),
+                refresh=self._refresh_icon,
+            )
 
     def _build_menu(self) -> pystray.Menu:
         return pystray.Menu(
@@ -97,6 +109,11 @@ class TrayApp:
             ),
             pystray.MenuItem("Setup...", self._setup),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem(
+                lambda item: self._update_menu.label() if self._update_menu else "",
+                lambda icon, item: self._update_menu.click() if self._update_menu else None,
+                visible=lambda item: self._update_menu is not None,
+            ),
             pystray.MenuItem(
                 f"Version {self._version}",
                 None,
@@ -287,6 +304,8 @@ class TrayApp:
     def _on_setup(self, icon: pystray.Icon) -> None:
         icon.visible = True
         self._watch_status()
+        if self._update_menu is not None:
+            self._update_menu.check_silently()
 
     def _watch_status(self) -> None:
         def loop() -> None:

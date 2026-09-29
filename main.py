@@ -22,6 +22,7 @@ from src.onboarding.wizard import run_wizard
 from src.os_integration.session_lock import is_workstation_locked
 from src.os_integration.smtc import SmtcWatcher
 from src.os_integration.tray import TrayApp
+from src.os_integration.updater import Updater
 from src.os_integration.wallpaper import next_output_path, set_wallpaper
 from src.spotify.auth import build_auth_manager, reauthenticate
 from src.spotify.client import NowPlaying
@@ -199,6 +200,7 @@ def _run_app(settings) -> int:
         on_restart=on_restart,
         lyrics_widget=qt_host,
         version=app_version.version_label(app_version.read_version(app_version.app_dir())),
+        updater=Updater(app_version.app_dir()),
     )
     tray_thread = qt_host.run_tray_in_thread(tray.run)
     qt_host.exec()  # blocks until Exit or Restart ends the tray loop
