@@ -3,12 +3,15 @@ import dataclasses
 import logging
 import sys
 import threading
+from typing import Optional
 
 from src.config.paths import album_base_path, track_index_file
-from src.config.settings import load_settings
+from src.config.settings import load_settings, save_settings
 from src.graphics.base_cache import base_cache_key
 from src.graphics.layout import compute_layout
 from src.graphics.renderer import render_for_now_playing
+from src.lyrics_widget.colors import TintHolder
+from src.lyrics_widget.qt_host import QtHost
 from src.os_integration import lockscreen
 from src.os_integration import restart
 from src.os_integration.autostart import install_autostart, uninstall_autostart
@@ -35,7 +38,7 @@ def _build_client(settings):
     return Spotify(auth_manager=auth_manager)
 
 
-def _make_render_fn(settings):
+def _make_render_fn(settings, tint: Optional[TintHolder] = None):
     def render(now_playing: NowPlaying) -> None:
         if not now_playing.art_url or not now_playing.album_id:
             logger.warning("No album art URL for track %s, skipping render", now_playing.track_id)
@@ -47,7 +50,9 @@ def _make_render_fn(settings):
         layout = compute_layout(snapshot)
         base_path = album_base_path(base_cache_key(now_playing.album_id, layout.canvas_size, snapshot))
         output_path = next_output_path()
-        render_for_now_playing(now_playing, snapshot, layout, base_path, output_path)
+        album_color = render_for_now_playing(now_playing, snapshot, layout, base_path, output_path)
+        if tint is not None:
+            tint.set(album_color)  # the lyrics widget's background follows the album
         set_wallpaper(output_path, smooth=snapshot.smooth_transition)
         if snapshot.sync_lock_screen:
             lockscreen.request_update(output_path)
@@ -88,12 +93,18 @@ def main() -> int:
             logger.info("Setup cancelled and no client_id configured; nothing to run")
             return 1
 
+    # Before the poller starts: its first render sets the DPI awareness, and Qt
+    # has to set it first (see QtHost). After the wizard: its Tk root is gone.
+    album_tint = TintHolder()
+    qt_host = QtHost(settings, save=save_settings, tint=album_tint)
+
     app_state = AppState()
 
     smtc_watcher = None
     if settings.use_smtc:
         smtc_watcher = SmtcWatcher()
         smtc_watcher.start()
+    qt_host.attach_smtc(smtc_watcher)
 
     try:
         client = _build_client(settings)
@@ -114,7 +125,7 @@ def main() -> int:
         client=client,
         settings=settings,
         app_state=app_state,
-        render_fn=_make_render_fn(settings),
+        render_fn=_make_render_fn(settings, album_tint),
         reauth_fn=reauth,
         smtc_watcher=smtc_watcher,
         is_locked_fn=is_workstation_locked,
@@ -171,8 +182,13 @@ def main() -> int:
         on_exit=on_exit,
         on_setup=on_setup,
         on_restart=on_restart,
+        lyrics_widget=qt_host,
     )
-    tray.run()  # blocks until Exit is clicked
+    tray_thread = qt_host.run_tray_in_thread(tray.run)
+    qt_host.exec()  # blocks until Exit or Restart ends the tray loop
+    if tray_thread.is_alive():  # Qt ended on its own: take the tray icon down too
+        tray.stop()
+    tray_thread.join(timeout=5.0)
 
     return 0
 

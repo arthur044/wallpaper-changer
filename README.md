@@ -15,6 +15,8 @@ Tem também uma **versão Android** em [`android/`](android/README.md), que faz 
 
 **Ciente da tela bloqueada:** estação bloqueada + Spotify desktop fechado → polling para por completo, zero requisição desperdiçada. Bloqueada + Spotify ainda tocando → SMTC continua funcionando (é grátis de qualquer forma).
 
+**Widget de letra (só no Windows):** uma janelinha na área de trabalho com a letra da faixa tocando, sincronizada com a música — a linha atual fica destacada e a letra rola junto. O fundo usa a cor do álbum do wallpaper. Fica atrás das janelas (some com Win+D) ou, se preferir, sempre na frente (e aí se esconde em tela cheia). Dá pra arrastar e redimensionar, e a posição é lembrada por monitor. As letras vêm do [LRCLIB](https://lrclib.net), um serviço comunitário, então podem faltar ou ter erros. Quando a faixa não tem versão sincronizada por lá (comum em música brasileira), o widget mostra o texto simples rolando junto com a música, com o selo **"Not synced"** no canto. Só é buscada com o widget ligado e fica apenas em memória. Precisa do Spotify desktop aberto (SMTC) para saber em que ponto a música está. Vem desligado; liga pelo menu da bandeja.
+
 **Cache:** o fundo composto de cada álbum (arte + sombra + cantos arredondados) é renderizado uma vez e cacheado sob o `album_id` real do Spotify em `%LOCALAPPDATA%\SpotifyWallpaperEngine\cache\album_bases\`. Trocas de faixa dentro de um álbum já cacheado só redesenham o texto sobreposto.
 
 ## Requisitos
@@ -30,6 +32,8 @@ python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
 python main.py
 ```
+
+O `requirements.txt` inclui o **PySide6-Essentials** (Qt, usado pelo widget de letra), que ocupa ~211 MB instalado.
 
 Na primeira execução abre um assistente de configuração que conduz os 6 passos:
 
@@ -62,6 +66,10 @@ Pra rodar de novo depois (trocar de conta, token revogado): `python main.py --se
 | `smooth_transition` | `false` | Troca o wallpaper com o fade do próprio Windows (precisa das animações do sistema ligadas); se falhar, troca na hora |
 | `text_card` | `"none"` | Cartão atrás do título/artista: `"none"` ou `"glass"` (vidro fosco sobre o fundo). Só com `show_track_info` |
 | `sync_lock_screen` | `false` | Também aplica o wallpaper na tela de bloqueio real do Windows (exige uma Scheduled Task elevada via UAC, uma vez só) |
+| `lyrics_widget_enabled` | `false` | Mostra o widget de letra (o mesmo que **Lyrics widget › Show** na bandeja) |
+| `lyrics_widget_locked` | `false` | Trava o widget no lugar; os cliques passam por ele |
+| `lyrics_widget_on_top` | `false` | Widget sempre na frente das janelas, em vez de atrás delas |
+| `lyrics_widget_geometry` | `null` | Onde o widget ficou: `{"monitor": ..., "rect": [x, y, largura, altura]}`. Gravado ao mover; `null` = canto inferior direito do monitor principal |
 | `log_level` | `"INFO"` | Nível de log |
 
 ## Flags de CLI
@@ -75,7 +83,7 @@ python main.py --apply-lockscreen       # interno: chamado pela scheduled task, 
 
 ## Menu da bandeja
 
-Pause/Resume, Force Sync, alternar Sync Lock Screen, Re-authenticate (aparece em erro de auth), Setup..., Exit.
+Pause/Resume, Force Sync, alternar Sync Lock Screen, **Lyrics widget** (submenu: Show, Lock position, Always on top, Reset position), Re-authenticate (aparece em erro de auth), Setup..., Exit.
 
 ## Testes
 
@@ -104,7 +112,8 @@ Redirect URI; volta a sincronizar sozinho depois de reiniciar o celular, atualiz
 ou ter o processo morto; um modo "sem notificação fixa", que dispensa o serviço em
 primeiro plano quando a detecção instantânea está ligada; e **"Compartilhar letra"**, que
 monta uma imagem 9:16 com a capa e os versos escolhidos da faixa atual, pronta para
-Stories ou WhatsApp. Esse recurso é exclusivo do Android.
+Stories ou WhatsApp. Esse recurso é exclusivo do Android, assim como o widget de letra
+sincronizada é exclusivo do Windows.
 
 **Requisitos do Spotify, que valem para quem for instalar:**
 
@@ -127,6 +136,8 @@ src/onboarding/            assistente de configuração (estado puro, ações, U
 src/spotify/               client da API Web, poller (gate híbrido SMTC/API), auth
 src/os_integration/        watcher SMTC, detecção de bloqueio, wallpaper/lockscreen/autostart, tray
 src/graphics/              renderização da arte pro wallpaper (Pillow)
+src/lyrics/                cliente do LRCLIB, parse de LRC, resposta em memória, relógio da faixa
+src/lyrics_widget/         widget de letra (Qt): host, janela, controller puro, posição, cor
 tests/
 android/                   port Android (Kotlin): :core puro + :app, veja android/README.md
 ```

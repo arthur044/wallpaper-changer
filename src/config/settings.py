@@ -1,8 +1,9 @@
 import dataclasses
 import json
 import logging
+import threading
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 
 from src.config.paths import config_file
 
@@ -76,6 +77,15 @@ class Settings:
     fallback_resolution: List[int] = field(default_factory=lambda: [1920, 1080])
     log_level: str = "INFO"
     sync_lock_screen: bool = False
+    # Widget de letra (só no desktop). Ligado pelo item da bandeja; travado,
+    # os cliques passam por ele; "sempre na frente" em vez de atrás das janelas.
+    lyrics_widget_enabled: bool = False
+    lyrics_widget_locked: bool = False
+    lyrics_widget_on_top: bool = False
+    # Onde o usuário deixou o widget: {"monitor": id do monitor, "rect":
+    # [x, y, largura, altura]}. None = posição padrão (canto inferior direito
+    # do monitor principal), que também vale se esse monitor sumir.
+    lyrics_widget_geometry: Optional[dict] = None
 
     @classmethod
     def from_dict(cls, data: dict) -> "Settings":
@@ -83,6 +93,8 @@ class Settings:
         filtered = {k: v for k, v in data.items() if k in known_fields}
         if "blur_strength" in filtered:
             filtered["blur_strength"] = _clamp_blur_strength(filtered["blur_strength"])
+        if "lyrics_widget_geometry" in filtered:
+            filtered["lyrics_widget_geometry"] = _valid_widget_geometry(filtered["lyrics_widget_geometry"])
         frame = filtered.get("art_frame")
         if isinstance(frame, bool):
             filtered["art_frame"] = _LEGACY_FRAME[frame]
@@ -97,7 +109,28 @@ _CHOICES = {
     "art_glow": (True, False),
     "art_frame": ART_FRAMES,
     "smooth_transition": (True, False),
+    "lyrics_widget_enabled": (True, False),
+    "lyrics_widget_locked": (True, False),
+    "lyrics_widget_on_top": (True, False),
 }
+
+
+def _valid_widget_geometry(value) -> Optional[dict]:
+    """{"monitor": str, "rect": [x, y, w, h]} com largura e altura positivas;
+    qualquer outra coisa volta ao padrão (None)."""
+    if value is None:
+        return None
+    rect = value.get("rect") if isinstance(value, dict) else None
+    monitor = value.get("monitor") if isinstance(value, dict) else None
+    numbers_ok = (
+        isinstance(rect, list)
+        and len(rect) == 4
+        and all(isinstance(n, int) and not isinstance(n, bool) for n in rect)
+    )
+    if not isinstance(monitor, str) or not numbers_ok or rect[2] <= 0 or rect[3] <= 0:
+        logger.warning("Invalid lyrics_widget_geometry=%r in config, using default", value)
+        return None
+    return {"monitor": monitor, "rect": list(rect)}
 
 BLUR_STRENGTH_RANGE = (0, 100)
 _DEFAULT_BLUR_STRENGTH = 26
@@ -145,10 +178,16 @@ def load_settings() -> Settings:
         return Settings()
 
 
+# A bandeja e o widget de letra (thread do Qt) salvam cada um da sua thread:
+# um de cada vez, para as duas escritas não se misturarem no arquivo.
+_SAVE_LOCK = threading.Lock()
+
+
 def save_settings(settings: Settings) -> None:
     path = config_file()
-    try:
-        with path.open("w", encoding="utf-8") as fh:
-            json.dump(dataclasses.asdict(settings), fh, indent=2)
-    except OSError as exc:
-        logger.error("Failed to write config at %s (%s)", path, exc)
+    with _SAVE_LOCK:
+        try:
+            with path.open("w", encoding="utf-8") as fh:
+                json.dump(dataclasses.asdict(settings), fh, indent=2)
+        except OSError as exc:
+            logger.error("Failed to write config at %s (%s)", path, exc)

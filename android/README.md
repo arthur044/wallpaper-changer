@@ -40,7 +40,7 @@ sobre a capa, em 9:16 (quadrada em tablet ou dobrável aberto). "Compartilhar" a
 do Android. As letras vêm do [LRCLIB](https://lrclib.net), um serviço comunitário, então
 podem faltar ou ter erros. A letra só é buscada com a tela principal aberta, fica apenas em
 memória, e a imagem é um único arquivo temporário, apagado no próximo compartilhamento ou
-quando o app abre.
+quando o app abre. Já o widget de letra sincronizada existe só no desktop.
 
 **Cor do fundo:** porte fiel do ColorThief do desktop (`core/render/ColorThief.kt`), para
 a mesma capa dar a mesma cor nas duas plataformas. Não troque por outro algoritmo sem

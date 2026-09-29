@@ -1,4 +1,5 @@
 import dataclasses
+import io
 
 from PIL import Image, ImageDraw, ImageFont, ImageStat
 
@@ -11,6 +12,7 @@ from src.graphics.renderer import (
     _text_color_for_background,
     _truncate_to_width,
     render_for_now_playing,
+    sample_widget_tint,
 )
 from src.spotify.client import NowPlaying
 
@@ -71,6 +73,45 @@ def test_render_for_now_playing_reuses_cached_base_without_downloading(tmp_path,
     assert output_path.exists()
     result = Image.open(output_path)
     assert result.size == (400, 300)
+
+
+def test_a_cached_base_still_gives_the_widget_its_album_color(tmp_path, monkeypatch):
+    base_path = tmp_path / "base.png"
+    Image.new("RGB", (400, 300), (30, 60, 90)).save(base_path)
+    monkeypatch.setattr("src.graphics.renderer.download_art", lambda url: (_ for _ in ()).throw(AssertionError("no download")))
+
+    tint = render_for_now_playing(_now_playing(), Settings(show_track_info=False), _LAYOUT, base_path, tmp_path / "out.png")
+
+    assert tint == (30, 60, 90)
+
+
+def test_the_widget_color_is_the_background_at_the_bottom_right_not_the_art(tmp_path):
+    # Solid background with the art (bright) in the top-left quarter: the
+    # corner the widget starts in only sees the background.
+    base = Image.new("RGB", (400, 300), (20, 40, 110))
+    base.paste((250, 240, 200), (0, 0, 150, 120))
+
+    assert sample_widget_tint(base) == (20, 40, 110)
+
+
+def test_a_new_base_gives_the_widget_the_dominant_color_without_a_palette_pass(tmp_path, monkeypatch):
+    from src.graphics import renderer
+
+    art = Image.new("RGB", (64, 64), (20, 40, 110))
+    buffer = io.BytesIO()
+    art.save(buffer, format="PNG")
+    monkeypatch.setattr(renderer, "download_art", lambda url: buffer.getvalue())
+
+    def no_palette(_bytes):
+        raise AssertionError("solid, no glow: the accent palette must not be computed")
+
+    monkeypatch.setattr(renderer, "extract_accent_palette", no_palette)
+    tiny_art = ArtLayout(canvas_size=(400, 300), art_size=40, art_position=(10, 10))
+
+    tint = render_for_now_playing(_now_playing(), Settings(show_track_info=False), tiny_art, tmp_path / "b.png", tmp_path / "o.png")
+
+    dominant = renderer.extract_dominant_color(buffer.getvalue())
+    assert all(abs(a - b) <= 2 for a, b in zip(tint, dominant)), (tint, dominant)
 
 
 def _now_playing() -> NowPlaying:

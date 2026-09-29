@@ -4,7 +4,7 @@ Documentação técnica do estado atual. Descreve **como o sistema funciona hoje
 foi construído. Uso e instalação estão no [README](README.md) e no
 [README do Android](android/README.md).
 
-Última revisão: 2026-09-25 · base: `fix/art-host-allowlist` sobre `main` @ `04720fa`
+Última revisão: 2026-09-29 · base: `feat/lyrics-widget` (PR #11) @ `620a8d1`, sobre `main` @ `5a5169b`
 
 ---
 
@@ -19,16 +19,17 @@ o mesmo comportamento e o mesmo visual:
 | Linguagem | Python 3.11+ | Kotlin 2.4 (JVM 17) |
 | Plataforma | Windows 10/11 | Android 8.0+ (minSdk 26, targetSdk 36, compileSdk 37) |
 | Código | `main.py`, `src/` | `android/` (módulos `:core` e `:app`) |
-| Interface | Ícone na bandeja (pystray) + assistente Tkinter | Compose: onboarding, tela principal, bloco nas Configurações rápidas |
+| Interface | Ícone na bandeja (pystray) + assistente Tkinter + widget de letra (PySide6/Qt) | Compose: onboarding, tela principal, bloco nas Configurações rápidas |
 | Render | Pillow | `android.graphics.Canvas` |
-| Testes | 217 (pytest) | 552: 403 JUnit 5 no `:core`; 20 unitários e 129 instrumentados no `:app` |
+| Testes | 383 (pytest) | 552: 403 JUnit 5 no `:core`; 20 unitários e 129 instrumentados no `:app` |
 
 **Regra de paridade:** tudo o que é visual (cor de fundo, mesh, glow, blur, moldura, cartão)
 é **portado** do desktop para o Android, não reimplementado. Os valores são conferidos contra
 números gerados pelo código Python.
 
-**Exceção (decisão do usuário):** "Compartilhar letra" (§2.5) existe só no Android e fica
-fora da regra de paridade.
+**Exceções (decisões do usuário):** ficam fora da regra de paridade "Compartilhar letra"
+(§2.5), que existe só no Android, e o widget de letra sincronizada (§2.6), que existe só no
+desktop (confirmado em 2026-09-28).
 
 ---
 
@@ -67,9 +68,15 @@ Invariantes nas duas plataformas:
 
 | Thread | Componente | Função |
 |---|---|---|
-| principal | `TrayApp` (`os_integration/tray.py`) | Menu da bandeja; bloqueia até Exit |
-| `smtc-watcher` | `SmtcWatcher` (`os_integration/smtc.py`) | Loop asyncio próprio (winsdk). Eventos SMTC mais uma consulta de segurança a cada 2 s. Expõe um snapshot protegido por lock |
+| principal | `QtHost` (`lyrics_widget/qt_host.py`) | `QApplication` e o widget de letra (§2.6); bloqueia em `exec()` até Exit ou Restart |
+| `tray` (daemon) | `TrayApp` (`os_integration/tray.py`) | Menu da bandeja. O pystray processa as mensagens na thread que chama `run()`, então ele ganhou uma thread própria. Quando o loop termina, pede ao Qt para sair |
+| `smtc-watcher` | `SmtcWatcher` (`os_integration/smtc.py`) | Loop asyncio próprio (winsdk). Eventos SMTC (inclusive da timeline) mais uma consulta de segurança a cada 2 s. Um evento que chega com o loop já fechando é descartado (`notify_loop`). Expõe um snapshot e a última amostra de posição (`get_timeline`), cada um sob lock |
 | `poller` | `Poller` (`spotify/poller.py`) | Loop principal de sync e render |
+| `lyrics` (daemon, uma por busca) | `QtHost._look_up` | Uma busca no LRCLIB, só com o widget ligado |
+
+O `QtHost` é criado **antes** do Poller: o Qt precisa definir o DPI awareness (per-monitor
+v2) antes do primeiro render, que chama `SetProcessDpiAwareness`. Se o loop do Qt termina
+sozinho, `main` derruba o ícone da bandeja e espera a thread `tray` por até 5 s.
 
 Comunicação entre threads: `AppState` (`utils/app_state.py`), que guarda o status sob lock e
 três `threading.Event`: `pause_event`, `force_sync_event` e `stop_event`. O Poller espera no
@@ -103,7 +110,10 @@ do arquivo da base.
 3. `base_cache_key` → `album_bases/<key>.png`. Se existe, reutiliza e atualiza o mtime. Senão
    baixa a arte, compõe a base, salva e poda o cache.
 4. Copia a base e desenha título e artista por cima (com cartão de vidro opcional). A cor do
-   texto vem da média dos pixels atrás dele.
+   texto vem da média dos pixels atrás dele. Antes disso, `sample_widget_tint` tira a cor do
+   quarto inferior direito da base já em memória (2–4 ms a 1080p, sem segunda passada do
+   ColorThief). `render_for_now_playing` devolve essa cor, que vai para o `TintHolder` do
+   widget. `base_cache_key` e o desenho não mudaram.
 5. Salva alternando entre `wallpaper_a.png` e `wallpaper_b.png`, para o Explorer nunca
    segurar lock no arquivo sendo escrito.
 6. `set_wallpaper`: direto (`SystemParametersInfoW`) ou com fade (`IActiveDesktop`). O fade
@@ -265,6 +275,70 @@ cartão, não com a densidade; os pisos são frações da largura da imagem.
 desenho 41–51 ms com a base já pronta; JPEG de 161–198 KB em 31–42 ms; do botão à primeira
 prévia ~370–540 ms com a letra já buscada (inclui um debounce de 250 ms).
 
+### 2.6 Desktop: widget de letra sincronizada
+
+Só no desktop (fora da regra de paridade, confirmado em 2026-09-28). É uma janela sem borda
+e sem botão na barra de tarefas, com a letra da faixa tocando: a linha atual fica destacada
+e a coluna rola até ela em 350 ms. Fica **desligado por padrão** e é ligado na bandeja
+(*Lyrics widget › Show*).
+
+```
+smtc-watcher ── get_snapshot() + get_timeline() ──┐
+                                                  ▼   QTimer 100 ms (só com o widget ligado)
+Qt (principal): QtHost._tick ─► LyricsWidgetController.tick ─► View ─► LyricsWindow
+                                    │ FetchRequest                        ▲ set_background
+                                    ▼                                     │
+               thread "lyrics" ─► LyricsSlot ─► LrclibClient ─► lyrics_ready / lyrics_failed (sinais)
+poller: render ─► TintHolder.set(cor do álbum) ──────────────────────────┘
+tray: Show / Lock / On top / Reset ─► sinais do _Bridge ─► thread do Qt
+```
+
+| Componente | Papel |
+|---|---|
+| `QtHost` (`lyrics_widget/qt_host.py`) | Dono do `QApplication`. Só a thread do Qt toca em widgets: a bandeja e a busca falam com ela por sinais do `_Bridge` (conexão enfileirada). Implementa `LyricsWidgetControls`, o protocolo que a bandeja usa. Grava as settings do widget pela thread do Qt |
+| `LyricsWindow` | Fundo translúcido arredondado (alfa 200). A fonte cresce com a largura (13–34 px). Destravado, arrastar move a janela e arrastar a 8 px da borda redimensiona; a posição é gravada 600 ms depois de soltar |
+| `LyricsWidgetController` (`lyrics_widget/controller.py`) | Puro (sem Qt, sem rede). A cada tick recebe o snapshot e a timeline e devolve um `View` e, se preciso, um `FetchRequest`. Espera até 2 s pela duração da faixa antes de buscar (ela permite o `/get` exato). Falha de rede → tenta de novo a cada 30 s na mesma faixa. Resposta de outra faixa é descartada |
+| `SongClock` (`lyrics/song_clock.py`) | Posição atual a partir da última `TimelineSample`, extrapolada pelo `time.monotonic()` × `rate` enquanto toca e congelada com a música pausada. Cada amostra substitui a anterior. Um seek corrige na hora: o Spotify o avisa pelo SMTC na mesma hora (`timeline_properties_changed`), sem esperar a atualização periódica (verificado pelo usuário em 2026-09-29) |
+| `TimelineSample` (`os_integration/smtc.py`) | Posição do SMTC levada ao instante da leitura (`position + idade × rate`) e presa ao relógio monotônico. Um carimbo com mais de 12 h (DateTime não preenchido = ano 1601) ou do futuro não soma nada |
+| `LyricsSlot` (`lyrics/slot.py`) | Port do `LyricsSlot` do Android. Uma resposta em memória, com "não encontrada" e "instrumental" incluídas, descartada na troca de faixa. Uma busca por vez; um pedido da mesma faixa espera a busca em andamento |
+| `LrclibClient` (`lyrics/lrclib.py`) | Port do cliente do Android (§2.5): `/get` com álbum e duração, senão `/search` com o mesmo ranking. Letra sincronizada (LRC `[mm:ss.xx]`) primeiro; sem ela, texto simples. **Diferente do Android:** se o `/get` acha só texto simples, roda também o `/search`, e uma versão sincronizada da mesma gravação (mesmo ranking, diferença ≤ 30 s) vence. Se nada sincronizado serve, ou se o `/search` falha na rede, fica o texto do `/get`. `/get` sincronizado ou instrumental encerra na hora, sem busca. Timeout de 10 s para conectar e 10 s para ler. Fora do `ApiThrottle` do Spotify |
+| `widget_background` (`lyrics_widget/colors.py`) | Cor do álbum (`TintHolder`, vinda do render, §2.2) escurecida em passos de 5% até o texto branco ter contraste de 4,5:1. Sem cor ainda: `(18, 18, 18)` |
+| `geometry.py`, `window_layer.py`, `fullscreen.py` | Posição padrão (canto inferior direito da área útil do monitor principal, 24 px das bordas, 420×190), restauração da posição salva, camada da janela (`SetWindowPos`) e detecção de tela cheia (`SHQueryUserNotificationState`) |
+
+**Estados (`Phase`):**
+
+| Estado | Quando | Janela |
+|---|---|---|
+| `HIDDEN` | Nada tocando (sem snapshot ou sem título) | Escondida |
+| `LOADING` | Faixa nova, busca pendente | "Looking for lyrics…" |
+| `SYNCED` | Letra com tempos | Linha atual destacada (alfa 255, as outras 110), rolagem animada; antes da primeira linha, ela espera na âncora (40% da altura) |
+| `TEXT` | Só texto (o LRCLIB não tem versão sincronizada; comum em música brasileira) | Rola junto com a faixa (posição ÷ duração), com um selo "Not synced" no canto superior direito (`View.badge`) |
+| `NO_LYRICS` / `INSTRUMENTAL` | LRCLIB não tem / marcada como instrumental | Mensagem |
+| `UNAVAILABLE` | LRCLIB inacessível | Mensagem; nova tentativa em 30 s |
+| `NO_SOURCE` | `use_smtc` desligado | "Turn on use_smtc to follow the song" |
+
+Com a música pausada, a posição congela e a letra fica parada na linha atual.
+
+**Camada e travamento:**
+
+- Padrão: **atrás das janelas** (`WindowStaysOnBottomHint` + `SetWindowPos(HWND_BOTTOM)`).
+  Some com Win+D, como os ícones da área de trabalho.
+- *Always on top*: acima de tudo (`HWND_TOPMOST`). Nesse modo, a janela se esconde enquanto
+  um app em tela cheia, um jogo ou uma apresentação ocupa a tela (verificado uma vez por
+  segundo).
+- *Lock position*: `WindowTransparentForInput`, os cliques passam pela janela.
+- A posição é gravada **por monitor** (`screen_key` = nome + dados do EDID). Ela é descartada,
+  e a janela volta ao canto padrão, se o monitor sumir ou se menos da metade dela ficar
+  dentro dele. Quando é mantida, é puxada para dentro do monitor.
+
+**Invariantes:**
+
+- A letra nunca vai para o disco, o log, fixtures ou commits. O log registra só o tipo do
+  resultado (`SyncedLyrics`, `NotFound`...).
+- Buscas só acontecem com o widget ligado: desligado, o timer para e não há tick.
+- O LRCLIB fica fora do `ApiThrottle` do Spotify. Nenhuma chamada nova à API Web do Spotify.
+- O Poller, `base_cache_key` e o desenho do wallpaper não mudaram.
+
 ---
 
 ## 3. Esquema de dados
@@ -273,7 +347,7 @@ prévia ~370–540 ms com a letra já buscada (inclui um debounce de 250 ms).
 
 | Caminho | Conteúdo | Escrita |
 |---|---|---|
-| `%APPDATA%\SpotifyWallpaperEngine\config.json` | `Settings` (dataclass → JSON) | Criado com os padrões; bandeja e assistente regravam |
+| `%APPDATA%\SpotifyWallpaperEngine\config.json` | `Settings` (dataclass → JSON) | Criado com os padrões. Bandeja, assistente e widget de letra (thread do Qt) regravam; `save_settings` grava um de cada vez (`_SAVE_LOCK`) |
 | `%LOCALAPPDATA%\...\track_index.json` | Índice faixa → álbum | Atômica (`.tmp` + `os.replace`), só quando muda |
 | `%LOCALAPPDATA%\...\cache\album_bases\<key>.png` | Base por álbum (sem texto) | Uma vez por chave, PNG `compress_level=1` |
 | `%LOCALAPPDATA%\...\cache\wallpaper_{a,b}.png` | Imagem final aplicada | Alternando, a cada faixa |
@@ -334,6 +408,10 @@ ignora as chaves que não usa. Valor inválido volta ao padrão só naquele camp
 | `art_offset_y_pct` | 0.0 | Android | sim |
 | `paused`, `sync_enabled`, `onboarding_done`, `local_only` | false | Android | não |
 | `fallback_resolution`, `log_level` | `[1920,1080]`, `INFO` | desktop | — |
+| `lyrics_widget_enabled`, `lyrics_widget_locked`, `lyrics_widget_on_top` | false | desktop | — |
+| `lyrics_widget_geometry` | `null` (canto padrão) \| `{"monitor": str, "rect": [x, y, w, h]}` (inteiros, w e h > 0) | desktop | — |
+
+As chaves `lyrics_widget_*` são só do desktop. O Android as ignora (`ignoreUnknownKeys = true`).
 
 ### 3.4 Chave do cache de bases
 
@@ -370,6 +448,9 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 |---|---|
 | `NowPlaying` | `is_playing`, `track_id`, `album_id`, `art_url`, `track_name`, `artist_name`. No Android também `albumName`, `durationMs` e `artists` (nomes um a um), que só alimentam a busca de letra: podem faltar e ficam fora do `frameContent` |
 | `LyricsQuery` / `Lyrics` (Android) | Título, artista(s), álbum, duração → `Text(linhas)`, `Instrumental` ou `NotFound` |
+| `LyricsQuery` / `Lyrics` (desktop) | Os mesmos campos → `SyncedLyrics(TimedLine(time_ms, text)...)`, `TextLyrics(linhas)`, `Instrumental` ou `NotFound`. Falha de rede = `LyricsUnavailableError` |
+| `TimelineSample` (desktop) | `track_key`, `position_ms`, `observed_at` (monotônico), `duration_ms`, `is_playing`, `rate`, `stamp` (último update do SMTC em epoch, ou `None`) |
+| `View` (widget) | `phase`, `lines`, `current` (índice da linha atual, `SYNCED`), `progress` (0..1, `TEXT`) |
 | `SmtcNowPlaying` / `LocalTrack` | `title`, `artist`, (`album_*`), `is_playing` |
 | `AppStatus` (desktop) | `IDLE`, `RUNNING`, `PAUSED`, `ERROR` |
 
@@ -422,6 +503,17 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | JPEG q95 em vez de PNG | 31–42 ms e ~180 KB no A71; o PNG custaria centenas de ms sem ganho visível no Stories/WhatsApp |
 | `FileProvider` restrito a `cache/share`, um arquivo | O app escolhido só consegue ler aquela imagem. Não acumula arquivos |
 | Estado num ViewModel no escopo da activity | Rotação, dobra e zoom recriam a tela sem perder letra, seleção nem imagem |
+| Widget de letra em PySide6-Essentials (Qt) | Janela sem borda, translúcida por pixel, com DPI por monitor e animação. O Tkinter não faz isso bem. O pacote Essentials (QtCore/QtGui/QtWidgets, ~211 MB instalado) evita os Addons (WebEngine, 3D) que o widget não usa |
+| Qt na thread principal, pystray numa thread própria | O Qt exige o `QApplication` na thread principal. No Windows o pystray processa as mensagens na thread que o chama, então pode sair dela. Os dois conversam só por sinais enfileirados |
+| Camada da janela via `SetWindowPos` | O `WindowStaysOnTopHint` do Qt não chegava ao Windows numa janela já criada (PySide6 6.11.2, visto em 2026-09-28). Para sair do topo é preciso `HWND_NOTOPMOST` antes de `HWND_BOTTOM` |
+| Atrás das janelas por padrão | Fica como parte da área de trabalho, sem cobrir o trabalho. "Always on top" é opcional e se esconde em tela cheia |
+| Relógio da faixa pela timeline do SMTC, extrapolado localmente | O Spotify atualiza a timeline a cada ~4,5 s (medido em 2026-09-28), e na hora num seek. Entre as amostras, a posição anda pelo `time.monotonic()`, que ignora mudanças no relógio do sistema |
+| Timeline de outra faixa conta a partir de 0 | Se a faixa muda e o carimbo da timeline não, a posição é da faixa anterior. Não medido se o Spotify faz isso; a guarda é barata |
+| Controller e layout puros, sem Qt | Estados, pedidos de busca, posição e rolagem são testados sem janela |
+| Cor do widget tirada da base do wallpaper já em memória | Custa 2–4 ms e não faz uma segunda quantização do ColorThief. O quarto inferior direito é onde o widget começa. Escurecer até 4,5:1 (WCAG AA) mantém o texto branco legível |
+| Widget: `/get` só com texto ainda consulta o `/search` atrás de uma versão sincronizada | Texto sem tempos não acompanha a música, então vale uma chamada a mais. O compartilhar do Android continua com o texto do `/get`, porque não precisa de tempos. O selo "Not synced" deixa claro que rolar sem acompanhar é esperado, não um defeito |
+| Buscar letra só com o widget ligado; uma resposta em memória | Mesma regra do Android: sem rede gasta à toa e sem texto protegido no disco |
+| `_SAVE_LOCK` em `save_settings` | A bandeja e a thread do Qt gravam o `config.json`. Sem o lock, duas escritas podiam se misturar no arquivo |
 
 ---
 
@@ -439,6 +531,12 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | #6 | CI: canais release/debug no GitHub Releases, `versionCode` = contagem de commits, atualização no app |
 | #7 | Android: redesenho ao mudar o tamanho de exibição (zoom/DPI), sem chamada à API. Validado no build de release |
 | #9 | Android: "Compartilhar letra" (§2.5). Testado no A71 (Instagram Stories, WhatsApp, rotação durante a seleção) |
+| — | Nas duas plataformas: arte baixada só de `https` em `scdn.co`/`spotifycdn.com` (§4) |
+
+**Em revisão, fora da `main`:** #11, widget de letra sincronizada no desktop (§2.6), branch
+`feat/lyrics-widget`. Revisado (nenhum problema crítico ou alto) e com 383/383 testes
+passando. Checklist do PR completo (seek, resolução, escala e redimensionamento testados pelo
+usuário em 2026-09-29).
 
 ### 5.2 Limitações conhecidas
 
@@ -491,6 +589,16 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
   - bitmaps de prévias antigas ficam para o GC de propósito (reciclar um que o Compose
     ainda pode estar desenhando é mais arriscado);
   - `LyricsPrefetch.state` não tem mais leitor em produção (a tela usa `watch()`). Mantido.
+- **Widget de letra (#11):**
+  - não testado com um segundo monitor de DPI diferente (o usuário tem um monitor só). Trocar
+    resolução e escala e redimensionar o widget foram testados pelo usuário em 2026-09-29, sem
+    problemas;
+  - não medido se o Spotify troca a faixa antes da timeline (a guarda conta a partir de 0);
+  - só segue o Spotify desktop, via SMTC. Com `use_smtc` desligado ou reprodução em outro
+    aparelho, não há posição para seguir;
+  - a dependência nova pesa ~211 MB instalada.
+- **Teste instável (já existia, também na `main` limpa):** `test_onboarding_wizard.py` falha
+  nesta máquina com o erro Tk "can't read text.tcl".
 - **Lacunas de teste:** `SpotifyAuth` e `SyncController` sem testes (precisariam de
   Robolectric). Serviço, receiver e bloco só foram verificados manualmente no aparelho.
   `DesktopColorParityTest` precisa de capas reais fora do repositório, então a paridade de cor
@@ -498,7 +606,7 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 
 ### 5.3 Próximas prioridades
 
-1. **Merge do #9** (merge commit) e validação no release da `main`.
+1. **Merge do #11** (merge commit, não squash).
 2. **Decidir** se "Compartilhar letra" aparece também com a música pausada.
 3. **Cache em disco da arte original e das cores**, para mudar de estilo sem baixar a arte de
    novo nem recalcular a paleta.
@@ -513,7 +621,7 @@ wallpaper por monitor e testes com Robolectric para `SpotifyAuth` e `SyncControl
 | Alvo | Comando |
 |---|---|
 | Desktop: rodar | `.venv\Scripts\python main.py` (`--setup`, `--install-autostart`, `--uninstall-autostart`) |
-| Desktop: testes | `.venv\Scripts\pytest` |
+| Desktop: testes | `.venv\Scripts\pytest` (os testes do widget criam um `QApplication`: precisam do PySide6 instalado) |
 | Android: lógica pura | `cd android && ./gradlew :core:test` (cobertura: `:core:jacocoTestReport`) |
 | Android: app | `./gradlew :app:testDebugUnitTest`, `:app:connectedDebugAndroidTest` (celular desbloqueado e com a tela ligada), `:app:lintDebug` |
 | Android: release | `android/build-apk.cmd` (gera, confere a assinatura, copia para `android/dist/`, instala por USB se pedido) |

@@ -1,6 +1,25 @@
+import pytest
+
 from src.config.settings import Settings
 from src.os_integration.tray import TrayApp
 from src.utils.app_state import AppState
+
+# pystray registers a window class named after id(icon) when an icon is built
+# and unregisters it only when run() ends. These trays never run, so a freed
+# tray's id can come back for a new one and Windows refuses the class with
+# "Class already exists" (1410), now and then. Keeping every tray alive for the
+# whole session keeps the ids unique. The app itself builds one tray per process.
+_ALIVE = []
+_build_tray = TrayApp.__init__
+
+
+@pytest.fixture(autouse=True)
+def _keep_trays_alive(monkeypatch):
+    def init(self, *args, **kwargs):
+        _build_tray(self, *args, **kwargs)
+        _ALIVE.append(self)
+
+    monkeypatch.setattr(TrayApp, "__init__", init)
 
 
 def _tray(**callbacks):
@@ -122,6 +141,57 @@ def test_glow_and_glass_toggle_and_redraw(monkeypatch):
 
     tray._toggle_glass(tray._icon, None)
     assert settings.text_card == "none"
+
+
+class _FakeWidget:
+    def __init__(self):
+        self.visible = self.locked = self.on_top = False
+        self.resets = 0
+
+    def toggle_widget(self):
+        self.visible = not self.visible
+
+    def is_widget_visible(self):
+        return self.visible
+
+    def toggle_locked(self):
+        self.locked = not self.locked
+
+    def is_locked(self):
+        return self.locked
+
+    def toggle_on_top(self):
+        self.on_top = not self.on_top
+
+    def is_on_top(self):
+        return self.on_top
+
+    def reset_position(self):
+        self.resets += 1
+
+
+def _lyrics_items(tray):
+    menu = next(item for item in tray._build_menu().items if item.text == "Lyrics widget")
+    return {item.text: item for item in menu.submenu.items}
+
+
+def test_lyrics_widget_menu_runs_each_control_and_shows_its_state():
+    widget = _FakeWidget()
+    tray = _tray(lyrics_widget=widget)
+    items = _lyrics_items(tray)
+
+    assert [items[name].checked for name in ("Show", "Lock position", "Always on top")] == [False, False, False]
+    for name in ("Show", "Lock position", "Always on top", "Reset position"):
+        items[name](tray._icon)
+
+    assert (widget.visible, widget.locked, widget.on_top, widget.resets) == (True, True, True, 1)
+    assert [items[name].checked for name in ("Show", "Lock position", "Always on top")] == [True, True, True]
+
+
+def test_without_a_lyrics_widget_its_menu_is_hidden():
+    tray = _tray()
+    menu = next(item for item in tray._build_menu().items if item.text == "Lyrics widget")
+    assert menu.visible is False
 
 
 def test_restart_runs_the_callback_and_closes_the_tray(monkeypatch):
