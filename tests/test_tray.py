@@ -344,3 +344,26 @@ def test_without_an_updater_the_update_item_is_hidden():
     tray = _tray()
 
     assert not any(item.visible and "update" in item.text.lower() for item in tray._build_menu().items)
+
+
+def test_restart_and_exit_are_disabled_while_an_update_is_applied(monkeypatch):
+    tray = TrayApp(
+        AppState(),
+        Settings(),
+        on_reauthenticate=lambda: None,
+        on_exit=lambda: None,
+        on_setup=lambda: None,
+        updater=_InlineUpdater(),
+    )
+    pending = []
+    monkeypatch.setattr(tray._update_menu, "_spawn", pending.append)
+
+    def enabled():
+        return {item.text: item.enabled for item in tray._build_menu().items if item.text in ("Restart", "Exit")}
+
+    _update_item(tray)(tray._icon)
+    assert enabled() == {"Restart": True, "Exit": True}  # a check is harmless
+    pending.pop()()  # the check finds the update
+
+    _update_item(tray)(tray._icon)
+    assert enabled() == {"Restart": False, "Exit": False}

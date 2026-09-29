@@ -81,7 +81,6 @@ class TrayApp:
         if updater is not None:
             self._update_menu = UpdateMenu(
                 updater,
-                app_state,
                 # Same path as the Restart item: stop the poller, relaunch, close the tray.
                 on_restart=lambda: self._restart(self._icon, None),
                 refresh=self._refresh_icon,
@@ -120,8 +119,8 @@ class TrayApp:
                 enabled=False,
                 visible=bool(self._version),
             ),
-            pystray.MenuItem("Restart", self._restart),
-            pystray.MenuItem("Exit", self._exit),
+            pystray.MenuItem("Restart", self._restart, enabled=lambda item: not self._updating()),
+            pystray.MenuItem("Exit", self._exit, enabled=lambda item: not self._updating()),
         )
 
     def _build_style_menu(self) -> pystray.Menu:
@@ -246,6 +245,9 @@ class TrayApp:
             pystray.MenuItem("Always on top", lambda icon, item: widget.toggle_on_top(), checked=lambda item: widget.is_on_top()),
             pystray.MenuItem("Reset position", lambda icon, item: widget.reset_position()),
         )
+
+    def _updating(self) -> bool:
+        return self._update_menu is not None and self._update_menu.is_applying()
 
     def _restart(self, icon, item) -> None:
         self._on_restart()

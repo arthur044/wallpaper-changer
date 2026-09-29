@@ -65,6 +65,14 @@ def test_dirty_tree_blocks():
     assert "local changes" in decision.reason
 
 
+def test_feature_branch_that_contains_main_is_not_up_to_date():
+    # The dev folder on a feature branch: nothing behind, local commits ahead.
+    decision = decide(_status(branch="feat/x", behind=0, ahead=5, dirty=True, changed=()))
+
+    assert decision.action == Action.BLOCKED
+    assert "feat/x" in decision.reason
+
+
 def test_other_branch_blocks():
     decision = decide(_status(branch="feat/x"))
 
@@ -126,12 +134,18 @@ def repos(tmp_path):
 
 
 class _Pip:
+    """Records what pip was asked to install and where HEAD was at the time."""
+
     def __init__(self, ok=True):
         self.ok = ok
         self.calls = 0
+        self.requirements = None
+        self.head_at_call = None
 
-    def __call__(self, repo: Path) -> bool:
+    def __call__(self, repo: Path, requirements: Path) -> bool:
         self.calls += 1
+        self.requirements = requirements.read_text(encoding="utf-8")
+        self.head_at_call = _git(repo, "rev-parse", "HEAD")
         return self.ok
 
 
@@ -181,18 +195,23 @@ def test_docs_only_fast_forwards_without_a_restart(repos):
 
 
 @pytestmark_git
-def test_changed_requirements_run_pip(repos):
+def test_changed_requirements_are_installed_before_the_code_moves(repos):
     origin, clone = repos
-    _commit(origin, "requirements.txt", "pillow\nrequests\n")
+    old = _git(clone, "rev-parse", "HEAD")
+    new = _commit(origin, "requirements.txt", "pillow\nrequests\n")
     pip = _Pip()
 
     result = Updater(clone, pip=pip).apply()
 
     assert pip.calls == 1 and result.restart is True
+    # origin/main's requirements, installed while the clone was still on the old commit.
+    assert "requests" in pip.requirements
+    assert pip.head_at_call == old
+    assert _git(clone, "rev-parse", "HEAD") == new
 
 
 @pytestmark_git
-def test_failed_pip_goes_back_to_the_old_commit(repos):
+def test_failed_pip_leaves_the_code_untouched(repos):
     origin, clone = repos
     old = _git(clone, "rev-parse", "HEAD")
     _commit(origin, "requirements.txt", "does-not-exist\n")

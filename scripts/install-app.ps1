@@ -56,10 +56,19 @@ Step "Virtual environment"
 $python = Join-Path $AppDir ".venv\Scripts\python.exe"
 if (Test-Path $python) {
     Write-Host "Already there."
-} elseif (Get-Command py -ErrorAction SilentlyContinue) {
-    Invoke-Native py @("-3.11", "-m", "venv", (Join-Path $AppDir ".venv"))
 } else {
-    Invoke-Native python @("-m", "venv", (Join-Path $AppDir ".venv"))
+    # 3.11 is what the app is developed on; any Python 3 found after that.
+    $candidates = @(@("py", "-3.11"), @("py", "-3"), @("python"))
+    $base = $null
+    foreach ($candidate in $candidates) {
+        if (-not (Get-Command $candidate[0] -ErrorAction SilentlyContinue)) { continue }
+        & $candidate[0] @($candidate[1..($candidate.Length)] | Where-Object { $_ }) -c "import sys; assert sys.version_info >= (3, 11)" 2>$null
+        if ($LASTEXITCODE -eq 0) { $base = $candidate; break }
+    }
+    if (-not $base) { Fail "No Python 3.11+ found (tried py -3.11, py -3, python)." }
+    Write-Host "Using: $($base -join ' ')"
+    $venvArgs = @($base[1..($base.Length)] | Where-Object { $_ }) + @("-m", "venv", (Join-Path $AppDir ".venv"))
+    Invoke-Native $base[0] $venvArgs
 }
 
 Step "Requirements"

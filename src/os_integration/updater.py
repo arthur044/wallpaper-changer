@@ -2,6 +2,7 @@ import logging
 import os
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from enum import Enum, auto
 from pathlib import Path
@@ -57,10 +58,12 @@ def touches_desktop(paths: Iterable[str]) -> bool:
 
 
 def decide(status: RepoStatus) -> Decision:
-    if status.behind == 0:
-        return Decision(Action.UP_TO_DATE, target=status.head[:7])
+    # Branch first: a feature branch that already contains origin/main is not
+    # behind, but it isn't "up to date" either, it isn't the app's code at all.
     if status.branch != MAIN_BRANCH:
         return Decision(Action.BLOCKED, reason=f"the app folder is on {status.branch}, not {MAIN_BRANCH}")
+    if status.behind == 0:
+        return Decision(Action.UP_TO_DATE, target=status.head[:7])
     if status.dirty:
         return Decision(Action.BLOCKED, reason="the app folder has local changes")
     if status.ahead > 0:
@@ -81,8 +84,8 @@ def _default_python(repo: Path) -> str:
     return str(Path(sys.executable).with_name("python.exe"))
 
 
-def run_pip(repo: Path, run: Callable = subprocess.run) -> bool:
-    command = [_default_python(repo), "-m", "pip", "install", "-r", str(repo / "requirements.txt")]
+def run_pip(repo: Path, requirements: Path, run: Callable = subprocess.run) -> bool:
+    command = [_default_python(repo), "-m", "pip", "install", "-r", str(requirements)]
     logger.info("Installing requirements: %s", command)
     try:
         result = run(
@@ -106,7 +109,12 @@ class Updater:
     """Brings the app's own clone up to origin/main. Never pushes, never
     merges: only a fast-forward on a clean main, or nothing at all."""
 
-    def __init__(self, repo: Path, run: Callable = subprocess.run, pip: Optional[Callable[[Path], bool]] = None):
+    def __init__(
+        self,
+        repo: Path,
+        run: Callable = subprocess.run,
+        pip: Optional[Callable[[Path, Path], bool]] = None,
+    ):
         self._repo = repo
         self._run = run
         self._pip = pip if pip is not None else run_pip
@@ -151,8 +159,9 @@ class Updater:
             return Decision(Action.BLOCKED, reason=str(exc))
 
     def apply(self) -> ApplyResult:
-        """Checks again (the tree may have changed since the menu was built)
-        and fast-forwards. A failed pip puts the old commit back."""
+        """Checks again (the tree may have changed since the menu was built),
+        installs the new requirements, then fast-forwards. pip goes first so a
+        failure leaves the code as it was, with nothing to roll back."""
         try:
             status = self._status()
         except GitError as exc:
@@ -165,23 +174,25 @@ class Updater:
             return ApplyResult(decision)
 
         try:
+            if "requirements.txt" in status.changed and not self._install_target_requirements():
+                # Packages pip already upgraded stay upgraded: requirements use
+                # >=, so the old code keeps running on them.
+                return ApplyResult(decision, error="pip install failed; the app code was not updated")
             self._git("merge", "--ff-only", "--quiet", REMOTE_REF)
         except GitError as exc:
             logger.warning("Update failed: %s", exc)
             return ApplyResult(decision, error=str(exc))
         logger.info("Updated %s -> %s", status.head[:7], status.remote[:7])
-
-        if "requirements.txt" in status.changed and not self._pip(self._repo):
-            return self._roll_back(decision, status.head)
         return ApplyResult(decision, restart=decision.action == Action.UPDATE)
 
-    def _roll_back(self, decision: Decision, old_head: str) -> ApplyResult:
-        # Safe: apply() only gets here from a clean tree, so the reset loses nothing.
-        error = "pip install failed; staying on the old version"
+    def _install_target_requirements(self) -> bool:
+        """pip on origin/main's requirements.txt, read from git, not the tree."""
+        content = self._git("show", f"{REMOTE_REF}:requirements.txt")
+        handle, name = tempfile.mkstemp(prefix="wallpaper-requirements-", suffix=".txt")
+        path = Path(name)
         try:
-            self._git("reset", "--hard", "--quiet", old_head)
-            logger.info("Rolled back to %s", old_head[:7])
-        except GitError as exc:
-            logger.error("Rollback to %s failed: %s", old_head[:7], exc)
-            error = f"pip install failed and the rollback too: {exc}"
-        return ApplyResult(decision, error=error)
+            with os.fdopen(handle, "w", encoding="utf-8") as file:
+                file.write(content + "\n")
+            return self._pip(self._repo, path)
+        finally:
+            path.unlink(missing_ok=True)

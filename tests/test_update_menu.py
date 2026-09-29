@@ -1,6 +1,5 @@
 from src.os_integration.update_menu import UpdateMenu
 from src.os_integration.updater import Action, ApplyResult, Decision
-from src.utils.app_state import AppState, AppStatus
 
 
 class _FakeUpdater:
@@ -19,11 +18,10 @@ class _FakeUpdater:
         return self.next_apply
 
 
-def _menu(updater, app_state=None):
+def _menu(updater):
     events = []
     menu = UpdateMenu(
         updater,
-        app_state or AppState(),
         on_restart=lambda: events.append("restart"),
         refresh=lambda: events.append("refresh"),
         spawn=lambda fn: fn(),  # run inline: the tests don't need the thread
@@ -90,29 +88,26 @@ def test_docs_only_is_pulled_in_on_click_without_a_restart():
     assert "restart" not in events
 
 
-def test_blocked_check_shows_the_error_on_the_tray():
-    app_state = AppState()
-    menu, _ = _menu(_FakeUpdater(check=Decision(Action.BLOCKED, reason="the app folder has local changes")), app_state)
+def test_blocked_check_shows_the_error_on_the_item():
+    # On the item, not as the app's ERROR status: that one means the Spotify
+    # session, brings up Re-authenticate and the poller clears it in seconds.
+    menu, _ = _menu(_FakeUpdater(check=Decision(Action.BLOCKED, reason="the app folder has local changes")))
 
     menu.click()
 
     assert menu.label() == "Update failed: the app folder has local changes"
-    snapshot = app_state.snapshot()
-    assert snapshot.status == AppStatus.ERROR
-    assert snapshot.last_error == "Update failed: the app folder has local changes"
 
 
 def test_failed_apply_shows_the_error_and_does_not_restart():
-    updater = _FakeUpdater(check=_UPDATE, apply=ApplyResult(_UPDATE, error="pip install failed; staying on the old version"))
-    app_state = AppState()
-    menu, events = _menu(updater, app_state)
+    updater = _FakeUpdater(check=_UPDATE, apply=ApplyResult(_UPDATE, error="pip install failed"))
+    menu, events = _menu(updater)
 
     menu.click()
     menu.click()
 
     assert "restart" not in events
-    assert app_state.snapshot().status == AppStatus.ERROR
-    assert menu.label() == "Update failed: pip install failed; staying on the old version"
+    assert menu.label() == "Update failed: pip install failed"
+    assert menu.is_applying() is False
 
 
 def test_after_a_failure_the_next_click_checks_again():
@@ -136,29 +131,60 @@ def test_startup_check_only_changes_the_label():
     assert updater.applies == 0 and "restart" not in events
 
 
-def test_startup_check_never_pulls_docs_or_raises_errors():
-    app_state = AppState()
+def test_startup_check_never_pulls_docs_or_shows_errors():
     updater = _FakeUpdater(check=_DOCS)
-    menu, _ = _menu(updater, app_state)
+    menu, _ = _menu(updater)
 
     menu.check_silently()
     assert updater.applies == 0 and menu.label() == "Check for updates"
 
     updater.next_check = Decision(Action.BLOCKED, reason="git fetch failed")
     menu.check_silently()
-    assert app_state.snapshot().status != AppStatus.ERROR
     assert menu.label() == "Check for updates"
 
 
-def test_clicks_while_busy_are_ignored():
+def _stuck_menu(updater):
+    """A menu whose background work never runs, to look at it mid-flight."""
     started = []
-    menu = UpdateMenu(
-        _FakeUpdater(),
-        AppState(),
-        on_restart=lambda: None,
-        refresh=lambda: None,
-        spawn=lambda fn: started.append(fn),  # never runs: stays busy
-    )
+    menu = UpdateMenu(updater, on_restart=lambda: None, refresh=lambda: None, spawn=started.append)
+    return menu, started
+
+
+def test_startup_check_says_it_is_checking():
+    # A click during it is ignored, so the label has to say why.
+    menu, started = _stuck_menu(_FakeUpdater())
+
+    menu.check_silently()
+    menu.click()
+
+    assert len(started) == 1
+    assert menu.label() == "Checking for updates..."
+
+
+def test_applying_is_flagged_only_while_the_update_runs():
+    menu, started = _stuck_menu(_FakeUpdater(check=_UPDATE, apply=ApplyResult(_UPDATE, restart=True)))
+
+    menu.click()
+    assert menu.is_applying() is False  # only checking
+    started.pop()()  # the check finds the update
+
+    menu.click()
+    assert menu.is_applying() is True
+    assert menu.label() == "Updating..."
+
+
+def test_still_applying_while_it_restarts():
+    menu, events = _menu(_FakeUpdater(check=_UPDATE, apply=ApplyResult(_UPDATE, restart=True)))
+
+    menu.click()
+    menu.click()
+
+    assert events[-1] == "restart"
+    assert menu.is_applying() is True
+
+
+def test_clicks_while_busy_are_ignored():
+    menu, started = _stuck_menu(_FakeUpdater())
 
     menu.click()
     menu.click()
