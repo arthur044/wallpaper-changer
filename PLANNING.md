@@ -4,7 +4,7 @@ Documentação técnica do estado atual. Descreve **como o sistema funciona hoje
 foi construído. Uso e instalação estão no [README](README.md) e no
 [README do Android](android/README.md).
 
-Última revisão: 2026-09-28 · base: `feat/lyrics-widget` (PR #11) @ `620a8d1`, sobre `main` @ `5a5169b`
+Última revisão: 2026-09-29 · base: `feat/lyrics-widget` (PR #11) @ `620a8d1`, sobre `main` @ `5a5169b`
 
 ---
 
@@ -298,7 +298,7 @@ tray: Show / Lock / On top / Reset ─► sinais do _Bridge ─► thread do Qt
 | `QtHost` (`lyrics_widget/qt_host.py`) | Dono do `QApplication`. Só a thread do Qt toca em widgets: a bandeja e a busca falam com ela por sinais do `_Bridge` (conexão enfileirada). Implementa `LyricsWidgetControls`, o protocolo que a bandeja usa. Grava as settings do widget pela thread do Qt |
 | `LyricsWindow` | Fundo translúcido arredondado (alfa 200). A fonte cresce com a largura (13–34 px). Destravado, arrastar move a janela e arrastar a 8 px da borda redimensiona; a posição é gravada 600 ms depois de soltar |
 | `LyricsWidgetController` (`lyrics_widget/controller.py`) | Puro (sem Qt, sem rede). A cada tick recebe o snapshot e a timeline e devolve um `View` e, se preciso, um `FetchRequest`. Espera até 2 s pela duração da faixa antes de buscar (ela permite o `/get` exato). Falha de rede → tenta de novo a cada 30 s na mesma faixa. Resposta de outra faixa é descartada |
-| `SongClock` (`lyrics/song_clock.py`) | Posição atual a partir da última `TimelineSample`, extrapolada pelo `time.monotonic()` × `rate` enquanto toca e congelada com a música pausada. Cada amostra substitui a anterior, então um seek aparece na amostra seguinte |
+| `SongClock` (`lyrics/song_clock.py`) | Posição atual a partir da última `TimelineSample`, extrapolada pelo `time.monotonic()` × `rate` enquanto toca e congelada com a música pausada. Cada amostra substitui a anterior. Um seek corrige na hora: o Spotify o avisa pelo SMTC na mesma hora (`timeline_properties_changed`), sem esperar a atualização periódica (verificado pelo usuário em 2026-09-29) |
 | `TimelineSample` (`os_integration/smtc.py`) | Posição do SMTC levada ao instante da leitura (`position + idade × rate`) e presa ao relógio monotônico. Um carimbo com mais de 12 h (DateTime não preenchido = ano 1601) ou do futuro não soma nada |
 | `LyricsSlot` (`lyrics/slot.py`) | Port do `LyricsSlot` do Android. Uma resposta em memória, com "não encontrada" e "instrumental" incluídas, descartada na troca de faixa. Uma busca por vez; um pedido da mesma faixa espera a busca em andamento |
 | `LrclibClient` (`lyrics/lrclib.py`) | Port do cliente do Android (§2.5): `/get` com álbum e duração, senão `/search` com o mesmo ranking. Letra sincronizada (LRC `[mm:ss.xx]`) primeiro; sem ela, texto simples. **Diferente do Android:** se o `/get` acha só texto simples, roda também o `/search`, e uma versão sincronizada da mesma gravação (mesmo ranking, diferença ≤ 30 s) vence. Se nada sincronizado serve, ou se o `/search` falha na rede, fica o texto do `/get`. `/get` sincronizado ou instrumental encerra na hora, sem busca. Timeout de 10 s para conectar e 10 s para ler. Fora do `ApiThrottle` do Spotify |
@@ -507,7 +507,7 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | Qt na thread principal, pystray numa thread própria | O Qt exige o `QApplication` na thread principal. No Windows o pystray processa as mensagens na thread que o chama, então pode sair dela. Os dois conversam só por sinais enfileirados |
 | Camada da janela via `SetWindowPos` | O `WindowStaysOnTopHint` do Qt não chegava ao Windows numa janela já criada (PySide6 6.11.2, visto em 2026-09-28). Para sair do topo é preciso `HWND_NOTOPMOST` antes de `HWND_BOTTOM` |
 | Atrás das janelas por padrão | Fica como parte da área de trabalho, sem cobrir o trabalho. "Always on top" é opcional e se esconde em tela cheia |
-| Relógio da faixa pela timeline do SMTC, extrapolado localmente | O Spotify atualiza a timeline a cada ~4,5 s (medido em 2026-09-28). Entre as amostras, a posição anda pelo `time.monotonic()`, que ignora mudanças no relógio do sistema |
+| Relógio da faixa pela timeline do SMTC, extrapolado localmente | O Spotify atualiza a timeline a cada ~4,5 s (medido em 2026-09-28), e na hora num seek. Entre as amostras, a posição anda pelo `time.monotonic()`, que ignora mudanças no relógio do sistema |
 | Timeline de outra faixa conta a partir de 0 | Se a faixa muda e o carimbo da timeline não, a posição é da faixa anterior. Não medido se o Spotify faz isso; a guarda é barata |
 | Controller e layout puros, sem Qt | Estados, pedidos de busca, posição e rolagem são testados sem janela |
 | Cor do widget tirada da base do wallpaper já em memória | Custa 2–4 ms e não faz uma segunda quantização do ColorThief. O quarto inferior direito é onde o widget começa. Escurecer até 4,5:1 (WCAG AA) mantém o texto branco legível |
@@ -535,7 +535,8 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 
 **Em revisão, fora da `main`:** #11, widget de letra sincronizada no desktop (§2.6), branch
 `feat/lyrics-widget`. Revisado (nenhum problema crítico ou alto) e com 383/383 testes
-passando.
+passando. Checklist do PR completo (seek, resolução, escala e redimensionamento testados pelo
+usuário em 2026-09-29).
 
 ### 5.2 Limitações conhecidas
 
@@ -589,11 +590,9 @@ passando.
     ainda pode estar desenhando é mais arriscado);
   - `LyricsPrefetch.state` não tem mais leitor em produção (a tela usa `watch()`). Mantido.
 - **Widget de letra (#11):**
-  - não medido quanto tempo leva para corrigir um seek (esperado: até ~4,5 s, o intervalo de
-    atualização do SMTC);
-  - não testado em escala de 150%/200% nem com monitores de DPI diferentes (a máquina de
-    desenvolvimento tem um monitor a 100%). O DPI por monitor foi confirmado com o Qt criado
-    primeiro;
+  - não testado com um segundo monitor de DPI diferente (o usuário tem um monitor só). Trocar
+    resolução e escala e redimensionar o widget foram testados pelo usuário em 2026-09-29, sem
+    problemas;
   - não medido se o Spotify troca a faixa antes da timeline (a guarda conta a partir de 0);
   - só segue o Spotify desktop, via SMTC. Com `use_smtc` desligado ou reprodução em outro
     aparelho, não há posição para seguir;
@@ -607,8 +606,7 @@ passando.
 
 ### 5.3 Próximas prioridades
 
-1. **Merge do #11** e validação do widget em escala 150%/200% e com monitores mistos; medir a
-   correção depois de um seek.
+1. **Merge do #11** (merge commit, não squash).
 2. **Decidir** se "Compartilhar letra" aparece também com a música pausada.
 3. **Cache em disco da arte original e das cores**, para mudar de estilo sem baixar a arte de
    novo nem recalcular a paleta.
