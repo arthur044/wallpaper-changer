@@ -121,7 +121,11 @@ class UpdateMenu:
             with self._lock:
                 self._label = "Restarting..."
             self._refresh()
-            self._on_restart()
+            try:
+                self._on_restart()
+            except Exception as exc:  # noqa: BLE001 - else Restart and Exit stay disabled for good
+                logger.exception("Restart after the update failed")
+                self._fail(f"restart failed: {exc}")
             return
         if result.decision.action == Action.DOCS_ONLY:
             self._finish(f"Up to date ({result.decision.target}), no desktop changes")

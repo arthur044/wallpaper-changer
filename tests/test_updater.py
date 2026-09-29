@@ -294,3 +294,11 @@ def test_git_is_run_without_a_console_or_a_password_prompt(tmp_path):
 
     assert seen[0]["creationflags"] == subprocess.CREATE_NO_WINDOW
     assert seen[0]["env"]["GIT_TERMINAL_PROMPT"] == "0"
+
+
+def test_requirements_have_no_relative_lines():
+    # pip reads a copy in %TEMP% (see Updater._install_target_requirements),
+    # where a relative -r/-c/-e line would point somewhere else.
+    lines = (Path(__file__).resolve().parents[1] / "requirements.txt").read_text(encoding="utf-8").splitlines()
+
+    assert not [line for line in lines if line.strip().startswith(("-r", "-c", "-e", "."))]

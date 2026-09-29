@@ -186,7 +186,9 @@ class Updater:
         return ApplyResult(decision, restart=decision.action == Action.UPDATE)
 
     def _install_target_requirements(self) -> bool:
-        """pip on origin/main's requirements.txt, read from git, not the tree."""
+        """pip on origin/main's requirements.txt, read from git, not the tree.
+        The copy lives in %TEMP%: a relative line in it (-r other.txt, -e .)
+        would resolve there, so requirements.txt must stay free of them."""
         content = self._git("show", f"{REMOTE_REF}:requirements.txt")
         handle, name = tempfile.mkstemp(prefix="wallpaper-requirements-", suffix=".txt")
         path = Path(name)

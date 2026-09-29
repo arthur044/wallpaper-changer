@@ -191,3 +191,21 @@ def test_clicks_while_busy_are_ignored():
 
     assert len(started) == 1
     assert menu.label() == "Checking for updates..."
+
+
+def test_a_failed_restart_gives_restart_and_exit_back():
+    def broken_restart():
+        raise OSError("Popen failed")
+
+    menu = UpdateMenu(
+        _FakeUpdater(check=_UPDATE, apply=ApplyResult(_UPDATE, restart=True)),
+        on_restart=broken_restart,
+        refresh=lambda: None,
+        spawn=lambda fn: fn(),
+    )
+
+    menu.click()
+    menu.click()
+
+    assert menu.is_applying() is False
+    assert menu.label() == "Update failed: restart failed: Popen failed"
