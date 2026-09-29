@@ -21,7 +21,7 @@ o mesmo comportamento e o mesmo visual:
 | Código | `main.py`, `src/` | `android/` (módulos `:core` e `:app`) |
 | Interface | Ícone na bandeja (pystray) + assistente Tkinter + widget de letra (PySide6/Qt) | Compose: onboarding, tela principal, bloco nas Configurações rápidas |
 | Render | Pillow | `android.graphics.Canvas` |
-| Testes | 376 (pytest) | 552: 403 JUnit 5 no `:core`; 20 unitários e 129 instrumentados no `:app` |
+| Testes | 383 (pytest) | 552: 403 JUnit 5 no `:core`; 20 unitários e 129 instrumentados no `:app` |
 
 **Regra de paridade:** tudo o que é visual (cor de fundo, mesh, glow, blur, moldura, cartão)
 é **portado** do desktop para o Android, não reimplementado. Os valores são conferidos contra
@@ -70,7 +70,7 @@ Invariantes nas duas plataformas:
 |---|---|---|
 | principal | `QtHost` (`lyrics_widget/qt_host.py`) | `QApplication` e o widget de letra (§2.6); bloqueia em `exec()` até Exit ou Restart |
 | `tray` (daemon) | `TrayApp` (`os_integration/tray.py`) | Menu da bandeja. O pystray processa as mensagens na thread que chama `run()`, então ele ganhou uma thread própria. Quando o loop termina, pede ao Qt para sair |
-| `smtc-watcher` | `SmtcWatcher` (`os_integration/smtc.py`) | Loop asyncio próprio (winsdk). Eventos SMTC (inclusive da timeline) mais uma consulta de segurança a cada 2 s. Expõe um snapshot e a última amostra de posição (`get_timeline`), cada um sob lock |
+| `smtc-watcher` | `SmtcWatcher` (`os_integration/smtc.py`) | Loop asyncio próprio (winsdk). Eventos SMTC (inclusive da timeline) mais uma consulta de segurança a cada 2 s. Um evento que chega com o loop já fechando é descartado (`notify_loop`). Expõe um snapshot e a última amostra de posição (`get_timeline`), cada um sob lock |
 | `poller` | `Poller` (`spotify/poller.py`) | Loop principal de sync e render |
 | `lyrics` (daemon, uma por busca) | `QtHost._look_up` | Uma busca no LRCLIB, só com o widget ligado |
 
@@ -301,7 +301,7 @@ tray: Show / Lock / On top / Reset ─► sinais do _Bridge ─► thread do Qt
 | `SongClock` (`lyrics/song_clock.py`) | Posição atual a partir da última `TimelineSample`, extrapolada pelo `time.monotonic()` × `rate` enquanto toca e congelada com a música pausada. Cada amostra substitui a anterior, então um seek aparece na amostra seguinte |
 | `TimelineSample` (`os_integration/smtc.py`) | Posição do SMTC levada ao instante da leitura (`position + idade × rate`) e presa ao relógio monotônico. Um carimbo com mais de 12 h (DateTime não preenchido = ano 1601) ou do futuro não soma nada |
 | `LyricsSlot` (`lyrics/slot.py`) | Port do `LyricsSlot` do Android. Uma resposta em memória, com "não encontrada" e "instrumental" incluídas, descartada na troca de faixa. Uma busca por vez; um pedido da mesma faixa espera a busca em andamento |
-| `LrclibClient` (`lyrics/lrclib.py`) | Port do cliente do Android (§2.5): `/get` com álbum e duração, senão `/search` com o mesmo ranking. Letra sincronizada (LRC `[mm:ss.xx]`) primeiro; sem ela, texto simples. Timeout de 10 s para conectar e 10 s para ler. Fora do `ApiThrottle` do Spotify |
+| `LrclibClient` (`lyrics/lrclib.py`) | Port do cliente do Android (§2.5): `/get` com álbum e duração, senão `/search` com o mesmo ranking. Letra sincronizada (LRC `[mm:ss.xx]`) primeiro; sem ela, texto simples. **Diferente do Android:** se o `/get` acha só texto simples, roda também o `/search`, e uma versão sincronizada da mesma gravação (mesmo ranking, diferença ≤ 30 s) vence. Se nada sincronizado serve, ou se o `/search` falha na rede, fica o texto do `/get`. `/get` sincronizado ou instrumental encerra na hora, sem busca. Timeout de 10 s para conectar e 10 s para ler. Fora do `ApiThrottle` do Spotify |
 | `widget_background` (`lyrics_widget/colors.py`) | Cor do álbum (`TintHolder`, vinda do render, §2.2) escurecida em passos de 5% até o texto branco ter contraste de 4,5:1. Sem cor ainda: `(18, 18, 18)` |
 | `geometry.py`, `window_layer.py`, `fullscreen.py` | Posição padrão (canto inferior direito da área útil do monitor principal, 24 px das bordas, 420×190), restauração da posição salva, camada da janela (`SetWindowPos`) e detecção de tela cheia (`SHQueryUserNotificationState`) |
 
@@ -312,7 +312,7 @@ tray: Show / Lock / On top / Reset ─► sinais do _Bridge ─► thread do Qt
 | `HIDDEN` | Nada tocando (sem snapshot ou sem título) | Escondida |
 | `LOADING` | Faixa nova, busca pendente | "Looking for lyrics…" |
 | `SYNCED` | Letra com tempos | Linha atual destacada (alfa 255, as outras 110), rolagem animada; antes da primeira linha, ela espera na âncora (40% da altura) |
-| `TEXT` | Só texto | Rola junto com a faixa (posição ÷ duração) |
+| `TEXT` | Só texto (o LRCLIB não tem versão sincronizada; comum em música brasileira) | Rola junto com a faixa (posição ÷ duração), com um selo "Not synced" no canto superior direito (`View.badge`) |
 | `NO_LYRICS` / `INSTRUMENTAL` | LRCLIB não tem / marcada como instrumental | Mensagem |
 | `UNAVAILABLE` | LRCLIB inacessível | Mensagem; nova tentativa em 30 s |
 | `NO_SOURCE` | `use_smtc` desligado | "Turn on use_smtc to follow the song" |
@@ -511,6 +511,7 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | Timeline de outra faixa conta a partir de 0 | Se a faixa muda e o carimbo da timeline não, a posição é da faixa anterior. Não medido se o Spotify faz isso; a guarda é barata |
 | Controller e layout puros, sem Qt | Estados, pedidos de busca, posição e rolagem são testados sem janela |
 | Cor do widget tirada da base do wallpaper já em memória | Custa 2–4 ms e não faz uma segunda quantização do ColorThief. O quarto inferior direito é onde o widget começa. Escurecer até 4,5:1 (WCAG AA) mantém o texto branco legível |
+| Widget: `/get` só com texto ainda consulta o `/search` atrás de uma versão sincronizada | Texto sem tempos não acompanha a música, então vale uma chamada a mais. O compartilhar do Android continua com o texto do `/get`, porque não precisa de tempos. O selo "Not synced" deixa claro que rolar sem acompanhar é esperado, não um defeito |
 | Buscar letra só com o widget ligado; uma resposta em memória | Mesma regra do Android: sem rede gasta à toa e sem texto protegido no disco |
 | `_SAVE_LOCK` em `save_settings` | A bandeja e a thread do Qt gravam o `config.json`. Sem o lock, duas escritas podiam se misturar no arquivo |
 
@@ -533,7 +534,7 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | — | Nas duas plataformas: arte baixada só de `https` em `scdn.co`/`spotifycdn.com` (§4) |
 
 **Em revisão, fora da `main`:** #11, widget de letra sincronizada no desktop (§2.6), branch
-`feat/lyrics-widget`. Revisado (nenhum problema crítico ou alto) e com 376/376 testes
+`feat/lyrics-widget`. Revisado (nenhum problema crítico ou alto) e com 383/383 testes
 passando.
 
 ### 5.2 Limitações conhecidas
