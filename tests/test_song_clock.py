@@ -159,6 +159,22 @@ def test_a_pause_on_the_leftover_timeline_still_freezes_the_clock():
     assert clock.position_ms() == 2_000
 
 
+def test_without_stamps_a_new_track_is_taken_at_its_word():
+    """Review #11: an unset SMTC stamp is the same on every sample, so it
+    must not make every track change look like a leftover timeline."""
+    fake = _FakeClock()
+    clock = SongClock(now=fake)
+    clock.update(_sample(fake, 200_000, track="t1", stamp=None))
+    fake.advance(1.0)
+
+    clock.update(_sample(fake, 1_500, track="t2", stamp=None))
+    assert clock.position_ms() == 1_500
+    assert clock.duration_ms == 240_000
+
+    clock.update(_sample(fake, 90_000, track="t2", stamp=None))  # a seek
+    assert clock.position_ms() == 90_000
+
+
 def test_spotify_closing_clears_the_clock():
     fake = _FakeClock()
     clock = SongClock(now=fake)

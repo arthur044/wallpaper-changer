@@ -362,6 +362,53 @@ def test_a_move_by_the_user_is_saved_with_its_monitor():
     host.toggle_widget()
 
 
+def test_an_answer_arriving_after_the_widget_was_switched_off_does_not_show_it():
+    """Review #11: the late answer used to tick, and the tick showed the window."""
+    host = QtHost(Settings(), lyrics_source=lambda query: NotFound())
+    host.attach_smtc(_playing_watcher())
+    host.toggle_widget()
+    QApplication.processEvents()
+    host.toggle_widget()  # off before LRCLIB answered
+    QApplication.processEvents()
+
+    host._on_lyrics(SONG.track_key, NotFound())
+    host._on_failure(SONG.track_key)
+
+    assert not host._window.isVisible()
+
+
+def test_a_click_just_before_reset_position_does_not_undo_it():
+    """Review #11: a plain click left the window 'being moved', so the reset's
+    own move was saved back 600 ms later as the user's choice."""
+    settings = Settings()
+    host, _ = _host_with(settings)
+    host.toggle_widget()
+    QApplication.processEvents()
+    window = host._window
+    window._interacting = True  # what a press does, even one that moves nothing
+    window._interaction_timer.start()
+
+    host.reset_position()
+    QApplication.processEvents()
+
+    assert not window._save_timer.isActive()
+    assert settings.lyrics_widget_geometry is None
+    host.toggle_widget()
+
+
+def test_a_click_that_moves_nothing_stops_counting_as_a_move():
+    host, _ = _host_with(Settings())
+    host.toggle_widget()
+    QApplication.processEvents()
+    window = host._window
+    window._interacting = True
+
+    window._interaction_over()  # the timer's end, 1 s after the press
+
+    assert window._interacting is False
+    host.toggle_widget()
+
+
 def test_placing_the_window_by_code_is_not_saved_as_the_users_choice():
     settings = Settings()
     host, _ = _host_with(settings)

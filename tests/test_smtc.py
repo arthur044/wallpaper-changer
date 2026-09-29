@@ -47,7 +47,9 @@ def test_an_update_time_from_the_future_adds_nothing():
 
 def test_an_unset_update_time_adds_nothing():
     unset = datetime(1601, 1, 1, tzinfo=timezone.utc)
-    assert _timeline(last_updated=unset).position_ms == 30_000
+    sample = _timeline(last_updated=unset)
+    assert sample.position_ms == 30_000
+    assert sample.stamp is None, "an unset stamp can't tell one update from another"
 
 
 def test_no_end_time_means_an_unknown_duration():

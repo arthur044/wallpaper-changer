@@ -44,6 +44,9 @@ _SCROLL_MS = 350
 _TICK_MS = 100
 _FULL_SCREEN_CHECK_TICKS = 10  # once a second
 _SAVE_AFTER_MOVE_MS = 600
+# A press that moves nothing (a plain click) stops counting as the user
+# moving the window after this long.
+_INTERACTION_MS = 1000
 _FONT_FAMILY = "Segoe UI"
 
 _QT_EDGES = {"left": Qt.LeftEdge, "right": Qt.RightEdge, "top": Qt.TopEdge, "bottom": Qt.BottomEdge}
@@ -118,6 +121,10 @@ class LyricsWindow(QWidget):
         self._save_timer.setSingleShot(True)
         self._save_timer.setInterval(_SAVE_AFTER_MOVE_MS)
         self._save_timer.timeout.connect(self._user_moved)
+        self._interaction_timer = QTimer(self)
+        self._interaction_timer.setSingleShot(True)
+        self._interaction_timer.setInterval(_INTERACTION_MS)
+        self._interaction_timer.timeout.connect(self._interaction_over)
         self._view = View(Phase.LOADING)
         self._font = QFont(_FONT_FAMILY)
         self._bold = QFont(_FONT_FAMILY)
@@ -196,6 +203,7 @@ class LyricsWindow(QWidget):
         point = event.position().toPoint()
         edges = edges_at(point.x(), point.y(), self.width(), self.height())
         self._interacting = True
+        self._interaction_timer.start()
         if edges:
             qt_edges = Qt.Edges()
             for edge in edges:
@@ -210,13 +218,28 @@ class LyricsWindow(QWidget):
             self.setCursor(_CURSORS[edges_at(point.x(), point.y(), self.width(), self.height())])
 
     def moveEvent(self, event) -> None:  # noqa: N802 - Qt override
+        self._moved_by_user()
+        super().moveEvent(event)
+
+    def _moved_by_user(self) -> None:
         if self._interacting:
             self._save_timer.start()
-        super().moveEvent(event)
+            self._interaction_timer.start()
+
+    def _interaction_over(self) -> None:
+        if not self._save_timer.isActive():
+            self._interacting = False
 
     def _user_moved(self) -> None:
         self._interacting = False
         self._on_user_moved()
+
+    def cancel_user_move(self) -> None:
+        """The code is about to place the window: nothing pending may save it
+        as the user's choice (a click just before a Reset position would)."""
+        self._save_timer.stop()
+        self._interaction_timer.stop()
+        self._interacting = False
 
     # --- layout ---------------------------------------------------------------
 
@@ -262,8 +285,7 @@ class LyricsWindow(QWidget):
         self._relayout()
         self._animation.stop()
         self._scroll = self._target_scroll()
-        if self._interacting:
-            self._save_timer.start()
+        self._moved_by_user()
         super().resizeEvent(event)
 
     # --- painting -------------------------------------------------------------
@@ -432,7 +454,9 @@ class QtHost:
             finally:
                 self.request_quit()
 
-        thread = threading.Thread(target=target, name="tray")
+        # Daemon: a pystray loop stuck after Qt quits must not keep the
+        # process alive (main joins it with a timeout first).
+        thread = threading.Thread(target=target, name="tray", daemon=True)
         thread.start()
         return thread
 
@@ -486,13 +510,20 @@ class QtHost:
         window = self._window
         if window is None:
             return
+        window.cancel_user_move()
         saved = self._settings.lyrics_widget_geometry
         rect = restore_rect(saved, self._screens())
         if rect is not None:
             window.setGeometry(*rect)
             return
-        # The default corner, keeping the size the user chose, if any.
-        window.resize(*(saved["rect"][2:] if saved else DEFAULT_SIZE))
+        # The default corner, keeping the size the user chose, if any, but
+        # never bigger than the primary screen (it may come from a 4K one).
+        width, height = saved["rect"][2:] if saved else DEFAULT_SIZE
+        screen = self._app.primaryScreen()
+        if screen is not None:
+            area = screen.availableGeometry()
+            width, height = min(width, area.width()), min(height, area.height())
+        window.resize(width, height)
         window.move_to_default_position()
 
     def _save_geometry(self) -> None:
@@ -510,6 +541,7 @@ class QtHost:
         self._settings.lyrics_widget_geometry = None
         self._persist()
         if self._window is not None:
+            self._window.cancel_user_move()
             self._window.resize(*DEFAULT_SIZE)
             self._window.move_to_default_position()
 
@@ -558,10 +590,14 @@ class QtHost:
         logger.info("Lyrics lookup for the current track: %s", type(lyrics).__name__)
         self._bridge.lyrics_ready.emit(request.track_key, lyrics)
 
+    # An answer can arrive after the widget was switched off: it is kept, but
+    # only a running widget ticks (and shows itself), never a switched-off one.
     def _on_lyrics(self, track_key: str, lyrics) -> None:
         self._controller.on_lyrics(track_key, lyrics)
-        self._tick()
+        if self._timer.isActive():
+            self._tick()
 
     def _on_failure(self, track_key: str) -> None:
         self._controller.on_failure(track_key)
-        self._tick()
+        if self._timer.isActive():
+            self._tick()

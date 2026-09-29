@@ -124,6 +124,25 @@ def test_asking_twice_while_the_first_lookup_is_out_makes_one_call(slot, source)
     assert source.calls == 1
 
 
+def test_a_track_skipped_while_waiting_its_turn_asks_nobody(slot, source):
+    """Review #11: skipping through tracks queued one full lookup per track."""
+    asked, release = _gated(source)
+    first = threading.Thread(target=lambda: slot.lyrics_for("t1", AIRBAG))
+    first.start()
+    assert asked.wait(timeout=5.0)
+    skipped_result = []
+    skipped = threading.Thread(target=lambda: skipped_result.append(slot.lyrics_for("t2", LUCKY)))
+    skipped.start()
+    slot.on_track("t3")  # the user moved on before t2's turn came
+
+    release.set()
+    first.join(timeout=5.0)
+    skipped.join(timeout=5.0)
+
+    assert skipped_result == [NotFound()]
+    assert source.calls == 1, "only t1 reached LRCLIB"
+
+
 def test_a_track_with_nothing_to_look_up_by_asks_nobody(slot, source):
     assert slot.lyrics_for(None, AIRBAG) == NotFound()
     assert slot.lyrics_for("t1", None) == NotFound()

@@ -58,7 +58,14 @@ class SongClock:
             self._stale_stamp = None
             return
         current = self._sample
-        if current is not None and sample.track_key != current.track_key and sample.stamp == current.stamp:
+        # Without a stamp (SMTC left it unset) nothing can be told apart:
+        # every sample is taken at its word.
+        if (
+            current is not None
+            and sample.stamp is not None
+            and sample.track_key != current.track_key
+            and sample.stamp == current.stamp
+        ):
             # The track changed but the timeline did not: its position is the
             # old track's. Not measured whether Spotify ever does this; if it
             # does, the new track starts from 0 until a fresh update arrives.

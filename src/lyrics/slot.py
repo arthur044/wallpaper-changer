@@ -55,6 +55,12 @@ class LyricsSlot:
             kept = self.peek(track_id)
             if kept is not None:
                 return kept
+            with self._state:
+                superseded = self._current != track_id
+            if superseded:
+                # Another track started while this ask waited its turn: its
+                # answer would be thrown away, so LRCLIB isn't asked at all.
+                return NotFound()
             return self._look_up(track_id, query)
 
     def _look_up(self, track_id: str, query: Optional[LyricsQuery]) -> Lyrics:

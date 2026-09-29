@@ -32,8 +32,9 @@ class TimelineSample:
     is_playing: bool
     rate: float
     # SMTC's own last_updated_time, as epoch seconds: tells a fresh update
-    # from one left over from the previous track.
-    stamp: float
+    # from one left over from the previous track. None when SMTC left it
+    # unset, since every sample would then share it and look left over.
+    stamp: Optional[float]
 
 
 def sample_from_smtc(
@@ -53,8 +54,9 @@ def sample_from_smtc(
         last_updated = last_updated.replace(tzinfo=timezone.utc)
     rate = rate if rate and rate > 0 else 1.0
     age = wall_now - last_updated
+    unset = age > _MAX_STAMP_AGE
     # A stamp from the future (clock skew) or from long ago (unset) adds nothing.
-    if age < timedelta(0) or age > _MAX_STAMP_AGE:
+    if age < timedelta(0) or unset:
         age = timedelta(0)
     position_ms = position.total_seconds() * 1000
     if is_playing:
@@ -67,7 +69,7 @@ def sample_from_smtc(
         duration_ms=duration_ms if duration_ms > 0 else None,
         is_playing=is_playing,
         rate=rate,
-        stamp=last_updated.timestamp(),
+        stamp=None if unset else last_updated.timestamp(),
     )
 
 
