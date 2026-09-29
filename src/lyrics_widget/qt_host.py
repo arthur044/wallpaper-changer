@@ -315,6 +315,7 @@ class LyricsWindow(QWidget):
     def _paint_badge(self, painter: QPainter, badge: str) -> None:
         # A small pill in the top-right corner, over the (already faded) top
         # lines, in the window's own background so it reads on any of them.
+        painter.save()
         painter.setClipping(False)
         font = QFont(_FONT_FAMILY)
         font.setPixelSize(_BADGE_FONT_PX)
@@ -330,6 +331,7 @@ class LyricsWindow(QWidget):
         painter.setPen(color)
         painter.setFont(font)
         painter.drawText(box, Qt.AlignCenter, badge)
+        painter.restore()
 
     def _paint_message(self, painter: QPainter, message: str) -> None:
         color = QColor(_TEXT)

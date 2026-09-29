@@ -235,6 +235,25 @@ def test_the_plain_exact_hit_stands_when_the_search_has_nothing_synced_that_fits
     assert client.lyrics(METROPOLIS) == TextLyrics(("Plain words",))
 
 
+def test_a_synced_upload_a_few_seconds_off_beats_the_plain_one_in_the_search(client, http):
+    """Review of b283c43: the plain upload of the same recording is usually in
+    /search too, with no drift, and outranked a synced one 20 s off (1350 vs
+    1300 points). Only synced candidates compete after a plain /get."""
+    http.respond(200, _PLAIN_ONLY)
+    plain_again = json.loads(_PLAIN_ONLY)
+    synced_off = json.loads(_synced_search(synced_duration=591))[0]  # 20 s drift
+    http.respond(200, json.dumps([plain_again, synced_off]))
+
+    assert client.lyrics(METROPOLIS) == SyncedLyrics((TimedLine(5_000, "Timed words"),))
+
+
+def test_the_plain_exact_hit_stands_when_the_search_finds_nothing(client, http):
+    http.respond(200, _PLAIN_ONLY)
+    http.respond(200, "[]")
+
+    assert client.lyrics(METROPOLIS) == TextLyrics(("Plain words",))
+
+
 def test_the_plain_exact_hit_stands_when_the_search_fails(client, http):
     http.respond(200, _PLAIN_ONLY)
     http.fail(requests.ConnectionError("offline"))

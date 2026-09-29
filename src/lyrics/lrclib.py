@@ -208,19 +208,25 @@ class LrclibClient:
                     return found
         if exact_text is not None:
             try:
-                searched = self._search(query, artist, title)
+                # Only synced candidates compete here: the plain upload of the
+                # same recording, usually in the list too with no drift, would
+                # otherwise outrank a synced one a few seconds off.
+                searched = self._search(query, artist, title, synced_only=True)
             except LyricsUnavailableError:
                 return exact_text  # the exact answer stands
             return searched if isinstance(searched, SyncedLyrics) else exact_text
         return self._search(query, artist, title)
 
-    def _search(self, query: LyricsQuery, artist: str, title: str) -> Lyrics:
+    def _search(self, query: LyricsQuery, artist: str, title: str, synced_only: bool = False) -> Lyrics:
         listed = self._get("search", {"artist_name": artist, "track_name": title})
         if listed is None:
             listed = []
         if not isinstance(listed, list):
             raise LyricsUnavailableError("Unexpected LRCLIB response: not a list")
-        chosen = pick([parse_record(raw) for raw in listed], query)
+        records = [parse_record(raw) for raw in listed]
+        if synced_only:
+            records = [record for record in records if record.synced is not None]
+        chosen = pick(records, query)
         found = chosen.lyrics() if chosen is not None else None
         return found if found is not None else NotFound()
 
