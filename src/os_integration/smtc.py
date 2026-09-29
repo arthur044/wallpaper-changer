@@ -2,7 +2,9 @@ import asyncio
 import hashlib
 import logging
 import threading
+import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -10,6 +12,63 @@ logger = logging.getLogger(__name__)
 _SPOTIFY_AUMID_HINT = "spotify"
 _PLAYBACK_STATUS_PLAYING = 4  # GlobalSystemMediaTransportControlsSessionPlaybackStatus.PLAYING
 _SAFETY_POLL_SECONDS = 2.0  # events are the primary signal; this is just a floor in case one is missed
+# An update stamped longer ago than this is no stamp at all (an unset SMTC
+# DateTime reads as the year 1601): its position is taken as it stands.
+_MAX_STAMP_AGE = timedelta(hours=12)
+
+
+@dataclass(frozen=True)
+class TimelineSample:
+    """Where Spotify says the track is, anchored to time.monotonic() so the
+    widget's clock ignores wall-clock changes.
+
+    Spotify refreshes the SMTC timeline about every 4.5 s (measured
+    2026-09-28); in between, the position is extrapolated from here."""
+
+    track_key: str
+    position_ms: int  # at [observed_at]
+    observed_at: float  # time.monotonic() seconds
+    duration_ms: Optional[int]
+    is_playing: bool
+    rate: float
+    # SMTC's own last_updated_time, as epoch seconds: tells a fresh update
+    # from one left over from the previous track.
+    stamp: float
+
+
+def sample_from_smtc(
+    track_key: str,
+    position: timedelta,
+    end_time: timedelta,
+    last_updated: datetime,
+    is_playing: bool,
+    rate: Optional[float],
+    wall_now: datetime,
+    mono_now: float,
+) -> TimelineSample:
+    """SMTC gives the position as of [last_updated] (wall clock); this moves it
+    to [wall_now] and pins it to [mono_now]. Extrapolation, as the spike
+    measured it: position + age x rate, only while playing."""
+    if last_updated.tzinfo is None:
+        last_updated = last_updated.replace(tzinfo=timezone.utc)
+    rate = rate if rate and rate > 0 else 1.0
+    age = wall_now - last_updated
+    # A stamp from the future (clock skew) or from long ago (unset) adds nothing.
+    if age < timedelta(0) or age > _MAX_STAMP_AGE:
+        age = timedelta(0)
+    position_ms = position.total_seconds() * 1000
+    if is_playing:
+        position_ms += age.total_seconds() * 1000 * rate
+    duration_ms = int(end_time.total_seconds() * 1000)
+    return TimelineSample(
+        track_key=track_key,
+        position_ms=max(0, int(position_ms)),
+        observed_at=mono_now,
+        duration_ms=duration_ms if duration_ms > 0 else None,
+        is_playing=is_playing,
+        rate=rate,
+        stamp=last_updated.timestamp(),
+    )
 
 
 @dataclass(frozen=True)
@@ -47,6 +106,7 @@ class SmtcWatcher:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._snapshot: Optional[SmtcNowPlaying] = None
+        self._timeline: Optional[TimelineSample] = None
         self._available = False
         self._stop_event = threading.Event()
         self._first_refresh_done = threading.Event()
@@ -72,6 +132,12 @@ class SmtcWatcher:
     def get_snapshot(self) -> Optional[SmtcNowPlaying]:
         with self._lock:
             return self._snapshot
+
+    def get_timeline(self) -> Optional[TimelineSample]:
+        """Kept apart from get_snapshot(): the position changes every few
+        seconds, and the poller only cares about which track is playing."""
+        with self._lock:
+            return self._timeline
 
     def is_available(self) -> bool:
         with self._lock:
@@ -124,6 +190,7 @@ class SmtcWatcher:
                 continue
             session.add_media_properties_changed(handler)
             session.add_playback_info_changed(handler)
+            session.add_timeline_properties_changed(handler)
             registered_aumids.add(aumid)
 
     async def _refresh(self, manager) -> None:
@@ -131,6 +198,7 @@ class SmtcWatcher:
         if session is None:
             with self._lock:
                 self._snapshot = None
+                self._timeline = None
             return
 
         try:
@@ -147,8 +215,28 @@ class SmtcWatcher:
             album_artist=props.album_artist or None,
             is_playing=playback_info.playback_status == _PLAYBACK_STATUS_PLAYING,
         )
+        timeline = self._read_timeline(session, snapshot, playback_info)
         with self._lock:
             self._snapshot = snapshot
+            self._timeline = timeline
+
+    @staticmethod
+    def _read_timeline(session, snapshot: SmtcNowPlaying, playback_info) -> Optional[TimelineSample]:
+        try:
+            properties = session.get_timeline_properties()
+            return sample_from_smtc(
+                track_key=snapshot.track_key,
+                position=properties.position,
+                end_time=properties.end_time,
+                last_updated=properties.last_updated_time,
+                is_playing=snapshot.is_playing,
+                rate=playback_info.playback_rate,
+                wall_now=datetime.now(timezone.utc),
+                mono_now=time.monotonic(),
+            )
+        except Exception as exc:  # noqa: BLE001 - no position must not cost the track snapshot
+            logger.debug("Failed to read the SMTC timeline: %s", exc)
+            return None
 
     @staticmethod
     def _find_spotify_session(manager):
