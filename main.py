@@ -99,6 +99,7 @@ def main() -> int:
     if settings.use_smtc:
         smtc_watcher = SmtcWatcher()
         smtc_watcher.start()
+    qt_host.attach_smtc(smtc_watcher)
 
     try:
         client = _build_client(settings)

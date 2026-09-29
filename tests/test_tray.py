@@ -1,6 +1,25 @@
+import pytest
+
 from src.config.settings import Settings
 from src.os_integration.tray import TrayApp
 from src.utils.app_state import AppState
+
+# pystray registers a window class named after id(icon) when an icon is built
+# and unregisters it only when run() ends. These trays never run, so a freed
+# tray's id can come back for a new one and Windows refuses the class with
+# "Class already exists" (1410), now and then. Keeping every tray alive for the
+# whole session keeps the ids unique. The app itself builds one tray per process.
+_ALIVE = []
+_build_tray = TrayApp.__init__
+
+
+@pytest.fixture(autouse=True)
+def _keep_trays_alive(monkeypatch):
+    def init(self, *args, **kwargs):
+        _build_tray(self, *args, **kwargs)
+        _ALIVE.append(self)
+
+    monkeypatch.setattr(TrayApp, "__init__", init)
 
 
 def _tray(**callbacks):

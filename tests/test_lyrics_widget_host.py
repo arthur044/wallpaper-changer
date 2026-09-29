@@ -9,7 +9,11 @@ import pytest  # noqa: E402
 from PySide6.QtCore import QTimer, Qt  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
+from src.lyrics.lrclib import NotFound, SyncedLyrics  # noqa: E402
+from src.lyrics.text import TimedLine  # noqa: E402
 from src.lyrics_widget.qt_host import QtHost  # noqa: E402
+from src.lyrics_widget.view_model import Phase  # noqa: E402
+from src.os_integration.smtc import SmtcNowPlaying, TimelineSample  # noqa: E402
 
 _WATCHDOG_MS = 5000
 
@@ -101,3 +105,93 @@ def test_the_qt_loop_ends_even_if_the_tray_loop_crashes(host):
     host.run_tray_in_thread(crashing_tray)
 
     assert _exec_with_watchdog(host) < 2.0
+
+
+# --- the widget following SMTC -------------------------------------------------
+
+SONG = SmtcNowPlaying(title="Song", artist="Artist", album_title="Album", album_artist="Artist", is_playing=True)
+
+
+class _FakeWatcher:
+    def __init__(self, snapshot=None, timeline=None):
+        self.snapshot = snapshot
+        self.timeline = timeline
+
+    def get_snapshot(self):
+        return self.snapshot
+
+    def get_timeline(self):
+        return self.timeline
+
+
+def _playing_watcher(position_ms=5_000):
+    timeline = TimelineSample(
+        track_key=SONG.track_key,
+        position_ms=position_ms,
+        observed_at=time.monotonic(),
+        duration_ms=200_000,
+        is_playing=True,
+        rate=1.0,
+        stamp=1.0,
+    )
+    return _FakeWatcher(SONG, timeline)
+
+
+def _run_until(host, condition):
+    """Runs the Qt loop until [condition] holds, checked every 20 ms."""
+    poll = QTimer()
+    poll.setInterval(20)
+    poll.timeout.connect(lambda: condition() and QApplication.instance().quit())
+    poll.start()
+    _exec_with_watchdog(host)
+    poll.stop()
+
+
+def test_the_lyrics_reach_the_window_from_a_lookup_off_the_qt_thread():
+    on_main_thread = []
+
+    def source(query):
+        on_main_thread.append(threading.current_thread() is threading.main_thread())
+        return SyncedLyrics((TimedLine(1_000, "Line one"), TimedLine(4_000, "Line two"), TimedLine(9_000, "Line three")))
+
+    host = QtHost(lyrics_source=source)
+    host.attach_smtc(_playing_watcher(position_ms=5_000))
+    host.toggle_widget()
+
+    _run_until(host, lambda: host._window is not None and host._window.view.phase == Phase.SYNCED)
+
+    assert on_main_thread == [False]
+    assert host._window.view.lines == ("Line one", "Line two", "Line three")
+    assert host._window.view.current == 1
+    host.toggle_widget()
+
+
+def test_nothing_playing_hides_the_window_while_the_widget_stays_on():
+    watcher = _FakeWatcher()
+    host = QtHost(lyrics_source=lambda query: NotFound())
+    host.attach_smtc(watcher)
+
+    host.toggle_widget()
+    QApplication.processEvents()
+    assert host.is_widget_visible() is True
+    assert not host._window.isVisible()
+
+    watcher.snapshot = SONG
+    host._tick()
+    assert host._window.isVisible()
+
+    watcher.snapshot = None
+    host._tick()
+    assert not host._window.isVisible()
+    host.toggle_widget()
+
+
+def test_turning_the_widget_off_stops_following_smtc():
+    host = QtHost(lyrics_source=lambda query: NotFound())
+    host.attach_smtc(_playing_watcher())
+    host.toggle_widget()
+    assert host._timer.isActive()
+
+    host.toggle_widget()
+
+    assert not host._timer.isActive(), "off means no ticks, so no lookups"

@@ -2,7 +2,7 @@ from typing import Tuple
 
 Rect = Tuple[int, int, int, int]  # x, y, width, height
 
-DEFAULT_SIZE = (360, 160)
+DEFAULT_SIZE = (420, 190)
 SCREEN_MARGIN = 24
 
 

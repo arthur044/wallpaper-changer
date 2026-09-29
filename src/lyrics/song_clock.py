@@ -35,6 +35,14 @@ class SongClock:
         return self._sample.track_key if self._sample is not None else None
 
     @property
+    def duration_ms(self) -> Optional[int]:
+        """None while unknown, including while the timeline is a leftover
+        from the previous track (its duration is that track's)."""
+        if self._sample is None or self._stale_stamp is not None:
+            return None
+        return self._sample.duration_ms
+
+    @property
     def is_playing(self) -> bool:
         return self._sample is not None and self._sample.is_playing
 
