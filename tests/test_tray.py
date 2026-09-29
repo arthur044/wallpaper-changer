@@ -367,3 +367,31 @@ def test_restart_and_exit_are_disabled_while_an_update_is_applied(monkeypatch):
 
     _update_item(tray)(tray._icon)
     assert enabled() == {"Restart": False, "Exit": False}
+
+
+def test_lock_sync_stays_on_when_its_task_cannot_be_removed(monkeypatch):
+    from src.os_integration import tray as tray_module
+
+    monkeypatch.setattr(tray_module.lockscreen, "uninstall_task", lambda: False)
+    saved = []
+    monkeypatch.setattr(tray_module, "save_settings", lambda s: saved.append(s))
+    settings = Settings(sync_lock_screen=True)
+    tray = TrayApp(AppState(), settings, on_reauthenticate=lambda: None, on_exit=lambda: None, on_setup=lambda: None)
+
+    tray._apply_lock_sync_toggle()
+
+    assert settings.sync_lock_screen is True
+    assert saved == []
+
+
+def test_lock_sync_turns_off_once_its_task_is_gone(monkeypatch):
+    from src.os_integration import tray as tray_module
+
+    monkeypatch.setattr(tray_module.lockscreen, "uninstall_task", lambda: True)
+    monkeypatch.setattr(tray_module, "save_settings", lambda s: None)
+    settings = Settings(sync_lock_screen=True)
+    tray = TrayApp(AppState(), settings, on_reauthenticate=lambda: None, on_exit=lambda: None, on_setup=lambda: None)
+
+    tray._apply_lock_sync_toggle()
+
+    assert settings.sync_lock_screen is False

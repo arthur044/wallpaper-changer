@@ -6,17 +6,8 @@ import pytest
 
 from src.os_integration import lockscreen
 
-
-@pytest.fixture(autouse=True)
-def _never_elevate_for_real(monkeypatch):
-    # _run_elevated shows a real UAC prompt and runs schtasks as admin on the
-    # real task. A test that reaches it by accident (a fake /query saying the
-    # task survived) once deleted the user's task. Tests that need it patch
-    # it themselves, after this.
-    def refuse(exe, params):
-        raise AssertionError(f"test reached the real elevation: {exe} {params}")
-
-    monkeypatch.setattr(lockscreen, "_run_elevated", refuse)
+# conftest.py refuses the real schtasks and the real elevation in every test:
+# each test here fakes subprocess.run (and _run_elevated when it needs it).
 
 
 def _fake_completed(returncode=0, stderr=b""):
@@ -138,12 +129,19 @@ def test_install_task_returns_true_when_elevation_succeeds(monkeypatch):
 
 
 def _task_xml(command, arguments):
-    # Shape of `schtasks /query /xml` piped to a file (entities as schtasks writes them).
+    # Shape of `schtasks /query /xml` read through a pipe: OEM code page, one
+    # byte per character, "\r\r\n" line ends, UTF-16 declared anyway.
     return (
-        '<?xml version="1.0" encoding="UTF-16"?>\r\n<Task><Actions Context="Author"><Exec>\r\n'
-        f"      <Command>{command}</Command>\r\n      <Arguments>{arguments}</Arguments>\r\n"
+        '<?xml version="1.0" encoding="UTF-16"?>\r\r\n<Task><Actions Context="Author"><Exec>\r\r\n'
+        f"      <Command>{command}</Command>\r\r\n      <Arguments>{arguments}</Arguments>\r\r\n"
         "</Exec></Actions></Task>"
-    ).encode("cp1252")
+    ).encode("cp850")
+
+
+@pytest.fixture(autouse=True)
+def _oem_is_850(monkeypatch):
+    # This PC's OEM code page, pinned so the tests don't depend on the machine.
+    monkeypatch.setattr(lockscreen, "_oem_encoding", lambda: "cp850")
 
 
 def _split_launch_command():
@@ -165,7 +163,7 @@ def test_ensure_task_keeps_a_task_that_runs_this_folder(monkeypatch):
 def test_ensure_task_replaces_a_task_left_by_another_folder(monkeypatch):
     # Regression: after the app moved to its own clone, re-enabling Sync Lock
     # Screen kept the old task, which went on running the dev folder's code.
-    xml = _task_xml('"C:\old\.venv\Scripts\pythonw.exe"', '"C:\old\main.py" --apply-lockscreen')
+    xml = _task_xml(r'"C:\old\.venv\Scripts\pythonw.exe"', r'"C:\old\main.py" --apply-lockscreen')
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0, stdout=xml))
     installs = []
     monkeypatch.setattr(lockscreen, "install_task", lambda: installs.append(1) or True)
@@ -182,10 +180,25 @@ def test_ensure_task_installs_when_there_is_none(monkeypatch):
 
 
 def test_registered_command_reads_command_and_arguments(monkeypatch):
-    xml = _task_xml('"C:\a b\pythonw.exe"', '"C:\a b\main.py" --apply-lockscreen')
+    xml = _task_xml(r'"C:\a b\pythonw.exe"', r'"C:\a b\main.py" --apply-lockscreen')
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0, stdout=xml))
 
-    assert lockscreen._registered_command() == '"C:\a b\pythonw.exe" "C:\a b\main.py" --apply-lockscreen'
+    assert lockscreen._registered_command() == r'"C:\a b\pythonw.exe" "C:\a b\main.py" --apply-lockscreen'
+
+
+def test_accented_user_folder_matches_without_reinstalling(monkeypatch):
+    # Decoding the OEM bytes as UTF-8 dropped the "ã" of João, so the task
+    # never matched and every enable asked for UAC again.
+    exe = r'"C:\Users\João\wallpaper-app\.venv\Scripts\pythonw.exe"'
+    args = r'"C:\Users\João\wallpaper-app\main.py" --apply-lockscreen'
+    assert "\\" in exe and "\x07" not in exe  # real backslashes, not escapes
+    monkeypatch.setattr(lockscreen, "_launch_command", lambda: f"{exe} {args}")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0, stdout=_task_xml(exe, args)))
+    installs = []
+    monkeypatch.setattr(lockscreen, "install_task", lambda: installs.append(1) or True)
+
+    assert lockscreen.ensure_task() is True
+    assert installs == []
 
 
 def test_uninstall_that_works_unelevated_skips_uac(monkeypatch):

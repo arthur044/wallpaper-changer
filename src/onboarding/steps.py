@@ -148,7 +148,10 @@ def apply_options(settings: Settings, autostart: bool, sync_lock_screen: bool) -
             logger.warning("Lock screen sync not enabled: task installation was declined or failed")
             return ApplyOptionsResult(lockscreen_declined=True)
     elif settings.sync_lock_screen and not sync_lock_screen:
-        lockscreen.uninstall_task()
+        if not lockscreen.uninstall_task():
+            # Still registered (UAC declined): the setting says so too.
+            logger.warning("Lock screen sync left on: the task could not be removed")
+            sync_lock_screen = True
 
     settings.sync_lock_screen = sync_lock_screen
     save_settings(settings)

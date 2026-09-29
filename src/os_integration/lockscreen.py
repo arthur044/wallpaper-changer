@@ -100,6 +100,11 @@ def install_task() -> bool:
     return success
 
 
+def _oem_encoding() -> str:
+    """The code page console programs like schtasks write to a pipe."""
+    return f"cp{ctypes.windll.kernel32.GetOEMCP()}"
+
+
 def _registered_command() -> Optional[str]:
     """What the installed task runs ("<Command> <Arguments>"), or None."""
     result = subprocess.run(
@@ -107,9 +112,11 @@ def _registered_command() -> Optional[str]:
     )
     if result.returncode != 0:
         return None
-    # Declared UTF-16 but piped in the console code page: a regex is enough
-    # for two elements, and avoids the XML parser tripping on the declaration.
-    xml = result.stdout.decode(errors="ignore")
+    # Declared UTF-16 but piped in the OEM code page (850 here), one byte per
+    # character: decoding as UTF-8 would drop the "ã" of C:\Users\João and the
+    # comparison would reinstall (one UAC) every time. A regex is enough for
+    # two elements and avoids the XML parser tripping on the declaration.
+    xml = result.stdout.decode(_oem_encoding(), errors="replace")
     command = re.search(r"<Command>(.*?)</Command>", xml, re.S)
     arguments = re.search(r"<Arguments>(.*?)</Arguments>", xml, re.S)
     if command is None:

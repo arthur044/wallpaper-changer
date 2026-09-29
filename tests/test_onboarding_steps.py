@@ -138,9 +138,10 @@ def test_verify_connection_maps_network_failure(monkeypatch):
 
 
 class _FakeLockscreen:
-    def __init__(self, task_installed=False, install_succeeds=True):
+    def __init__(self, task_installed=False, install_succeeds=True, uninstall_succeeds=True):
         self.task_installed = task_installed
         self.install_succeeds = install_succeeds
+        self.uninstall_succeeds = uninstall_succeeds
         self.calls = []
 
     def is_task_installed(self):
@@ -157,7 +158,7 @@ class _FakeLockscreen:
 
     def uninstall_task(self):
         self.calls.append("uninstall_task")
-        return True
+        return self.uninstall_succeeds
 
 
 def _patch_options(monkeypatch, lock, autostart_error=None):
@@ -312,3 +313,16 @@ def test_authenticate_returns_a_client_on_success(monkeypatch):
     client = steps.authenticate(Settings(client_id=_VALID))
 
     assert client is not None
+
+
+def test_task_that_cannot_be_removed_keeps_the_setting_on(monkeypatch):
+    # UAC declined: the task still runs elevated at logon, so the setting
+    # must not claim the feature is off.
+    lock = _FakeLockscreen(task_installed=True, uninstall_succeeds=False)
+    saved, _ = _patch_options(monkeypatch, lock)
+    settings = Settings(sync_lock_screen=True)
+
+    steps.apply_options(settings, autostart=False, sync_lock_screen=False)
+
+    assert "uninstall_task" in lock.calls
+    assert settings.sync_lock_screen is True

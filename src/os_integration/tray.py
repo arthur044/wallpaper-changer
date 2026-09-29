@@ -273,9 +273,11 @@ class TrayApp:
 
     def _apply_lock_sync_toggle(self) -> None:
         if self._settings.sync_lock_screen:
-            # Off either way: without the setting nothing triggers the task,
-            # a leftover one only runs at logon with nothing pending.
-            lockscreen.uninstall_task()
+            if not lockscreen.uninstall_task():
+                # The task is still registered and runs elevated at logon, so
+                # the menu keeps showing it on rather than claiming it's gone.
+                logger.warning("Lock screen sync left on: the task could not be removed (UAC declined?)")
+                return
             self._settings.sync_lock_screen = False
             save_settings(self._settings)
             return
