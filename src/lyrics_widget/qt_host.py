@@ -1,16 +1,16 @@
 import logging
 import threading
-import time
 from typing import Callable, List, Optional
 
 from PySide6.QtCore import QEasingCurve, QObject, QPointF, QRectF, Qt, QTimer, QVariantAnimation, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QTextLayout, QTextOption
 from PySide6.QtWidgets import QApplication, QWidget
 
+from src.config.settings import Settings
 from src.lyrics.lrclib import Lyrics, LyricsQuery, LyricsUnavailableError, LrclibClient
 from src.lyrics.slot import LyricsSlot
 from src.lyrics_widget.controller import FetchRequest, LyricsWidgetController
-from src.lyrics_widget.geometry import DEFAULT_SIZE, default_position
+from src.lyrics_widget.geometry import DEFAULT_SIZE, default_position, edges_at, hide_for_full_screen, restore_rect
 from src.lyrics_widget.view_model import (
     BREAK_HEIGHT,
     LINE_SPACING,
@@ -24,6 +24,8 @@ from src.lyrics_widget.view_model import (
     scroll_for_progress,
     scroll_to_line,
 )
+from src.os_integration.fullscreen import notification_state
+from src.os_integration.window_layer import set_window_layer
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +38,25 @@ _TEXT_ALPHA = 215  # unsynced words: all alike
 _MESSAGE_ALPHA = 170
 _FADE = 0.2  # lines fade out over this share of the height at each edge
 _VERTICAL_PADDING = 12
+_MIN_HEIGHT = 80
 _SCROLL_MS = 350
 _TICK_MS = 100
+_FULL_SCREEN_CHECK_TICKS = 10  # once a second
+_SAVE_AFTER_MOVE_MS = 600
 _FONT_FAMILY = "Segoe UI"
+
+_QT_EDGES = {"left": Qt.LeftEdge, "right": Qt.RightEdge, "top": Qt.TopEdge, "bottom": Qt.BottomEdge}
+_CURSORS = {
+    frozenset(): Qt.ArrowCursor,
+    frozenset({"left"}): Qt.SizeHorCursor,
+    frozenset({"right"}): Qt.SizeHorCursor,
+    frozenset({"top"}): Qt.SizeVerCursor,
+    frozenset({"bottom"}): Qt.SizeVerCursor,
+    frozenset({"left", "top"}): Qt.SizeFDiagCursor,
+    frozenset({"right", "bottom"}): Qt.SizeFDiagCursor,
+    frozenset({"right", "top"}): Qt.SizeBDiagCursor,
+    frozenset({"left", "bottom"}): Qt.SizeBDiagCursor,
+}
 
 
 def _wrap_option() -> QTextOption:
@@ -64,15 +82,40 @@ def _wrapped_height(text: str, font: QFont, width: float) -> float:
     return height
 
 
-class LyricsWindow(QWidget):
-    """The widget's window: frameless, no taskbar button (Qt.Tool), with a
-    per-pixel translucent rounded background. Shows the lines of a View, the
-    one being sung highlighted and scrolled to with an animation."""
+def screen_key(screen) -> str:
+    """Which monitor, as stable as Qt can tell: its name plus whatever the
+    EDID reports (often empty on Windows)."""
+    return "|".join((screen.name(), screen.manufacturer(), screen.model(), screen.serialNumber()))
 
-    def __init__(self) -> None:
-        super().__init__(None, Qt.FramelessWindowHint | Qt.Tool)
+
+def window_flags(locked: bool, on_top: bool) -> Qt.WindowFlags:
+    """Frameless, no taskbar button (Qt.Tool), behind the other windows unless
+    on top, and letting clicks through while locked."""
+    flags = Qt.FramelessWindowHint | Qt.Tool
+    flags |= Qt.WindowStaysOnTopHint if on_top else Qt.WindowStaysOnBottomHint
+    if locked:
+        flags |= Qt.WindowTransparentForInput
+    return flags
+
+
+class LyricsWindow(QWidget):
+    """The widget's window, with a per-pixel translucent rounded background.
+    Shows the lines of a View, the one being sung highlighted and scrolled to
+    with an animation. Unlocked, a press moves it, or resizes it near the
+    border; [on_user_moved] runs once the user has let go."""
+
+    def __init__(self, on_user_moved: Callable[[], None] = lambda: None) -> None:
+        super().__init__(None, window_flags(locked=False, on_top=False))
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
+        self.setMouseTracking(True)
+        self._on_user_moved = on_user_moved
+        self._on_top = False
+        self._interacting = False
+        self._save_timer = QTimer(self)
+        self._save_timer.setSingleShot(True)
+        self._save_timer.setInterval(_SAVE_AFTER_MOVE_MS)
+        self._save_timer.timeout.connect(self._user_moved)
         self._view = View(Phase.LOADING)
         self._font = QFont(_FONT_FAMILY)
         self._bold = QFont(_FONT_FAMILY)
@@ -85,13 +128,28 @@ class LyricsWindow(QWidget):
         self._animation.valueChanged.connect(self._set_scroll)
         smallest = QFont(_FONT_FAMILY)
         smallest.setPixelSize(MIN_FONT_PX)
-        self.setMinimumWidth(min_width(QFontMetrics(smallest).averageCharWidth()))
+        self.setMinimumSize(min_width(QFontMetrics(smallest).averageCharWidth()), _MIN_HEIGHT)
         self.resize(*DEFAULT_SIZE)
         self._update_fonts()
 
     @property
     def view(self) -> View:
         return self._view
+
+    def apply_layer(self, locked: bool, on_top: bool) -> None:
+        # setWindowFlags hides the window; it comes back as it was.
+        was_visible = self.isVisible()
+        self._on_top = on_top
+        self.setWindowFlags(window_flags(locked, on_top))
+        self.unsetCursor()
+        if was_visible:
+            self.show()  # showEvent sets the layer
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().showEvent(event)
+        # The flags alone don't move an existing window between the bottom and
+        # the top of the stack on Windows; see set_window_layer.
+        set_window_layer(int(self.winId()), self._on_top)
 
     def move_to_default_position(self) -> None:
         screen = QApplication.primaryScreen()
@@ -117,6 +175,36 @@ class LyricsWindow(QWidget):
         else:
             self._scroll = self._target_scroll()
         self.update()
+
+    # --- moving and resizing (unlocked only: locked, no input reaches here) ---
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if event.button() != Qt.LeftButton or self.windowHandle() is None:
+            return
+        point = event.position().toPoint()
+        edges = edges_at(point.x(), point.y(), self.width(), self.height())
+        self._interacting = True
+        if edges:
+            qt_edges = Qt.Edges()
+            for edge in edges:
+                qt_edges |= _QT_EDGES[edge]
+            self.windowHandle().startSystemResize(qt_edges)
+        else:
+            self.windowHandle().startSystemMove()
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if event.buttons() == Qt.NoButton:
+            point = event.position().toPoint()
+            self.setCursor(_CURSORS[edges_at(point.x(), point.y(), self.width(), self.height())])
+
+    def moveEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if self._interacting:
+            self._save_timer.start()
+        super().moveEvent(event)
+
+    def _user_moved(self) -> None:
+        self._interacting = False
+        self._on_user_moved()
 
     # --- layout ---------------------------------------------------------------
 
@@ -162,6 +250,8 @@ class LyricsWindow(QWidget):
         self._relayout()
         self._animation.stop()
         self._scroll = self._target_scroll()
+        if self._interacting:
+            self._save_timer.start()
         super().resizeEvent(event)
 
     # --- painting -------------------------------------------------------------
@@ -219,6 +309,8 @@ class _Bridge(QObject):
     # Emitted from other threads; the default (auto) connection queues them to
     # the Qt thread, which owns every widget.
     visibility_requested = Signal(bool)
+    layer_requested = Signal()
+    reset_requested = Signal()
     quit_requested = Signal()
     lyrics_ready = Signal(str, object)
     lyrics_failed = Signal(str)
@@ -234,16 +326,29 @@ class QtHost:
 
     Create it before anything calls SetProcessDpiAwareness (the first render
     does, in layout.py): Qt sets per-monitor v2 awareness on startup and can't
-    once the process already has a mode."""
+    once the process already has a mode.
 
-    def __init__(self, lyrics_source: Optional[LyricsSource] = None) -> None:
+    The widget's switches and position live in [settings] and are written with
+    [save] from the Qt thread; without [save] (tests) nothing is written."""
+
+    def __init__(
+        self,
+        settings: Optional[Settings] = None,
+        save: Optional[Callable[[Settings], None]] = None,
+        lyrics_source: Optional[LyricsSource] = None,
+    ) -> None:
         self._app = QApplication.instance() or QApplication([])
         # The widget is the only window; hiding it must not end the app.
         self._app.setQuitOnLastWindowClosed(False)
+        self._settings = settings if settings is not None else Settings()
+        self._save = save if save is not None else (lambda _settings: None)
         self._window: Optional[LyricsWindow] = None
-        self._placed = False
-        self._visible = False  # the tray toggle: on or off
         self._lock = threading.Lock()
+        self._visible = self._settings.lyrics_widget_enabled  # the tray's "Show"
+        self._locked = self._settings.lyrics_widget_locked
+        self._on_top = self._settings.lyrics_widget_on_top
+        self._full_screen = False
+        self._ticks = 0
         self._watcher = None
         self._controller = LyricsWidgetController(has_source=False)
         self._slot = LyricsSlot(lyrics_source if lyrics_source is not None else LrclibClient().lyrics)
@@ -252,9 +357,12 @@ class QtHost:
         self._timer.timeout.connect(self._tick)
         self._bridge = _Bridge()
         self._bridge.visibility_requested.connect(self._apply_visibility)
+        self._bridge.layer_requested.connect(self._apply_layer)
+        self._bridge.reset_requested.connect(self._reset_position)
         self._bridge.quit_requested.connect(self._app.quit)
         self._bridge.lyrics_ready.connect(self._on_lyrics)
         self._bridge.lyrics_failed.connect(self._on_failure)
+        self._app.screenRemoved.connect(self._on_screen_removed)
 
     def attach_smtc(self, watcher) -> None:
         """The track and position come from SMTC; without it (use_smtc off)
@@ -262,17 +370,38 @@ class QtHost:
         self._watcher = watcher
         self._controller = LyricsWidgetController(has_source=watcher is not None)
 
-    # --- any thread ---------------------------------------------------------
+    # --- any thread (the tray's LyricsWidgetControls) -------------------------
 
     def is_widget_visible(self) -> bool:
         with self._lock:
             return self._visible
+
+    def is_locked(self) -> bool:
+        with self._lock:
+            return self._locked
+
+    def is_on_top(self) -> bool:
+        with self._lock:
+            return self._on_top
 
     def toggle_widget(self) -> None:
         with self._lock:
             self._visible = not self._visible
             visible = self._visible
         self._bridge.visibility_requested.emit(visible)
+
+    def toggle_locked(self) -> None:
+        with self._lock:
+            self._locked = not self._locked
+        self._bridge.layer_requested.emit()
+
+    def toggle_on_top(self) -> None:
+        with self._lock:
+            self._on_top = not self._on_top
+        self._bridge.layer_requested.emit()
+
+    def reset_position(self) -> None:
+        self._bridge.reset_requested.emit()
 
     def request_quit(self) -> None:
         self._bridge.quit_requested.emit()
@@ -296,19 +425,83 @@ class QtHost:
     # --- Qt thread ----------------------------------------------------------
 
     def exec(self) -> int:
+        if self.is_widget_visible():  # left on last time
+            self._apply_visibility(True)
         return self._app.exec()
 
+    def _persist(self) -> None:
+        self._save(self._settings)
+
     def _apply_visibility(self, visible: bool) -> None:
+        if self._settings.lyrics_widget_enabled != visible:
+            self._settings.lyrics_widget_enabled = visible
+            self._persist()
         if not visible:
             # Off: no ticks, so no lookups either.
             self._timer.stop()
             if self._window is not None:
                 self._window.hide()
             return
-        if self._window is None:
-            self._window = LyricsWindow()
+        self._ensure_window()
         self._timer.start()
         self._tick()
+
+    def _ensure_window(self) -> LyricsWindow:
+        if self._window is None:
+            self._window = LyricsWindow(on_user_moved=self._save_geometry)
+            self._window.apply_layer(self.is_locked(), self.is_on_top())
+            self._place_window()
+        return self._window
+
+    def _apply_layer(self) -> None:
+        locked, on_top = self.is_locked(), self.is_on_top()
+        self._settings.lyrics_widget_locked = locked
+        self._settings.lyrics_widget_on_top = on_top
+        self._persist()
+        if self._window is not None:
+            self._window.apply_layer(locked, on_top)
+
+    def _screens(self):
+        return [
+            (screen_key(screen), (area.x(), area.y(), area.width(), area.height()))
+            for screen in self._app.screens()
+            for area in (screen.availableGeometry(),)
+        ]
+
+    def _place_window(self) -> None:
+        window = self._window
+        if window is None:
+            return
+        saved = self._settings.lyrics_widget_geometry
+        rect = restore_rect(saved, self._screens())
+        if rect is not None:
+            window.setGeometry(*rect)
+            return
+        # The default corner, keeping the size the user chose, if any.
+        window.resize(*(saved["rect"][2:] if saved else DEFAULT_SIZE))
+        window.move_to_default_position()
+
+    def _save_geometry(self) -> None:
+        window = self._window
+        if window is None or window.screen() is None:
+            return
+        geometry = window.geometry()
+        self._settings.lyrics_widget_geometry = {
+            "monitor": screen_key(window.screen()),
+            "rect": [geometry.x(), geometry.y(), geometry.width(), geometry.height()],
+        }
+        self._persist()
+
+    def _reset_position(self) -> None:
+        self._settings.lyrics_widget_geometry = None
+        self._persist()
+        if self._window is not None:
+            self._window.resize(*DEFAULT_SIZE)
+            self._window.move_to_default_position()
+
+    def _on_screen_removed(self, _screen) -> None:
+        # Its monitor may be the one gone: the saved spot or the default.
+        self._place_window()
 
     def _tick(self) -> None:
         watcher = self._watcher
@@ -320,13 +513,13 @@ class QtHost:
         window = self._window
         if window is None:
             return
+        if self._ticks % _FULL_SCREEN_CHECK_TICKS == 0:
+            self._full_screen = hide_for_full_screen(self.is_on_top(), notification_state())
+        self._ticks += 1
         window.set_view(view)
-        if view.phase == Phase.HIDDEN:
+        if view.phase == Phase.HIDDEN or self._full_screen:
             window.hide()
         elif not window.isVisible():
-            if not self._placed:
-                window.move_to_default_position()
-                self._placed = True
             window.show()
 
     def _start_lookup(self, request: FetchRequest) -> None:

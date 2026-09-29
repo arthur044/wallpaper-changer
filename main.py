@@ -5,7 +5,7 @@ import sys
 import threading
 
 from src.config.paths import album_base_path, track_index_file
-from src.config.settings import load_settings
+from src.config.settings import load_settings, save_settings
 from src.graphics.base_cache import base_cache_key
 from src.graphics.layout import compute_layout
 from src.graphics.renderer import render_for_now_playing
@@ -91,7 +91,7 @@ def main() -> int:
 
     # Before the poller starts: its first render sets the DPI awareness, and Qt
     # has to set it first (see QtHost). After the wizard: its Tk root is gone.
-    qt_host = QtHost()
+    qt_host = QtHost(settings, save=save_settings)
 
     app_state = AppState()
 
@@ -177,8 +177,7 @@ def main() -> int:
         on_exit=on_exit,
         on_setup=on_setup,
         on_restart=on_restart,
-        on_toggle_lyrics_widget=qt_host.toggle_widget,
-        is_lyrics_widget_visible=qt_host.is_widget_visible,
+        lyrics_widget=qt_host,
     )
     tray_thread = qt_host.run_tray_in_thread(tray.run)
     qt_host.exec()  # blocks until Exit or Restart ends the tray loop

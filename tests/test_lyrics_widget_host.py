@@ -11,7 +11,9 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from src.lyrics.lrclib import NotFound, SyncedLyrics  # noqa: E402
 from src.lyrics.text import TimedLine  # noqa: E402
-from src.lyrics_widget.qt_host import QtHost  # noqa: E402
+from src.config.settings import Settings  # noqa: E402
+from src.lyrics_widget.geometry import DEFAULT_SIZE, default_position  # noqa: E402
+from src.lyrics_widget.qt_host import QtHost, screen_key, window_flags  # noqa: E402
 from src.lyrics_widget.view_model import Phase  # noqa: E402
 from src.os_integration.smtc import SmtcNowPlaying, TimelineSample  # noqa: E402
 
@@ -195,3 +197,163 @@ def test_turning_the_widget_off_stops_following_smtc():
     host.toggle_widget()
 
     assert not host._timer.isActive(), "off means no ticks, so no lookups"
+
+
+# --- position and layer ----------------------------------------------------------
+
+
+def test_the_window_sits_behind_the_others_unless_on_top_and_lets_clicks_through_when_locked():
+    default = window_flags(locked=False, on_top=False)
+    assert default & Qt.WindowStaysOnBottomHint and not default & Qt.WindowStaysOnTopHint
+    assert not default & Qt.WindowTransparentForInput
+
+    on_top = window_flags(locked=False, on_top=True)
+    assert on_top & Qt.WindowStaysOnTopHint and not on_top & Qt.WindowStaysOnBottomHint
+
+    assert window_flags(locked=True, on_top=False) & Qt.WindowTransparentForInput
+
+
+def test_the_layer_is_set_on_windows_itself_whenever_the_window_shows(monkeypatch):
+    """Regression: switching Qt's hint from bottom to top on a live window
+    never gave it WS_EX_TOPMOST on Windows, so the layer is set with Win32."""
+    from src.lyrics_widget import qt_host
+
+    calls = []
+    monkeypatch.setattr(qt_host, "set_window_layer", lambda hwnd, on_top: calls.append(on_top))
+    host = QtHost(Settings(), lyrics_source=lambda query: NotFound())
+
+    # Setting the layer again is harmless, and a flag change can show the
+    # window more than once: what matters is the last layer asked for.
+    host.toggle_widget()
+    QApplication.processEvents()
+    assert calls and calls[-1] is False
+
+    host.toggle_on_top()
+    QApplication.processEvents()
+    assert calls[-1] is True
+
+    host.toggle_on_top()
+    QApplication.processEvents()
+    assert calls[-1] is False
+    host.toggle_widget()
+
+
+class _Saves:
+    def __init__(self):
+        self.count = 0
+
+    def __call__(self, settings):
+        self.count += 1
+
+
+def _host_with(settings):
+    saves = _Saves()
+    return QtHost(settings, save=saves, lyrics_source=lambda query: NotFound()), saves
+
+
+def test_the_switches_are_applied_to_the_window_and_saved():
+    settings = Settings()
+    host, saves = _host_with(settings)
+    host.toggle_widget()
+    QApplication.processEvents()
+
+    host.toggle_locked()
+    host.toggle_on_top()
+    QApplication.processEvents()
+
+    flags = host._window.windowFlags()
+    assert flags & Qt.WindowTransparentForInput and flags & Qt.WindowStaysOnTopHint
+    assert host._window.isVisible(), "changing the flags must not leave it hidden"
+    assert (settings.lyrics_widget_enabled, settings.lyrics_widget_locked, settings.lyrics_widget_on_top) == (True, True, True)
+    assert saves.count == 3
+    host.toggle_widget()
+
+
+def test_the_switches_saved_last_time_are_where_it_starts():
+    settings = Settings(lyrics_widget_enabled=True, lyrics_widget_locked=True, lyrics_widget_on_top=True)
+    host, _ = _host_with(settings)
+
+    assert (host.is_widget_visible(), host.is_locked(), host.is_on_top()) == (True, True, True)
+
+
+def _available(screen):
+    area = screen.availableGeometry()
+    return area.x(), area.y(), area.width(), area.height()
+
+
+def test_a_saved_spot_on_a_monitor_still_there_is_restored():
+    screen = QApplication.primaryScreen()
+    x, y, _, _ = _available(screen)
+    settings = Settings(lyrics_widget_geometry={"monitor": screen_key(screen), "rect": [x + 30, y + 40, 400, 150]})
+    host, _ = _host_with(settings)
+
+    host.toggle_widget()
+    QApplication.processEvents()
+
+    geometry = host._window.geometry()
+    assert (geometry.x(), geometry.y(), geometry.width(), geometry.height()) == (x + 30, y + 40, 400, 150)
+    host.toggle_widget()
+
+
+def test_a_spot_saved_on_a_monitor_that_is_gone_falls_back_to_the_default_corner_keeping_the_size():
+    settings = Settings(lyrics_widget_geometry={"monitor": "a monitor unplugged", "rect": [5000, 40, 400, 150]})
+    host, _ = _host_with(settings)
+
+    host.toggle_widget()
+    QApplication.processEvents()
+
+    geometry = host._window.geometry()
+    assert (geometry.width(), geometry.height()) == (400, 150)
+    assert (geometry.x(), geometry.y()) == default_position(_available(QApplication.primaryScreen()), (400, 150))
+    host.toggle_widget()
+
+
+def test_reset_position_forgets_the_saved_spot_and_goes_back_to_the_default():
+    screen = QApplication.primaryScreen()
+    x, y, _, _ = _available(screen)
+    settings = Settings(lyrics_widget_geometry={"monitor": screen_key(screen), "rect": [x + 30, y + 40, 400, 150]})
+    host, saves = _host_with(settings)
+    host.toggle_widget()
+    QApplication.processEvents()
+    before = saves.count
+
+    host.reset_position()
+    QApplication.processEvents()
+
+    assert settings.lyrics_widget_geometry is None
+    assert saves.count == before + 1
+    geometry = host._window.geometry()
+    assert (geometry.width(), geometry.height()) == DEFAULT_SIZE
+    assert (geometry.x(), geometry.y()) == default_position(_available(screen), DEFAULT_SIZE)
+    host.toggle_widget()
+
+
+def test_a_move_by_the_user_is_saved_with_its_monitor():
+    settings = Settings()
+    host, saves = _host_with(settings)
+    host.toggle_widget()
+    QApplication.processEvents()
+    window = host._window
+
+    window.move(window.x() - 50, window.y() - 20)
+    window._user_moved()  # what the timer runs once the user lets go
+
+    saved = settings.lyrics_widget_geometry
+    assert saved["monitor"] == screen_key(window.screen())
+    assert saved["rect"] == [window.x(), window.y(), window.width(), window.height()]
+    assert saves.count >= 1
+    host.toggle_widget()
+
+
+def test_placing_the_window_by_code_is_not_saved_as_the_users_choice():
+    settings = Settings()
+    host, _ = _host_with(settings)
+    host.toggle_widget()
+    QApplication.processEvents()
+
+    host._window.move(host._window.x() - 50, host._window.y())
+    QApplication.processEvents()
+
+    assert not host._window._save_timer.isActive()
+    assert settings.lyrics_widget_geometry is None
+    host.toggle_widget()

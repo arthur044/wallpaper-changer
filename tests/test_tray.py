@@ -143,19 +143,55 @@ def test_glow_and_glass_toggle_and_redraw(monkeypatch):
     assert settings.text_card == "none"
 
 
-def test_lyrics_widget_item_runs_the_toggle_and_shows_its_state():
-    visible = [False]
+class _FakeWidget:
+    def __init__(self):
+        self.visible = self.locked = self.on_top = False
+        self.resets = 0
 
-    def toggle():
-        visible[0] = not visible[0]
+    def toggle_widget(self):
+        self.visible = not self.visible
 
-    tray = _tray(on_toggle_lyrics_widget=toggle, is_lyrics_widget_visible=lambda: visible[0])
-    item = next(item for item in tray._build_menu().items if item.text == "Lyrics widget")
+    def is_widget_visible(self):
+        return self.visible
 
-    assert item.checked is False
-    tray._toggle_lyrics_widget(tray._icon, None)
-    assert visible == [True]
-    assert item.checked is True
+    def toggle_locked(self):
+        self.locked = not self.locked
+
+    def is_locked(self):
+        return self.locked
+
+    def toggle_on_top(self):
+        self.on_top = not self.on_top
+
+    def is_on_top(self):
+        return self.on_top
+
+    def reset_position(self):
+        self.resets += 1
+
+
+def _lyrics_items(tray):
+    menu = next(item for item in tray._build_menu().items if item.text == "Lyrics widget")
+    return {item.text: item for item in menu.submenu.items}
+
+
+def test_lyrics_widget_menu_runs_each_control_and_shows_its_state():
+    widget = _FakeWidget()
+    tray = _tray(lyrics_widget=widget)
+    items = _lyrics_items(tray)
+
+    assert [items[name].checked for name in ("Show", "Lock position", "Always on top")] == [False, False, False]
+    for name in ("Show", "Lock position", "Always on top", "Reset position"):
+        items[name](tray._icon)
+
+    assert (widget.visible, widget.locked, widget.on_top, widget.resets) == (True, True, True, 1)
+    assert [items[name].checked for name in ("Show", "Lock position", "Always on top")] == [True, True, True]
+
+
+def test_without_a_lyrics_widget_its_menu_is_hidden():
+    tray = _tray()
+    menu = next(item for item in tray._build_menu().items if item.text == "Lyrics widget")
+    assert menu.visible is False
 
 
 def test_restart_runs_the_callback_and_closes_the_tray(monkeypatch):

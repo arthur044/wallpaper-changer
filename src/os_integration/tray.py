@@ -1,6 +1,6 @@
 import logging
 import threading
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Protocol, Tuple
 
 import pystray
 from PIL import Image, ImageDraw
@@ -26,6 +26,25 @@ def _build_icon_image(color: Tuple[int, int, int]) -> Image.Image:
     return image
 
 
+class LyricsWidgetControls(Protocol):
+    """What the tray can do to the lyrics widget (QtHost). Every method is
+    safe to call from the tray's thread."""
+
+    def toggle_widget(self) -> None: ...
+
+    def is_widget_visible(self) -> bool: ...
+
+    def toggle_locked(self) -> None: ...
+
+    def is_locked(self) -> bool: ...
+
+    def toggle_on_top(self) -> None: ...
+
+    def is_on_top(self) -> bool: ...
+
+    def reset_position(self) -> None: ...
+
+
 class TrayApp:
     def __init__(
         self,
@@ -35,8 +54,7 @@ class TrayApp:
         on_exit: Callable[[], None],
         on_setup: Callable[[], None],
         on_restart: Callable[[], None] = lambda: None,
-        on_toggle_lyrics_widget: Callable[[], None] = lambda: None,
-        is_lyrics_widget_visible: Callable[[], bool] = lambda: False,
+        lyrics_widget: Optional[LyricsWidgetControls] = None,
     ):
         self._app_state = app_state
         self._settings = settings
@@ -46,8 +64,7 @@ class TrayApp:
         # setup hook below, and an instance attribute would shadow it.
         self._launch_wizard = on_setup
         self._on_restart = on_restart
-        self._on_toggle_lyrics_widget = on_toggle_lyrics_widget
-        self._is_lyrics_widget_visible = is_lyrics_widget_visible
+        self._lyrics_widget = lyrics_widget
         self._wizard_thread: Optional[threading.Thread] = None
         self._icon = pystray.Icon(
             "spotify_wallpaper_engine",
@@ -68,8 +85,8 @@ class TrayApp:
             ),
             pystray.MenuItem(
                 "Lyrics widget",
-                self._toggle_lyrics_widget,
-                checked=lambda item: self._is_lyrics_widget_visible(),
+                self._build_lyrics_menu(),
+                visible=lambda item: self._lyrics_widget is not None,
             ),
             pystray.MenuItem(
                 "Re-authenticate",
@@ -194,8 +211,16 @@ class TrayApp:
         save_settings(self._settings)
         self._app_state.force_sync_event.set()
 
-    def _toggle_lyrics_widget(self, icon, item) -> None:
-        self._on_toggle_lyrics_widget()
+    def _build_lyrics_menu(self) -> pystray.Menu:
+        widget = self._lyrics_widget
+        if widget is None:
+            return pystray.Menu()
+        return pystray.Menu(
+            pystray.MenuItem("Show", lambda icon, item: widget.toggle_widget(), checked=lambda item: widget.is_widget_visible()),
+            pystray.MenuItem("Lock position", lambda icon, item: widget.toggle_locked(), checked=lambda item: widget.is_locked()),
+            pystray.MenuItem("Always on top", lambda icon, item: widget.toggle_on_top(), checked=lambda item: widget.is_on_top()),
+            pystray.MenuItem("Reset position", lambda icon, item: widget.reset_position()),
+        )
 
     def _restart(self, icon, item) -> None:
         self._on_restart()
