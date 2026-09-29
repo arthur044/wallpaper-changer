@@ -193,13 +193,28 @@ class LrclibClient:
             return NotFound()
         album = (query.album or "").strip()
         seconds = (query.duration_ms or 0) // 1000
+        exact_text: Optional[TextLyrics] = None
         # /get wants all four; without album or duration it can only say 400.
         if album and seconds > 0:
             exact = self._get("get", {"artist_name": artist, "track_name": title, "album_name": album, "duration": str(seconds)})
             if exact is not None:
                 found = parse_record(exact).lyrics()
-                if found is not None:
+                if isinstance(found, TextLyrics):
+                    # Words without times can't follow the song. Unlike the
+                    # Android share (plain text either way), the widget looks
+                    # for a synced upload of the same recording first.
+                    exact_text = found
+                elif found is not None:
                     return found
+        if exact_text is not None:
+            try:
+                searched = self._search(query, artist, title)
+            except LyricsUnavailableError:
+                return exact_text  # the exact answer stands
+            return searched if isinstance(searched, SyncedLyrics) else exact_text
+        return self._search(query, artist, title)
+
+    def _search(self, query: LyricsQuery, artist: str, title: str) -> Lyrics:
         listed = self._get("search", {"artist_name": artist, "track_name": title})
         if listed is None:
             listed = []

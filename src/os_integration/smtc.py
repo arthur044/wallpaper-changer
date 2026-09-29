@@ -97,6 +97,16 @@ def _stable_key(primary: Optional[str], secondary: Optional[str]) -> str:
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
+def notify_loop(loop: asyncio.AbstractEventLoop, callback) -> None:
+    """Hands an SMTC event (raised on a WinRT thread) to the watcher's loop.
+    An event can still arrive while the watcher stops and its loop closes;
+    there is nobody left to tell, so it is dropped instead of raising."""
+    try:
+        loop.call_soon_threadsafe(callback)
+    except RuntimeError:  # "Event loop is closed"
+        pass
+
+
 class SmtcWatcher:
     """Background watcher for the Spotify desktop app's Windows SMTC session.
 
@@ -168,7 +178,7 @@ class SmtcWatcher:
         changed = asyncio.Event()
 
         def _mark_changed(*_args) -> None:
-            loop.call_soon_threadsafe(changed.set)
+            notify_loop(loop, changed.set)
 
         manager.add_sessions_changed(_mark_changed)
         registered_aumids: set = set()

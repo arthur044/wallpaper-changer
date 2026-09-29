@@ -199,6 +199,56 @@ def test_an_instrumental_is_reported_as_such(client, http):
     assert client.lyrics(YYZ) == Instrumental()
 
 
+_PLAIN_ONLY = '{"id": 1, "trackName": "Metropolis", "artistName": "Dream Theater", "duration": 571, "plainLyrics": "Plain words"}'
+
+
+def _synced_search(synced_duration=571):
+    return json.dumps(
+        [
+            {
+                "id": 2,
+                "trackName": "Metropolis - Part I",
+                "artistName": "Dream Theater",
+                "duration": synced_duration,
+                "syncedLyrics": "[00:05.00] Timed words",
+            }
+        ]
+    )
+
+
+def test_an_exact_hit_with_only_plain_words_looks_for_a_synced_upload_first(client, http):
+    """The widget needs times to follow the song: a plain-only exact hit is
+    kept as the fallback, not returned before the search had its say."""
+    http.respond(200, _PLAIN_ONLY)
+    http.respond(200, _synced_search())
+
+    lyrics = client.lyrics(METROPOLIS)
+
+    assert lyrics == SyncedLyrics((TimedLine(5_000, "Timed words"),))
+    assert [r["url"].rsplit("/", 1)[1] for r in http.requests] == ["get", "search"]
+
+
+def test_the_plain_exact_hit_stands_when_the_search_has_nothing_synced_that_fits(client, http):
+    http.respond(200, _PLAIN_ONLY)
+    http.respond(200, _synced_search(synced_duration=700))  # another recording: 129 s off
+
+    assert client.lyrics(METROPOLIS) == TextLyrics(("Plain words",))
+
+
+def test_the_plain_exact_hit_stands_when_the_search_fails(client, http):
+    http.respond(200, _PLAIN_ONLY)
+    http.fail(requests.ConnectionError("offline"))
+
+    assert client.lyrics(METROPOLIS) == TextLyrics(("Plain words",))
+
+
+def test_a_synced_exact_hit_needs_no_search(client, http):
+    http.respond(200, _fixture("get_metropolis.json"))
+
+    assert isinstance(client.lyrics(METROPOLIS), SyncedLyrics)
+    assert len(http.requests) == 1
+
+
 def test_a_blank_title_asks_nobody(client, http):
     assert client.lyrics(LyricsQuery("Artist", "  ", None, None)) == NotFound()
     assert http.requests == []

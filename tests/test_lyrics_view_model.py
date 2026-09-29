@@ -83,3 +83,10 @@ def test_messages_belong_to_the_states_without_lines():
     assert View(Phase.LOADING).message
     assert View(Phase.SYNCED, ("a",), current=0).message is None
     assert View(Phase.HIDDEN).message is None
+
+
+def test_only_unsynced_words_carry_the_not_synced_badge():
+    assert View(Phase.TEXT, ("a",), progress=0.3).badge == "Not synced"
+    for phase in Phase:
+        if phase != Phase.TEXT:
+            assert View(phase).badge is None, phase

@@ -42,6 +42,15 @@ class View:
     def message(self) -> Optional[str]:
         return MESSAGES.get(self.phase)
 
+    @property
+    def badge(self) -> Optional[str]:
+        """A small note over the lines: unsynced words only scroll with the
+        track, so the widget says it isn't following them line by line."""
+        return NOT_SYNCED_BADGE if self.phase == Phase.TEXT else None
+
+
+NOT_SYNCED_BADGE = "Not synced"
+
 
 def current_line(lines: Sequence[TimedLine], position_ms: int) -> Optional[int]:
     """The last line that has started by [position_ms]; None before the first."""

@@ -48,6 +48,11 @@ _SAVE_AFTER_MOVE_MS = 600
 # moving the window after this long.
 _INTERACTION_MS = 1000
 _FONT_FAMILY = "Segoe UI"
+# The "Not synced" pill over unsynced words.
+_BADGE_FONT_PX = 11
+_BADGE_PADDING = 6
+_BADGE_MARGIN = 8
+_BADGE_ALPHA = 150
 
 _QT_EDGES = {"left": Qt.LeftEdge, "right": Qt.RightEdge, "top": Qt.TopEdge, "bottom": Qt.BottomEdge}
 _CURSORS = {
@@ -303,6 +308,28 @@ class LyricsWindow(QWidget):
             self._paint_message(painter, message)
         elif self._view.lines:
             self._paint_lines(painter)
+        badge = self._view.badge
+        if badge is not None:
+            self._paint_badge(painter, badge)
+
+    def _paint_badge(self, painter: QPainter, badge: str) -> None:
+        # A small pill in the top-right corner, over the (already faded) top
+        # lines, in the window's own background so it reads on any of them.
+        painter.setClipping(False)
+        font = QFont(_FONT_FAMILY)
+        font.setPixelSize(_BADGE_FONT_PX)
+        metrics = QFontMetrics(font)
+        width = metrics.horizontalAdvance(badge) + 2 * _BADGE_PADDING
+        height = metrics.height() + _BADGE_PADDING
+        box = QRectF(self.width() - width - _BADGE_MARGIN, _BADGE_MARGIN, width, height)
+        pill = QPainterPath()
+        pill.addRoundedRect(box, height / 2, height / 2)
+        painter.fillPath(pill, self._background)
+        color = QColor(_TEXT)
+        color.setAlpha(_BADGE_ALPHA)
+        painter.setPen(color)
+        painter.setFont(font)
+        painter.drawText(box, Qt.AlignCenter, badge)
 
     def _paint_message(self, painter: QPainter, message: str) -> None:
         color = QColor(_TEXT)

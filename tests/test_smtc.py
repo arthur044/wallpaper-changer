@@ -1,8 +1,29 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
 
-from src.os_integration.smtc import SmtcNowPlaying, SmtcWatcher, _stable_key, sample_from_smtc
+from src.os_integration.smtc import SmtcNowPlaying, SmtcWatcher, _stable_key, notify_loop, sample_from_smtc
 
 _WALL = datetime(2026, 9, 28, 20, 0, 0, tzinfo=timezone.utc)
+
+
+def test_an_smtc_event_after_the_watcher_stopped_is_dropped_quietly():
+    """Regression: an event raised while the watcher's loop was closing
+    printed 'RuntimeError: Event loop is closed' on stop."""
+    loop = asyncio.new_event_loop()
+    loop.close()
+
+    notify_loop(loop, lambda: None)  # must not raise
+
+
+def test_an_smtc_event_reaches_a_running_loop():
+    loop = asyncio.new_event_loop()
+    seen = []
+    try:
+        notify_loop(loop, lambda: seen.append(1))
+        loop.run_until_complete(asyncio.sleep(0))
+    finally:
+        loop.close()
+    assert seen == [1]
 
 
 def _timeline(position_s=30.0, end_s=240.0, age_s=2.0, playing=True, rate=1.0, last_updated=None):
