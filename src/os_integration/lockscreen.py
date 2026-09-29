@@ -1,6 +1,8 @@
 import ctypes
+import html
 import json
 import logging
+import re
 import subprocess
 import sys
 import winreg
@@ -98,9 +100,57 @@ def install_task() -> bool:
     return success
 
 
-def uninstall_task() -> None:
+def _oem_encoding() -> str:
+    """The code page console programs like schtasks write to a pipe."""
+    return f"cp{ctypes.windll.kernel32.GetOEMCP()}"
+
+
+def _registered_command() -> Optional[str]:
+    """What the installed task runs ("<Command> <Arguments>"), or None."""
+    result = subprocess.run(
+        ["schtasks", "/query", "/tn", _TASK_NAME, "/xml"], capture_output=True, creationflags=_NO_WINDOW
+    )
+    if result.returncode != 0:
+        return None
+    # Declared UTF-16 but piped in the OEM code page (850 here), one byte per
+    # character: decoding as UTF-8 would drop the "ã" of C:\Users\João and the
+    # comparison would reinstall (one UAC) every time. A regex is enough for
+    # two elements and avoids the XML parser tripping on the declaration.
+    xml = result.stdout.decode(_oem_encoding(), errors="replace")
+    command = re.search(r"<Command>(.*?)</Command>", xml, re.S)
+    arguments = re.search(r"<Arguments>(.*?)</Arguments>", xml, re.S)
+    if command is None:
+        return None
+    text = command.group(1).strip()
+    if arguments is not None:
+        text += " " + arguments.group(1).strip()
+    return html.unescape(text)
+
+
+def ensure_task() -> bool:
+    """The task, pointing at this copy of the app. A task left by another
+    folder (the app moved to its own clone) is replaced, not kept: it would
+    run that folder's code with admin rights."""
+    registered = _registered_command()
+    if registered is not None and registered.lower() == _launch_command().lower():
+        return True
+    if registered is not None:
+        logger.info("Lock screen task runs %s; reinstalling it for this folder", registered)
+    return install_task()
+
+
+def uninstall_task() -> bool:
+    """False when the task is still there afterwards (UAC declined). The task
+    was created elevated, and deleting it usually needs elevation too."""
     subprocess.run(["schtasks", "/delete", "/tn", _TASK_NAME, "/f"], capture_output=True, creationflags=_NO_WINDOW)
-    logger.info("Lock screen scheduled task removed")
+    if not is_task_installed():
+        logger.info("Lock screen scheduled task removed")
+        return True
+    if _run_elevated("schtasks.exe", f'/delete /tn "{_TASK_NAME}" /f') and not is_task_installed():
+        logger.info("Lock screen scheduled task removed (elevated)")
+        return True
+    logger.warning("Lock screen scheduled task could not be removed")
+    return False
 
 
 def request_update(path: Path) -> None:

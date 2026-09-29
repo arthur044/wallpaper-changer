@@ -138,9 +138,10 @@ def test_verify_connection_maps_network_failure(monkeypatch):
 
 
 class _FakeLockscreen:
-    def __init__(self, task_installed=False, install_succeeds=True):
+    def __init__(self, task_installed=False, install_succeeds=True, uninstall_succeeds=True):
         self.task_installed = task_installed
         self.install_succeeds = install_succeeds
+        self.uninstall_succeeds = uninstall_succeeds
         self.calls = []
 
     def is_task_installed(self):
@@ -151,8 +152,13 @@ class _FakeLockscreen:
         self.calls.append("install_task")
         return self.install_succeeds
 
+    def ensure_task(self):
+        self.calls.append("ensure_task")
+        return self.task_installed or self.install_task()
+
     def uninstall_task(self):
         self.calls.append("uninstall_task")
+        return self.uninstall_succeeds
 
 
 def _patch_options(monkeypatch, lock, autostart_error=None):
@@ -307,3 +313,19 @@ def test_authenticate_returns_a_client_on_success(monkeypatch):
     client = steps.authenticate(Settings(client_id=_VALID))
 
     assert client is not None
+
+
+def test_task_that_cannot_be_removed_keeps_the_setting_on(monkeypatch):
+    # UAC declined: the task still runs elevated at logon, so the setting
+    # must not claim the feature is off.
+    lock = _FakeLockscreen(task_installed=True, uninstall_succeeds=False)
+    saved, _ = _patch_options(monkeypatch, lock)
+    settings = Settings(sync_lock_screen=True)
+
+    result = steps.apply_options(settings, autostart=False, sync_lock_screen=False)
+
+    assert "uninstall_task" in lock.calls
+    assert settings.sync_lock_screen is True
+    # The wizard must hear about it, or it closes with the box unticked.
+    assert result.lockscreen_kept is True
+    assert result.finished is False
