@@ -13,13 +13,16 @@ from src.graphics.renderer import render_for_now_playing
 from src.lyrics_widget.colors import TintHolder
 from src.lyrics_widget.qt_host import QtHost
 from src.os_integration import lockscreen
+from src.os_integration import app_version
 from src.os_integration import restart
+from src.os_integration import single_instance
 from src.os_integration.autostart import install_autostart, uninstall_autostart
 from src.onboarding.state import needs_onboarding, should_abort_after_wizard
 from src.onboarding.wizard import run_wizard
 from src.os_integration.session_lock import is_workstation_locked
 from src.os_integration.smtc import SmtcWatcher
 from src.os_integration.tray import TrayApp
+from src.os_integration.updater import Updater
 from src.os_integration.wallpaper import next_output_path, set_wallpaper
 from src.spotify.auth import build_auth_manager, reauthenticate
 from src.spotify.client import NowPlaying
@@ -93,6 +96,19 @@ def main() -> int:
             logger.info("Setup cancelled and no client_id configured; nothing to run")
             return 1
 
+    # After the wizard, so --setup still works while the app is open. The wait
+    # covers Restart, whose new instance starts before the old one exits.
+    instance_lock = single_instance.acquire()
+    if instance_lock is None:
+        logger.info("Another instance is already running; exiting")
+        return 0
+    try:
+        return _run_app(settings)
+    finally:
+        instance_lock.release()  # same (main) thread that took it
+
+
+def _run_app(settings) -> int:
     # Before the poller starts: its first render sets the DPI awareness, and Qt
     # has to set it first (see QtHost). After the wizard: its Tk root is gone.
     album_tint = TintHolder()
@@ -183,6 +199,8 @@ def main() -> int:
         on_setup=on_setup,
         on_restart=on_restart,
         lyrics_widget=qt_host,
+        version=app_version.version_label(app_version.read_version(app_version.app_dir())),
+        updater=Updater(app_version.app_dir()),
     )
     tray_thread = qt_host.run_tray_in_thread(tray.run)
     qt_host.exec()  # blocks until Exit or Restart ends the tray loop

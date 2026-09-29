@@ -271,3 +271,99 @@ def test_blur_strength_levels_are_saved_and_redrawn(monkeypatch):
 
     tray._set_blur_strength(60)
     assert len(saved) == 1, "picking the current level again changes nothing"
+
+
+def test_running_version_is_in_the_tooltip_and_a_disabled_menu_item():
+    tray = TrayApp(
+        AppState(),
+        Settings(),
+        on_reauthenticate=lambda: None,
+        on_exit=lambda: None,
+        on_setup=lambda: None,
+        version="f93217c (2026-09-29)",
+    )
+
+    assert tray._icon.title == "Spotify Wallpaper Engine - f93217c (2026-09-29)"
+    item = next(item for item in tray._build_menu().items if "f93217c" in item.text)
+    assert item.text == "Version f93217c (2026-09-29)"
+    assert item.enabled is False
+
+
+def test_without_a_version_the_tray_keeps_its_plain_title():
+    tray = _tray()
+
+    assert tray._icon.title == "Spotify Wallpaper Engine"
+    assert not any(item.visible for item in tray._build_menu().items if item.text.startswith("Version"))
+
+
+class _InlineUpdater:
+    """Stands in for Updater: one update available, applied on request."""
+
+    def __init__(self):
+        from src.os_integration.updater import Action, ApplyResult, Decision
+
+        self._decision = Decision(Action.UPDATE, target="bbbbbbb", commits=2)
+        self._result = ApplyResult(self._decision, restart=True)
+
+    def check(self):
+        return self._decision
+
+    def apply(self):
+        return self._result
+
+
+def _update_item(tray):
+    return next(item for item in tray._build_menu().items if item.visible and "update" in item.text.lower())
+
+
+def test_update_item_checks_then_applies_through_restart(monkeypatch):
+    calls = []
+    tray = TrayApp(
+        AppState(),
+        Settings(),
+        on_reauthenticate=lambda: None,
+        on_exit=lambda: None,
+        on_setup=lambda: None,
+        on_restart=lambda: calls.append("restart"),
+        updater=_InlineUpdater(),
+    )
+    monkeypatch.setattr(tray._update_menu, "_spawn", lambda fn: fn())
+    stopped = []
+    monkeypatch.setattr(tray._icon, "stop", lambda: stopped.append(1))
+
+    assert _update_item(tray).text == "Check for updates"
+    _update_item(tray)(tray._icon)
+    assert _update_item(tray).text == "Update to bbbbbbb (2 commits)"
+    assert calls == []
+
+    _update_item(tray)(tray._icon)
+    assert calls == ["restart"] and stopped == [1]
+
+
+def test_without_an_updater_the_update_item_is_hidden():
+    tray = _tray()
+
+    assert not any(item.visible and "update" in item.text.lower() for item in tray._build_menu().items)
+
+
+def test_restart_and_exit_are_disabled_while_an_update_is_applied(monkeypatch):
+    tray = TrayApp(
+        AppState(),
+        Settings(),
+        on_reauthenticate=lambda: None,
+        on_exit=lambda: None,
+        on_setup=lambda: None,
+        updater=_InlineUpdater(),
+    )
+    pending = []
+    monkeypatch.setattr(tray._update_menu, "_spawn", pending.append)
+
+    def enabled():
+        return {item.text: item.enabled for item in tray._build_menu().items if item.text in ("Restart", "Exit")}
+
+    _update_item(tray)(tray._icon)
+    assert enabled() == {"Restart": True, "Exit": True}  # a check is harmless
+    pending.pop()()  # the check finds the update
+
+    _update_item(tray)(tray._icon)
+    assert enabled() == {"Restart": False, "Exit": False}
