@@ -1,4 +1,5 @@
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -8,8 +9,9 @@ _real_run = subprocess.run
 
 
 def _program(args) -> str:
+    """Bare program name: "schtasks" and C:\\Windows\\System32\\schtasks.exe alike."""
     first = args[0] if isinstance(args, (list, tuple)) else str(args).split()[0]
-    return str(first).lower()
+    return Path(str(first).strip('"')).name.lower()
 
 
 @pytest.fixture(autouse=True)

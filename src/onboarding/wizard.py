@@ -263,6 +263,16 @@ class _TkWizard:
             )
             return
 
+        if result.lockscreen_kept:
+            # Ticked again: the task is still there, and Concluir with the box
+            # ticked then finishes without trying to remove it a second time.
+            self._lockscreen_var.set(True)
+            self._info(
+                "Não consegui remover a tarefa da tela de bloqueio (UAC recusado); "
+                "a opção continua ligada. Clique em Concluir para finalizar."
+            )
+            return
+
         self._completed = True
         self._closed = True
         self._root.destroy()

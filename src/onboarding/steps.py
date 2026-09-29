@@ -87,10 +87,12 @@ class ApplyOptionsResult:
     autostart_error: Optional[str] = None
     # The elevated scheduled task wasn't authorized. Everything else applied.
     lockscreen_declined: bool = False
+    # Turning it off failed (UAC declined): the task and the setting stay on.
+    lockscreen_kept: bool = False
 
     @property
     def finished(self) -> bool:
-        return self.autostart_error is None and not self.lockscreen_declined
+        return self.autostart_error is None and not self.lockscreen_declined and not self.lockscreen_kept
 
 
 def open_dashboard() -> None:
@@ -149,9 +151,10 @@ def apply_options(settings: Settings, autostart: bool, sync_lock_screen: bool) -
             return ApplyOptionsResult(lockscreen_declined=True)
     elif settings.sync_lock_screen and not sync_lock_screen:
         if not lockscreen.uninstall_task():
-            # Still registered (UAC declined): the setting says so too.
+            # Still registered (UAC declined): the setting says so too, and
+            # the wizard ticks the box again instead of closing as if it worked.
             logger.warning("Lock screen sync left on: the task could not be removed")
-            sync_lock_screen = True
+            return ApplyOptionsResult(lockscreen_kept=True)
 
     settings.sync_lock_screen = sync_lock_screen
     save_settings(settings)

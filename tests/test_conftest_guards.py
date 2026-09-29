@@ -2,6 +2,7 @@
 lock screen test with a missing fake would change the user's real task."""
 
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -28,3 +29,10 @@ def test_other_programs_still_run():
     result = subprocess.run(["git", "--version"], capture_output=True, text=True)
 
     assert result.returncode == 0 and "git" in result.stdout
+
+
+def test_full_path_to_schtasks_is_refused_too():
+    path = str(Path("C:/Windows/System32/schtasks.exe"))
+
+    with pytest.raises(AssertionError, match="real schtasks"):
+        subprocess.run([path, "/query", "/tn", "SpotifyWallpaperEngine_LockScreen"], capture_output=True)

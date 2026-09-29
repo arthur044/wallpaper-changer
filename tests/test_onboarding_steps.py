@@ -322,7 +322,10 @@ def test_task_that_cannot_be_removed_keeps_the_setting_on(monkeypatch):
     saved, _ = _patch_options(monkeypatch, lock)
     settings = Settings(sync_lock_screen=True)
 
-    steps.apply_options(settings, autostart=False, sync_lock_screen=False)
+    result = steps.apply_options(settings, autostart=False, sync_lock_screen=False)
 
     assert "uninstall_task" in lock.calls
     assert settings.sync_lock_screen is True
+    # The wizard must hear about it, or it closes with the box unticked.
+    assert result.lockscreen_kept is True
+    assert result.finished is False
