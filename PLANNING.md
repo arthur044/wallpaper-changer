@@ -4,7 +4,7 @@ Documentação técnica do estado atual. Descreve **como o sistema funciona hoje
 foi construído. Uso e instalação estão no [README](README.md) e no
 [README do Android](android/README.md).
 
-Última revisão: 2026-09-30 · base: `main` @ `2e716ee` (PRs #1–#13 mergeados, nenhum aberto)
+Última revisão: 2026-09-30 · base: `main` @ `37fca7e` (PRs #1–#16 mergeados; **#17, #18 e #19 abertos**, descritos abaixo como "(#N, aberto)")
 
 ---
 
@@ -69,8 +69,8 @@ Invariantes nas duas plataformas:
 | Thread | Componente | Função |
 |---|---|---|
 | principal | `QtHost` (`lyrics_widget/qt_host.py`) | `QApplication` e o widget de letra (§2.6); bloqueia em `exec()` até Exit ou Restart |
-| `tray` (daemon) | `TrayApp` (`os_integration/tray.py`) | Menu da bandeja. O pystray processa as mensagens na thread que chama `run()`, então ele ganhou uma thread própria. Quando o loop termina, pede ao Qt para sair |
-| `smtc-watcher` | `SmtcWatcher` (`os_integration/smtc.py`) | Loop asyncio próprio (winsdk). Eventos SMTC (inclusive da timeline) mais uma consulta de segurança a cada 2 s. Um evento que chega com o loop já fechando é descartado (`notify_loop`). Expõe um snapshot e a última amostra de posição (`get_timeline`), cada um sob lock |
+| `tray` (daemon) | `TrayApp` (`os_integration/tray.py`) | Menu da bandeja (enxuto, ver abaixo). O pystray processa as mensagens na thread que chama `run()`, então ele ganhou uma thread própria. Quando o loop termina, pede ao Qt para sair |
+| `smtc-watcher` | `SmtcWatcher` (`os_integration/smtc.py`) | Loop asyncio próprio (winsdk). Eventos SMTC (inclusive da timeline) mais uma consulta de segurança a cada 2 s. Um evento que chega com o loop já fechando é descartado (`notify_loop`). Expõe um snapshot e a última amostra de posição (`get_timeline`), cada um sob lock. Escolhe a sessão cujo id contém `spotify` **ou** `spotifast` (#16: o `spotifast.exe` é um cliente cujo id não contém "spotify") |
 | `poller` | `Poller` (`spotify/poller.py`) | Loop principal de sync e render |
 | `lyrics` (daemon, uma por busca) | `QtHost._look_up` | Uma busca no LRCLIB, só com o widget ligado |
 
@@ -103,12 +103,15 @@ do arquivo da base.
 
 **Render** (`main._make_render_fn`):
 
-1. Tira um `dataclasses.replace(settings)`, uma cópia, porque a bandeja altera as settings
-   em outra thread.
+1. Tira um `dataclasses.replace(settings)`, uma cópia, porque a bandeja e a janela de
+   configurações alteram as settings em outra thread.
 2. `compute_layout` usa a resolução do monitor primário, com DPI-aware. A arte ocupa
    `art_size_pct` × altura, centralizada.
 3. `base_cache_key` → `album_bases/<key>.png`. Se existe, reutiliza e atualiza o mtime. Senão
-   baixa a arte, compõe a base, salva e poda o cache.
+   obtém a arte, compõe a base, salva e poda o cache. A arte vem do `AlbumArtCache`
+   (`graphics/art_cache.py`, #19, aberto): a capa original e as cores do álbum ficam em
+   `cache/album_art`, então mudar o estilo (chave nova) não baixa a capa nem roda o
+   ColorThief de novo (ver "Cache da arte original" abaixo).
 4. Copia a base e desenha título e artista por cima (com cartão de vidro opcional). A cor do
    texto vem da média dos pixels atrás dele. Antes disso, `sample_widget_tint` tira a cor do
    quarto inferior direito da base já em memória (2–4 ms a 1080p, sem segunda passada do
@@ -130,18 +133,34 @@ elevado e escreve em `HKLM\...\PersonalizationCSP`. Todo `schtasks` usa `CREATE_
   UAC): senão rodaria, com direitos de administrador, o código de outra cópia do app.
 - `uninstall_task` apaga a task e, se ela sobrou (criada elevada, apagar costuma exigir UAC),
   tenta de novo elevado. Devolve `False` se ela continua lá.
-- Desligar a tela de bloqueio (bandeja ou assistente) só grava `sync_lock_screen=False`
-  depois que a task sumiu. Com o UAC recusado a opção continua ligada, e o assistente avisa.
+- Desligar a tela de bloqueio (janela de configurações ou assistente) só grava
+  `sync_lock_screen=False` depois que a task sumiu. Com o UAC recusado a opção continua
+  ligada, e o assistente avisa.
+- O toggle da janela ignora um segundo clique enquanto o UAC está aberto (`lock_sync_busy`).
+  Ao terminar, o `update_menu` do ícone é chamado de novo (o menu é refeito quando o clique
+  retorna, muito antes de o UAC ser respondido), mas nunca no lugar do erro do próprio toggle.
+
+**Janela de configurações (#17, aberto; `src/settings_window/`):** os controles saíram do menu
+da bandeja (um menu fecha a cada clique) para uma janela Qt que fica aberta. Só desktop:
+exceção de paridade, porque o Android não tem bandeja.
+
+| Peça | Papel |
+|---|---|
+| Menu da bandeja (`TrayApp`) | Só `Settings...` (também o clique esquerdo no ícone, `default=True`), `Pause`/`Resume`, `Re-authenticate` (visível só com `AppStatus.ERROR`) e `Exit` (desabilitado durante uma atualização) |
+| `SettingsWindow` (`window.py`) | Grupos: reprodução (Pause, Sync now), estilo do wallpaper, tela de bloqueio, widget de letra e app (versão, Check for updates, Re-authenticate, Setup..., Restart, Exit). Só a thread do Qt. Os controles escrevem por `StyleActions`, `LyricsWidgetControls` e `AppCommands`; um `QTimer` de 0,5 s, **só com a janela visível**, chama `refresh()`, que lê o estado vivo de volta, então mudanças feitas pela bandeja, pelo widget ou pelo updater aparecem na janela |
+| `StyleActions` (`style_actions.py`) | Lógica de estilo (fundo, blur, glow, moldura, cartão de vidro, transição). Sem Qt: altera a mesma `Settings` que o render lê, grava e pede o redesenho. Só age se o valor mudou |
+| `AppCommands` (`commands.py`) | Dataclass congelada de callbacks que a bandeja entrega à janela (`TrayApp.commands()`); as ações lentas (UAC, git, assistente, parada do Poller) rodam em thread própria e voltam na hora |
+| `QtHost.open_settings()` | Abre a janela na thread do Qt, por sinal do `_Bridge` |
 
 **Atualização do desktop (`os_integration/updater.py`, `update_menu.py`):** o app roda de um
-clone próprio do repositório, na `main`. O item "Check for updates" da bandeja faz
+clone próprio do repositório, na `main`. O botão "Check for updates" da janela faz
 `git fetch` e decide (`decide`, pura): `UP_TO_DATE`, `UPDATE` (mudou `main.py`,
 `requirements.txt` ou `src/`), `DOCS_ONLY` (só fast-forward) ou `BLOCKED` (não está na
 `main`, há mudança local ou commit local). Um segundo clique aplica: `pip install` dos
 requisitos de `origin/main` **antes**, depois `merge --ff-only`, depois reinicia. Nada é
 aplicado sem clique; falhas aparecem no rótulo do item, não no status de erro do Spotify.
 Restart e Exit ficam desabilitados enquanto o pip ou o fast-forward rodam. A versão
-(`abc1234 (AAAA-MM-DD)`, de `git log -1`) aparece no menu e na dica do ícone.
+(`abc1234 (AAAA-MM-DD)`, de `git log -1`) aparece na janela e na dica do ícone.
 
 **Instância única (`os_integration/single_instance.py`):** mutex `Local\SpotifyWallpaperEngine`,
 adquirido depois do assistente. Uma segunda instância espera até 20 s (o Restart sobe a nova
@@ -263,7 +282,22 @@ build. Um `update.json` de outro pacote é recusado (`WrongPackage`).
 ### 2.5 Android: compartilhar letra
 
 Só no Android (fora da regra de paridade). O botão "Compartilhar letra" fica no cartão de
-status da tela principal, **só com `SyncStatus.Showing`**. A notificação não tem esse botão.
+status da tela principal. A notificação não tem esse botão.
+
+**Quando o botão aparece (#18, aberto):** `shareTarget(status, onScreen)` (`:core`,
+`lyrics/ShareTarget.kt`) devolve a faixa a que o botão se refere, ou `null` (sem botão).
+`MainScreen` usa esse valor para mostrar o botão e para abrir a tela.
+
+| Status | Faixa do botão |
+|---|---|
+| `Showing` | A que está tocando |
+| `Idle` (música pausada) | A que o wallpaper ainda mostra: `SyncEngine.onScreen` |
+| `Starting`, sync pausado, falha de desenho, deslogado, bloqueado | Nenhuma: o wallpaper não está sendo mantido |
+| `Retrying`, `Failing` | Nenhuma: o wallpaper existe, mas o botão some durante o problema de rede, como antes |
+
+`shareTarget` devolve `null` para todo status que não seja `Showing` ou `Idle`.
+`SyncEngine.onScreen` é a última faixa em `Showing` (inclusive quando a faixa já estava no
+wallpaper), só em memória. Nada novo vai para o disco.
 
 ```
 tela principal visível ─► LyricsPrefetch.follow ─► LyricsSlot (1 resposta, em memória)
@@ -302,8 +336,8 @@ prévia ~370–540 ms com a letra já buscada (inclui um debounce de 250 ms).
 
 Só no desktop (fora da regra de paridade, confirmado em 2026-09-28). É uma janela sem borda
 e sem botão na barra de tarefas, com a letra da faixa tocando: a linha atual fica destacada
-e a coluna rola até ela em 350 ms. Fica **desligado por padrão** e é ligado na bandeja
-(*Lyrics widget › Show*).
+e a coluna rola até ela em 350 ms. Fica **desligado por padrão** e é ligado na janela de
+configurações (*Lyrics widget › Show*, §2.2).
 
 ```
 smtc-watcher ── get_snapshot() + get_timeline() ──┐
@@ -313,12 +347,12 @@ Qt (principal): QtHost._tick ─► LyricsWidgetController.tick ─► View ─�
                                     ▼                                     │
                thread "lyrics" ─► LyricsSlot ─► LrclibClient ─► lyrics_ready / lyrics_failed (sinais)
 poller: render ─► TintHolder.set(cor do álbum) ──────────────────────────┘
-tray: Show / Lock / On top / Reset ─► sinais do _Bridge ─► thread do Qt
+janela de configurações: Show / Lock / On top / Reset ─► QtHost (thread do Qt)
 ```
 
 | Componente | Papel |
 |---|---|
-| `QtHost` (`lyrics_widget/qt_host.py`) | Dono do `QApplication`. Só a thread do Qt toca em widgets: a bandeja e a busca falam com ela por sinais do `_Bridge` (conexão enfileirada). Implementa `LyricsWidgetControls`, o protocolo que a bandeja usa. Grava as settings do widget pela thread do Qt |
+| `QtHost` (`lyrics_widget/qt_host.py`) | Dono do `QApplication`. Só a thread do Qt toca em widgets: a bandeja e a busca falam com ela por sinais do `_Bridge` (conexão enfileirada). Implementa `LyricsWidgetControls`, o protocolo que a janela de configurações usa (§2.2); `open_settings()` cria e mostra a janela. Grava as settings do widget pela thread do Qt |
 | `LyricsWindow` | Fundo translúcido arredondado (alfa 200). A fonte cresce com a largura (13–34 px). Destravado, arrastar move a janela e arrastar a 8 px da borda redimensiona; a posição é gravada 600 ms depois de soltar |
 | `LyricsWidgetController` (`lyrics_widget/controller.py`) | Puro (sem Qt, sem rede). A cada tick recebe o snapshot e a timeline e devolve um `View` e, se preciso, um `FetchRequest`. Espera até 2 s pela duração da faixa antes de buscar (ela permite o `/get` exato). Falha de rede → tenta de novo a cada 30 s na mesma faixa. Resposta de outra faixa é descartada |
 | `SongClock` (`lyrics/song_clock.py`) | Posição atual a partir da última `TimelineSample`, extrapolada pelo `time.monotonic()` × `rate` enquanto toca e congelada com a música pausada. Cada amostra substitui a anterior. Um seek corrige na hora: o Spotify o avisa pelo SMTC na mesma hora (`timeline_properties_changed`), sem esperar a atualização periódica (verificado pelo usuário em 2026-09-29) |
@@ -370,9 +404,10 @@ Com a música pausada, a posição congela e a letra fica parada na linha atual.
 
 | Caminho | Conteúdo | Escrita |
 |---|---|---|
-| `%APPDATA%\SpotifyWallpaperEngine\config.json` | `Settings` (dataclass → JSON) | Criado com os padrões. Bandeja, assistente e widget de letra (thread do Qt) regravam; `save_settings` grava um de cada vez (`_SAVE_LOCK`) |
+| `%APPDATA%\SpotifyWallpaperEngine\config.json` | `Settings` (dataclass → JSON) | Criado com os padrões. Bandeja, assistente, janela de configurações e widget de letra (thread do Qt) regravam; `save_settings` grava um de cada vez (`_SAVE_LOCK`) |
 | `%LOCALAPPDATA%\...\track_index.json` | Índice faixa → álbum | Atômica (`.tmp` + `os.replace`), só quando muda |
 | `%LOCALAPPDATA%\...\cache\album_bases\<key>.png` | Base por álbum (sem texto) | Uma vez por chave, PNG `compress_level=1` |
+| `%LOCALAPPDATA%\...\cache\album_art\<id>.art`, `<id>.colors.json` | Capa original do álbum e suas cores (`{"version": 1, "dominant": [r,g,b], "accents": [[r,g,b],...]}`) (#19, aberto) | A capa, na primeira vez que o álbum é desenhado; as cores, quando calculadas. Teto de 60 MB, LRU por mtime, nunca apaga o álbum recém-gravado |
 | `%LOCALAPPDATA%\...\cache\wallpaper_{a,b}.png` | Imagem final aplicada | Alternando, a cada faixa |
 | `%LOCALAPPDATA%\...\lockscreen_pending.json` | `{"path": ...}` para a task elevada | A cada render com `sync_lock_screen` |
 | Windows Credential Manager (`SpotifyWallpaperEngine` / `default`) | Token OAuth do spotipy (JSON) | `KeyringCacheHandler` |
@@ -389,10 +424,24 @@ Com a música pausada, a posição congela e a letra fica parada na linha atual.
 | `files/sync_state/track_index.json` | Índice faixa → álbum (DataStore) |
 | `files/live_wallpaper/frame.bin` | Último quadro em pixels crus (sem PNG, por custo). Só o mais novo; o quadro da outra tela do dobrável fica só em memória |
 | `cacheDir/album_bases/` | Bases por álbum, LRU com teto de 150 MB |
+| `cacheDir/album_art/<id>.art`, `<id>.colors` | Capa original do álbum e suas cores (#19, aberto). LRU por mtime com teto de 60 MB, nunca apaga o que acabou de gravar. Trocar a capa de um álbum apaga as cores antigas |
 | `cacheDir/updates/` | APK de atualização baixado (só um: a pasta é esvaziada antes; `.part` até o SHA-256 conferir) |
 | `cacheDir/share/letra-<ms>.jpg` | Imagem de compartilhar letra (só uma; nome novo a cada vez). Única pasta servida pelo `FileProvider` (`${applicationId}.share`, `res/xml/share_paths.xml`, não exportado, leitura concedida só ao app escolhido) |
 
 Backup automático do Android desligado (`allowBackup=false`). Letras nunca vão para o disco.
+
+**Cache da arte original (#19, aberto; desktop `AlbumArtCache`, Android `AlbumArtStore` em `:core`):**
+
+- Um arquivo de capa e um de cores por álbum, nomeados pelo id do álbum (a capa de um álbum
+  não muda). Vale para a capa original, antes de qualquer composição; a chave da base
+  (§3.4) não mudou.
+- `AlbumColors` calcula a cor dominante e os acentos **uma vez cada**, na primeira vez que
+  são pedidos; os acentos só quando `mesh` ou `glow` precisam deles. Cada valor novo é
+  regravado na hora. Cores com formato inválido são ignoradas e recalculadas.
+- Melhor esforço: arquivo ausente, ilegível ou danificado = baixar de novo. Uma capa guardada
+  que não decodifica como imagem é descartada (com as cores) e baixada **uma** vez; se a nova
+  também falha, o erro segue o caminho normal de falha de desenho.
+- Uma cor dominante de "arte ilegível" (fallback `(30, 30, 30)`) nunca é guardada.
 
 **Chaves de assinatura (fora do repositório):**
 
@@ -498,7 +547,7 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | Chave de cache pelas *entradas* do layout | O layout depende do tamanho da arte, que só se conhece depois do download que o cache existe para evitar |
 | PNG `compress_level=1` | A saída é regravada a cada faixa. Com o dither do mesh, o nível 6 levava 0,2–0,7 s |
 | Dois arquivos de saída alternados | O Explorer/DWM não segura lock no arquivo que está sendo escrito |
-| Snapshot das settings no render (desktop) | A bandeja muda settings em outra thread. Sem cópia, a chave e o desenho podiam usar estilos diferentes e envenenar o cache |
+| Snapshot das settings no render (desktop) | A bandeja e a janela de configurações mudam settings em outra thread. Sem cópia, a chave e o desenho podiam usar estilos diferentes e envenenar o cache |
 | Fade no Windows via `IActiveDesktop` + mensagem `0x052C` ao Progman | Único caminho que anima a troca. Sem `AD_APPLY_FORCE`, que falha no Windows 10. Depende das animações do sistema estarem ligadas |
 | Fade no Android via live wallpaper próprio | `setBitmap` pisca preto a cada troca, comportamento do sistema. O quadro vai em pixels crus porque codificar PNG custa centenas de ms |
 | Tela de bloqueio no Windows via Scheduled Task elevada | A chave `PersonalizationCSP` fica em HKLM. A task pede UAC uma vez só |
@@ -541,13 +590,22 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | Cor do widget tirada da base do wallpaper já em memória | Custa 2–4 ms e não faz uma segunda quantização do ColorThief. O quarto inferior direito é onde o widget começa. Escurecer até 4,5:1 (WCAG AA) mantém o texto branco legível |
 | Widget: `/get` só com texto ainda consulta o `/search` atrás de uma versão sincronizada | Texto sem tempos não acompanha a música, então vale uma chamada a mais. O compartilhar do Android continua com o texto do `/get`, porque não precisa de tempos. O selo "Not synced" deixa claro que rolar sem acompanhar é esperado, não um defeito |
 | Buscar letra só com o widget ligado; uma resposta em memória | Mesma regra do Android: sem rede gasta à toa e sem texto protegido no disco |
-| `_SAVE_LOCK` em `save_settings` | A bandeja e a thread do Qt gravam o `config.json`. Sem o lock, duas escritas podiam se misturar no arquivo |
+| `_SAVE_LOCK` em `save_settings` | A bandeja, a janela de configurações e a thread do Qt gravam o `config.json`. Sem o lock, duas escritas podiam se misturar no arquivo |
+| Janela de configurações no lugar do menu da bandeja (#17, aberto) | Um menu fecha a cada clique, então ajustar estilo, blur e glow em sequência era penoso. A janela fica aberta e o Qt já é dono da thread principal |
+| `StyleActions` e `AppCommands` sem Qt | A lógica de estilo e as ações do app são testadas sem janela; a `SettingsWindow` só liga botões a elas |
+| A janela relê o estado a cada 0,5 s, só visível | A bandeja, o widget de letra e o updater também mudam as settings e o estado. Ler de volta mostra o que realmente aconteceu (UAC recusado volta a desmarcado) em vez do que foi clicado, sem custo com a janela fechada |
+| Bandeja só com Settings, Pause, Re-authenticate (em erro) e Exit | Ficam na bandeja o que se quer sem abrir janela e o que salva o usuário quando o app está em erro |
+| SMTC aceita `spotify` e `spotifast` no id da sessão (#16) | O `spotifast.exe` é um cliente do Spotify cujo id não contém "spotify"; sem isso o widget de letra não via a faixa |
+| Guardar a capa original e as cores por álbum, em disco (#19, aberto) | Mudar o estilo muda a chave da base e antes baixava a capa e rodava o ColorThief de novo. Desktop, capa sintética 640×640: 358 ms da dominante + 235 ms dos acentos poupados por troca de estilo, fora o download. **Android não medido no A71** |
+| Acentos só quando `mesh`/`glow` pedem | O estilo `solid` só usa a dominante; a paleta de acentos custa ~235 ms (desktop) e não é usada |
+| `BASE_RENDER_VERSION` e a chave de cache não mudam com o #19 | Os pixels da base são os mesmos: só muda de onde vêm a capa e as cores |
+| "Compartilhar letra" também com a música pausada, pela faixa do wallpaper (#18, aberto) | Pausar vira `Idle`, mas o wallpaper continua mostrando a última faixa; a letra é a dessa faixa. Sync pausado, falha de desenho, deslogado e bloqueado ficam sem botão: o wallpaper não está sendo mantido |
 
 ---
 
 ## 5. Estado atual
 
-### 5.1 Pronto (tudo em `main`)
+### 5.1 Pronto (em `main`) e em revisão
 
 | PR | Entrega |
 |---|---|
@@ -562,7 +620,13 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | #11 | Desktop: widget de letra sincronizada (§2.6). Seek, resolução, escala e redimensionamento testados pelo usuário em 2026-09-29 |
 | #12 | Desktop: atualização pelo clone próprio na `main`, instância única e "Check for updates" na bandeja (§2.2) |
 | #13 | Desktop: o toggle da tela de bloqueio apaga a task `SpotifyWallpaperEngine_LockScreen` ao desligar e a reaponta para esta pasta ao ligar; o assistente avisa quando a task continua ligada (§2.2) |
+| #14 | Documentação: `PLANNING.md` reflete #11–#13 |
+| #15 | Desktop: o menu da tela de bloqueio se atualiza quando o toggle termina (o menu era refeito antes de o UAC ser respondido) |
+| #16 | Desktop: o SMTC reconhece o `spotifast.exe` além de `spotify`, então o widget de letra vê a faixa |
 | — | Nas duas plataformas: arte baixada só de `https` em `scdn.co`/`spotifycdn.com` (§4) |
+| #17 (aberto) | Desktop: janela de configurações e bandeja enxuta (§2.2). Testes automatizados passam; o teste manual da janela pelo usuário ainda não foi confirmado |
+| #18 (aberto) | Android: "Compartilhar letra" também com a música pausada (§2.5). Testado no A71 (debug) |
+| #19 (aberto) | Desktop + Android: cache em disco da capa original e das cores por álbum (§3.1, §3.2). Desktop medido; Android testado à mão no A71 pelo usuário (troca de estilo sem esperar o download) e não medido |
 
 ### 5.2 Limitações conhecidas
 
@@ -601,10 +665,14 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
   vira "tablet" e ganha canvas quadrado. Não medido; medir no A71.
 - **Zoom no Android < 12:** a densidade vem dos resources da window context, que podem ficar
   presos à configuração da criação. Não tratado.
-- **Mudar o estilo baixa a arte de novo** (a chave muda e a arte original não fica em cache).
+- **Cache da arte original (#19, aberto):** o custo no Android não foi medido no A71. Os 5 testes
+  instrumentados novos de `WallpaperComposerTest` ainda não foram executados no aparelho
+  (só compilam); precisam do celular desbloqueado e de `leaveApksInstalledAfterRun`. O cache só evita download e cálculo de cor; a base do estilo novo ainda
+  é composta (0,5–2,4 s).
 - **Compartilhar letra (#9):**
-  - o botão some com a música pausada (`Idle`), embora o wallpaper ainda mostre a faixa.
-    **Decisão pendente do usuário**;
+  - (#18, aberto) o botão aparece com a música pausada, pela faixa do wallpaper. **Limite:**
+    a faixa vem da memória; depois de reiniciar o app com a música já pausada não há
+    `onScreen`, e o botão volta quando uma faixa voltar a tocar (`Showing`);
   - o LRCLIB é mantido pela comunidade: a letra pode faltar ou estar errada. A comparação
     solta aceita trechos contidos ("love" em "lovesong"), mantida pela paridade com o
     spotifast;
@@ -623,7 +691,8 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
   - pacotes que o pip já atualizou ficam atualizados se o fast-forward falhar depois. Os
     requisitos usam `>=`, então o código antigo segue funcionando com eles.
 - **Tela de bloqueio no desktop (#13):** desligar a opção com o UAC recusado deixa a task e a
-  opção ligadas. O assistente avisa; a bandeja só registra no log. Mudar o app de pasta
+  opção ligadas. O assistente avisa; a janela de configurações mostra o checkbox como ficou
+  (o estado real, não o clique) e o motivo vai para o log. Mudar o app de pasta
   recria a task na próxima vez que a opção for ligada, com um UAC.
 - **Widget de letra (#11):**
   - não testado com um segundo monitor de DPI diferente (o usuário tem um monitor só). Trocar
@@ -642,9 +711,11 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 
 ### 5.3 Próximas prioridades
 
-1. **Decidir** se "Compartilhar letra" aparece também com a música pausada.
-2. **Cache em disco da arte original e das cores**, para mudar de estilo sem baixar a arte de
-   novo nem recalcular a paleta.
+1. **Mergear #17, #18 e #19** (abertos), depois do teste manual do usuário na janela de
+   configurações (#17) e da medição do cache de arte no A71 (#19).
+
+Decididos e entregues nesses PRs: "Compartilhar letra" com a música pausada (#18) e o cache
+em disco da arte original e das cores (#19).
 
 Descartados por decisão do usuário (2026-09-24): limite de ampliação da arte no desktop,
 wallpaper por monitor e testes com Robolectric para `SpotifyAuth` e `SyncController`.
