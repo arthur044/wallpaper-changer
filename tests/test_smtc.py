@@ -1,6 +1,7 @@
-import pytest
 import asyncio
 from datetime import datetime, timedelta, timezone
+
+import pytest
 
 from src.os_integration.smtc import SmtcNowPlaying, SmtcWatcher, _stable_key, notify_loop, sample_from_smtc
 
