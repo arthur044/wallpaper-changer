@@ -24,6 +24,7 @@ import io.github.arthur044.wallpaperchanger.core.render.GLASS_EDGE_ALPHA
 import io.github.arthur044.wallpaperchanger.core.render.GlassCard
 import io.github.arthur044.wallpaperchanger.core.render.ACCENT_COLOR_COUNT
 import io.github.arthur044.wallpaperchanger.core.render.ACCENT_QUALITY
+import io.github.arthur044.wallpaperchanger.core.cache.AlbumColors
 import io.github.arthur044.wallpaperchanger.core.render.ColorThief
 import io.github.arthur044.wallpaperchanger.core.render.PixelRect
 import io.github.arthur044.wallpaperchanger.core.render.Rgb
@@ -66,13 +67,17 @@ class WallpaperRenderer {
 
     private fun dominantColor(pixels: IntArray): Rgb = ColorThief.dominantColor(pixels) ?: FALLBACK_BACKGROUND
 
-    /** The art's base with the effects [settings] ask for. */
-    fun renderBase(art: Bitmap, layout: WallpaperLayout, settings: Settings): RenderedBase {
+    /**
+     * The art's base with the effects [settings] ask for. [colors] holds what
+     * was already worked out for this art (see AlbumArtStore): a look change
+     * then skips ColorThief.
+     */
+    fun renderBase(art: Bitmap, layout: WallpaperLayout, settings: Settings, colors: AlbumColors = AlbumColors()): RenderedBase {
         val pixels = pixelsOf(art)
-        val background = dominantColor(pixels)
+        val background = colors.dominant { ColorThief.dominantColor(pixels) } ?: FALLBACK_BACKGROUND
         // A second quantization, so only when an effect needs the accents.
         val palette = if (needsAccentPalette(settings)) {
-            ColorThief.palette(pixels, ACCENT_COLOR_COUNT, ACCENT_QUALITY).orEmpty()
+            colors.accents { ColorThief.palette(pixels, ACCENT_COLOR_COUNT, ACCENT_QUALITY).orEmpty() }
         } else {
             emptyList()
         }

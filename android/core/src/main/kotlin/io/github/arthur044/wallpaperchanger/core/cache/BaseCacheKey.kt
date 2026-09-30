@@ -42,7 +42,7 @@ fun baseCacheKey(albumId: String, canvas: CanvasSpec, settings: Settings): Strin
 }
 
 // Spotify ids are base62; anything else is hashed so it can't form a path.
-private fun fileSafeId(albumId: String): String =
+internal fun fileSafeId(albumId: String): String =
     if (albumId.matches(SPOTIFY_ID)) albumId else "h" + sha256Hex(albumId).take(22)
 
 private fun sha256Hex(text: String): String =
