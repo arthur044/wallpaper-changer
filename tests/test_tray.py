@@ -395,3 +395,65 @@ def test_lock_sync_turns_off_once_its_task_is_gone(monkeypatch):
     tray._apply_lock_sync_toggle()
 
     assert settings.sync_lock_screen is False
+
+
+@pytest.mark.parametrize(
+    "start, uninstall_ok, ensure_ok",
+    [(True, True, None), (True, False, None), (False, None, True), (False, None, False)],
+    ids=["turned-off", "removal-declined", "turned-on", "install-declined"],
+)
+def test_lock_sync_refreshes_the_menu_once_the_slow_toggle_finishes(monkeypatch, start, uninstall_ok, ensure_ok):
+    # pystray rebuilds the menu right after the click handler returns. The toggle
+    # runs on a thread (UAC), so that rebuild sees the old state and the check
+    # mark stays stale until something else refreshes it: the user clicks again
+    # and undoes the change.
+    from src.os_integration import tray as tray_module
+
+    monkeypatch.setattr(tray_module.lockscreen, "uninstall_task", lambda: uninstall_ok)
+    monkeypatch.setattr(tray_module.lockscreen, "ensure_task", lambda: ensure_ok)
+    monkeypatch.setattr(tray_module, "save_settings", lambda s: None)
+    settings = Settings(sync_lock_screen=start)
+    tray = TrayApp(AppState(), settings, on_reauthenticate=lambda: None, on_exit=lambda: None, on_setup=lambda: None)
+    seen = []
+
+    class _Icon:
+        def update_menu(self):
+            seen.append(settings.sync_lock_screen)
+
+    tray._icon = _Icon()
+
+    tray._apply_lock_sync_toggle()
+
+    expected = (not start) if (uninstall_ok or ensure_ok) else start
+    assert seen == [expected]
+
+
+def test_a_stopped_icon_does_not_hide_the_toggles_own_error_or_change_the_result(monkeypatch):
+    # Exit was clicked while the UAC prompt was open: the icon is gone, and
+    # update_menu() raises. The toggle's own error must still be what surfaces.
+    from src.os_integration import tray as tray_module
+
+    saved = []
+    monkeypatch.setattr(tray_module, "save_settings", lambda s: saved.append(s))
+    settings = Settings(sync_lock_screen=False)
+    tray = TrayApp(AppState(), settings, on_reauthenticate=lambda: None, on_exit=lambda: None, on_setup=lambda: None)
+
+    class _StoppedIcon:
+        def update_menu(self):
+            raise RuntimeError("icon stopped")
+
+    tray._icon = _StoppedIcon()
+
+    monkeypatch.setattr(tray_module.lockscreen, "ensure_task", lambda: True)
+    tray._apply_lock_sync_toggle()  # refresh failure alone is not an error
+    assert settings.sync_lock_screen is True and saved == [settings]
+
+    def broken():
+        raise OSError("schtasks failed")
+
+    monkeypatch.setattr(tray_module.lockscreen, "ensure_task", broken)
+    settings.sync_lock_screen = False
+    saved.clear()
+    with pytest.raises(OSError, match="schtasks failed"):
+        tray._apply_lock_sync_toggle()
+    assert settings.sync_lock_screen is False and saved == []

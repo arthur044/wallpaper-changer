@@ -272,6 +272,19 @@ class TrayApp:
         threading.Thread(target=self._apply_lock_sync_toggle, daemon=True).start()
 
     def _apply_lock_sync_toggle(self) -> None:
+        try:
+            self._flip_lock_sync()
+        finally:
+            # pystray rebuilds the menu when the click handler returns, which
+            # here is long before the UAC prompt is answered: without this the
+            # check mark shows the old state and the next click undoes the change.
+            try:
+                self._icon.update_menu()
+            except Exception:  # noqa: BLE001 - the icon may be stopped already (Exit during the UAC prompt)
+                # Not swallowed silently, and never in place of _flip_lock_sync's own error.
+                logger.debug("Could not refresh the tray menu after the lock screen toggle", exc_info=True)
+
+    def _flip_lock_sync(self) -> None:
         if self._settings.sync_lock_screen:
             if not lockscreen.uninstall_task():
                 # The task is still registered and runs elevated at logon, so
