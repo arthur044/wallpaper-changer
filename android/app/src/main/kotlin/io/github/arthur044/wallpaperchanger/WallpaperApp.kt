@@ -5,6 +5,7 @@ import android.content.Intent
 import android.util.Log
 import io.github.arthur044.wallpaperchanger.auth.EncryptedTokenStore
 import io.github.arthur044.wallpaperchanger.auth.SpotifyAuth
+import io.github.arthur044.wallpaperchanger.core.cache.AlbumArtStore
 import io.github.arthur044.wallpaperchanger.core.config.SettingsRepository
 import io.github.arthur044.wallpaperchanger.core.lyrics.LrclibClient
 import io.github.arthur044.wallpaperchanger.core.lyrics.LyricsPrefetch
@@ -76,7 +77,12 @@ class AppContainer(app: Application) {
 
     val renderer = WallpaperRenderer()
 
-    val composer = WallpaperComposer(artDownloader, renderer, AlbumBaseCache(File(app.cacheDir, "album_bases")))
+    val composer = WallpaperComposer(
+        artDownloader,
+        renderer,
+        AlbumBaseCache(File(app.cacheDir, "album_bases")),
+        AlbumArtStore(File(app.cacheDir, "album_art")),
+    )
 
     val applier = WallpaperApplier(SystemWallpaperPort(app))
 

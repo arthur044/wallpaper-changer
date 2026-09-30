@@ -5,6 +5,7 @@ import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.github.arthur044.wallpaperchanger.core.NowPlaying
+import io.github.arthur044.wallpaperchanger.core.cache.AlbumArtStore
 import io.github.arthur044.wallpaperchanger.core.config.Settings
 import io.github.arthur044.wallpaperchanger.core.render.CanvasSpec
 import io.github.arthur044.wallpaperchanger.core.render.PixelRect
@@ -29,7 +30,10 @@ class WallpaperComposerTest {
     private val dir = File(context.cacheDir, "test_composer_bases")
     private val phone = CanvasSpec(1080, 2400, PixelRect(0, 63, 1080, 2274), density = 2.625f)
     private val art = CountingArtSource()
+    private val artDir = File(context.cacheDir, "test_composer_art")
+    private val artStore = AlbumArtStore(artDir)
     private val composer = WallpaperComposer(art, WallpaperRenderer(), AlbumBaseCache(dir))
+    private val storing = WallpaperComposer(art, WallpaperRenderer(), AlbumBaseCache(dir), artStore)
 
     private val airbag = NowPlaying(true, "t1", "a1", "https://i.scdn.co/image/a1", "Airbag", "Radiohead")
     private val lucky = airbag.copy(trackId = "t2", trackName = "Lucky")
@@ -39,6 +43,7 @@ class WallpaperComposerTest {
     @After
     fun clean() {
         dir.deleteRecursively()
+        artDir.deleteRecursively()
     }
 
     @Test
@@ -83,6 +88,57 @@ class WallpaperComposerTest {
 
         assertFalse(result.reusedBase)
         assertEquals(2, art.downloads)
+    }
+
+    // --- the original art and its colors on disk ---------------------------
+
+    @Test
+    fun aLookChangeRedrawsFromTheStoredArtWithoutDownloading() = runTest {
+        storing.compose(airbag, phone, Settings())
+        val result = storing.compose(lucky, phone, Settings(cornerRadius = 4))
+
+        assertFalse(result.reusedBase)
+        assertEquals(1, art.downloads)
+    }
+
+    @Test
+    fun theStoredArtSurvivesANewComposer() = runTest {
+        storing.compose(airbag, phone, Settings())
+        val fresh = WallpaperComposer(art, WallpaperRenderer(), AlbumBaseCache(dir), AlbumArtStore(artDir))
+
+        assertFalse(fresh.compose(lucky, phone, Settings(artGlow = true)).reusedBase)
+        assertEquals(1, art.downloads)
+    }
+
+    @Test
+    fun storedArtThatIsNotAnImageIsDownloadedAgain() = runTest {
+        artStore.put("a1", ByteArray(64) { 7 })
+
+        val result = storing.compose(airbag, phone, Settings())
+
+        assertEquals(1080, result.bitmap.width)
+        assertEquals(1, art.downloads)
+        assertTrue(artStore.get("a1")!!.size > 64) // the real cover replaced it
+    }
+
+    @Test
+    fun freshArtThatIsNotAnImageIsNotKept() = runTest {
+        art.payload = ByteArray(64) { 7 }
+
+        val thrown = runCatching { storing.compose(airbag, phone, Settings()) }.exceptionOrNull()
+
+        assertTrue("got $thrown", thrown is IllegalArgumentException)
+        assertEquals(null, artStore.get("a1"))
+    }
+
+    @Test
+    fun storedArtStillDrawsWhenTheAlbumHasNoArtUrlAnymore() = runTest {
+        storing.compose(airbag, phone, Settings())
+
+        val result = storing.compose(lucky.copy(artUrl = null), phone, Settings(cornerRadius = 4))
+
+        assertEquals(1080, result.bitmap.width)
+        assertEquals(1, art.downloads)
     }
 
     @Test
@@ -156,6 +212,9 @@ class WallpaperComposerTest {
         var downloads = 0
             private set
 
+        /** What the next downloads answer; a real cover when null. */
+        var payload: ByteArray? = null
+
         private val png: ByteArray = ByteArrayOutputStream().also { out ->
             Bitmap.createBitmap(640, 640, Bitmap.Config.ARGB_8888)
                 .apply { eraseColor(Color.rgb(40, 90, 160)) }
@@ -164,7 +223,7 @@ class WallpaperComposerTest {
 
         override suspend fun download(url: String): ByteArray {
             downloads++
-            return png
+            return payload ?: png
         }
     }
 }
