@@ -4,6 +4,7 @@ import io
 from PIL import Image, ImageDraw, ImageFont, ImageStat
 
 from src.config.settings import Settings
+from src.graphics.color_extractor import extract_dominant_color
 from src.graphics.layout import ArtLayout
 from src.graphics.renderer import (
     _card_box,
@@ -105,12 +106,12 @@ def test_a_new_base_gives_the_widget_the_dominant_color_without_a_palette_pass(t
     def no_palette(_bytes):
         raise AssertionError("solid, no glow: the accent palette must not be computed")
 
-    monkeypatch.setattr(renderer, "extract_accent_palette", no_palette)
+    monkeypatch.setattr("src.graphics.art_cache.extract_accent_palette", no_palette)
     tiny_art = ArtLayout(canvas_size=(400, 300), art_size=40, art_position=(10, 10))
 
     tint = render_for_now_playing(_now_playing(), Settings(show_track_info=False), tiny_art, tmp_path / "b.png", tmp_path / "o.png")
 
-    dominant = renderer.extract_dominant_color(buffer.getvalue())
+    dominant = extract_dominant_color(buffer.getvalue())
     assert all(abs(a - b) <= 2 for a, b in zip(tint, dominant)), (tint, dominant)
 
 
@@ -225,7 +226,7 @@ def test_art_glow_tints_the_area_around_the_art_with_the_accent(tmp_path, monkey
 
 def test_accent_palette_is_only_computed_when_an_effect_needs_it(tmp_path, monkeypatch):
     calls = []
-    monkeypatch.setattr("src.graphics.renderer.extract_accent_palette", lambda b: calls.append(1) or [])
+    monkeypatch.setattr("src.graphics.art_cache.extract_accent_palette", lambda b: calls.append(1) or [])
 
     _render_new_album(tmp_path, monkeypatch, Settings(show_track_info=False))
 
@@ -268,7 +269,7 @@ def test_solid_style_keeps_one_flat_color_in_the_corners(tmp_path, monkeypatch):
 def test_glow_and_mesh_share_one_palette_extraction(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr("src.graphics.renderer.download_art", lambda url: _art_with_colors())
-    monkeypatch.setattr("src.graphics.renderer.extract_accent_palette", lambda b: calls.append(1) or [])
+    monkeypatch.setattr("src.graphics.art_cache.extract_accent_palette", lambda b: calls.append(1) or [])
 
     render_for_now_playing(
         _now_playing(),
@@ -386,7 +387,7 @@ def test_blurred_art_background_is_darkened_toward_the_edges(tmp_path, monkeypat
 
 def test_blurred_art_background_needs_no_accent_palette(tmp_path, monkeypatch):
     calls = []
-    monkeypatch.setattr("src.graphics.renderer.extract_accent_palette", lambda b: calls.append(1) or [])
+    monkeypatch.setattr("src.graphics.art_cache.extract_accent_palette", lambda b: calls.append(1) or [])
 
     _render_base_only(tmp_path, monkeypatch, Settings(background_style="blur"), _art_top_red_bottom_blue())
 
@@ -397,7 +398,7 @@ def test_glass_frame_takes_the_arts_place_and_shrinks_the_art(tmp_path, monkeypa
     # White art on a black fill: without a frame, the art reaches its layout edge.
     white = _png_bytes(Image.new("RGB", (64, 64), (255, 255, 255)))
     black_fill = Settings(shadow_blur_radius=0)
-    monkeypatch.setattr("src.graphics.renderer.extract_dominant_color", lambda b: (0, 0, 0))
+    monkeypatch.setattr("src.graphics.art_cache.extract_dominant_color", lambda b: (0, 0, 0))
 
     (tmp_path / "plain").mkdir()
     (tmp_path / "frame").mkdir()
@@ -419,7 +420,7 @@ def test_glass_frame_takes_the_arts_place_and_shrinks_the_art(tmp_path, monkeypa
 def test_a_single_frame_leaves_the_art_bigger_than_a_double_one(tmp_path, monkeypatch):
     white = _png_bytes(Image.new("RGB", (64, 64), (255, 255, 255)))
     black_fill = Settings(shadow_blur_radius=0)
-    monkeypatch.setattr("src.graphics.renderer.extract_dominant_color", lambda b: (0, 0, 0))
+    monkeypatch.setattr("src.graphics.art_cache.extract_dominant_color", lambda b: (0, 0, 0))
 
     def art_width(style):
         (tmp_path / style).mkdir()

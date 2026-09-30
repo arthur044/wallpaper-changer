@@ -10,13 +10,9 @@ import requests
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageStat
 
 from src.config.settings import Settings
+from src.graphics.art_cache import AlbumArtCache, AlbumColors
 from src.graphics.base_cache import mark_used, prune_album_bases
-from src.graphics.color_extractor import (
-    extract_accent_palette,
-    extract_dominant_color,
-    pick_glow_color,
-    pick_mesh_colors,
-)
+from src.graphics.color_extractor import pick_glow_color, pick_mesh_colors
 from src.graphics.glass import frost
 from src.graphics.layout import ArtLayout
 from src.graphics.mesh import mesh_background
@@ -177,13 +173,17 @@ def _glass_frame_layer(art: ArtLayout, settings: Settings) -> Image.Image:
     return layer
 
 
-def _build_base_canvas(art_bytes: bytes, settings: Settings, layout: ArtLayout) -> Image.Image:
+def _build_base_canvas(
+    art_bytes: bytes, settings: Settings, layout: ArtLayout, colors: Optional[AlbumColors] = None
+) -> Image.Image:
     """Background fill + shadow + centered rounded art. No track text — this is the
-    part that's identical for every track on the same album, so it's safe to cache."""
-    dominant_rgb = extract_dominant_color(art_bytes)
+    part that's identical for every track on the same album, so it's safe to cache.
+    [colors] holds what was already worked out for this art (see AlbumArtCache)."""
+    colors = colors if colors is not None else AlbumColors(art_bytes)
+    dominant_rgb = colors.dominant()
     use_mesh = settings.background_style == "mesh"
     # One extraction shared by every effect that needs accents; none without them.
-    palette = extract_accent_palette(art_bytes) if (use_mesh or settings.art_glow) else []
+    palette = colors.accents() if (use_mesh or settings.art_glow) else []
     art_image = Image.open(BytesIO(art_bytes)).convert("RGB")
 
     if use_mesh:
@@ -369,8 +369,33 @@ def sample_widget_tint(base_image: Image.Image) -> Tuple[int, int, int]:
     return corner.resize((1, 1), Image.BOX).getpixel((0, 0))[:3]
 
 
+def _base_from_art(
+    now_playing: NowPlaying, settings: Settings, layout: ArtLayout, art_cache: Optional[AlbumArtCache]
+) -> Image.Image:
+    """The base drawn from the album's art: kept on disk when there is a cache,
+    so a style change needs no download and no new color quantization."""
+    if art_cache is None:
+        return _build_base_canvas(download_art(now_playing.art_url), settings, layout)
+    art = art_cache.load(now_playing.album_id, lambda: download_art(now_playing.art_url))
+    try:
+        return _build_base_canvas(art.bytes, settings, layout, art.colors)
+    except OSError:  # PIL could not read it
+        if not art.from_disk:
+            raise
+        # A stored file gone bad (damaged, or not an image): once more from the network.
+        logger.warning("Stored art for album %s is unreadable, downloading it again", now_playing.album_id)
+        art_cache.discard(now_playing.album_id)
+        art = art_cache.load(now_playing.album_id, lambda: download_art(now_playing.art_url))
+        return _build_base_canvas(art.bytes, settings, layout, art.colors)
+
+
 def render_for_now_playing(
-    now_playing: NowPlaying, settings: Settings, layout: ArtLayout, base_path: Path, output_path: Path
+    now_playing: NowPlaying,
+    settings: Settings,
+    layout: ArtLayout,
+    base_path: Path,
+    output_path: Path,
+    art_cache: Optional[AlbumArtCache] = None,
 ) -> Tuple[int, int, int]:
     """Renders and saves the wallpaper; returns the album's color for the
     lyrics widget (see sample_widget_tint)."""
@@ -379,8 +404,7 @@ def render_for_now_playing(
         mark_used(base_path)
         logger.info("Reusing cached base art for album %s", now_playing.album_id)
     else:
-        art_bytes = download_art(now_playing.art_url)
-        base_image = _build_base_canvas(art_bytes, settings, layout)
+        base_image = _base_from_art(now_playing, settings, layout, art_cache)
         # Fast compression: written once per album, and the cache is capped by size.
         base_image.save(base_path, format="PNG", compress_level=1)
         prune_album_bases(base_path.parent, keep=base_path)

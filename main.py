@@ -5,8 +5,9 @@ import sys
 import threading
 from typing import Optional
 
-from src.config.paths import album_base_path, track_index_file
+from src.config.paths import album_art_dir, album_base_path, track_index_file
 from src.config.settings import load_settings, save_settings
+from src.graphics.art_cache import AlbumArtCache
 from src.graphics.base_cache import base_cache_key
 from src.graphics.layout import compute_layout
 from src.graphics.renderer import render_for_now_playing
@@ -41,7 +42,7 @@ def _build_client(settings):
     return Spotify(auth_manager=auth_manager)
 
 
-def _make_render_fn(settings, tint: Optional[TintHolder] = None):
+def _make_render_fn(settings, tint: Optional[TintHolder] = None, art_cache: Optional[AlbumArtCache] = None):
     def render(now_playing: NowPlaying) -> None:
         if not now_playing.art_url or not now_playing.album_id:
             logger.warning("No album art URL for track %s, skipping render", now_playing.track_id)
@@ -53,7 +54,7 @@ def _make_render_fn(settings, tint: Optional[TintHolder] = None):
         layout = compute_layout(snapshot)
         base_path = album_base_path(base_cache_key(now_playing.album_id, layout.canvas_size, snapshot))
         output_path = next_output_path()
-        album_color = render_for_now_playing(now_playing, snapshot, layout, base_path, output_path)
+        album_color = render_for_now_playing(now_playing, snapshot, layout, base_path, output_path, art_cache)
         if tint is not None:
             tint.set(album_color)  # the lyrics widget's background follows the album
         set_wallpaper(output_path, smooth=snapshot.smooth_transition)
@@ -141,7 +142,7 @@ def _run_app(settings) -> int:
         client=client,
         settings=settings,
         app_state=app_state,
-        render_fn=_make_render_fn(settings, album_tint),
+        render_fn=_make_render_fn(settings, album_tint, AlbumArtCache(album_art_dir())),
         reauth_fn=reauth,
         smtc_watcher=smtc_watcher,
         is_locked_fn=is_workstation_locked,

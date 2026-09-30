@@ -48,3 +48,9 @@ def album_base_path(key: str) -> Path:
     albums_dir = cache_dir() / "album_bases"
     albums_dir.mkdir(parents=True, exist_ok=True)
     return albums_dir / f"{key}.png"
+
+
+def album_art_dir() -> Path:
+    """The original cover and colors of each album (graphics.art_cache): what a
+    style change redraws from, without downloading the art again."""
+    return cache_dir() / "album_art"
