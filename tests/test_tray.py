@@ -395,3 +395,16 @@ def test_lock_sync_turns_off_once_its_task_is_gone(monkeypatch):
     tray._apply_lock_sync_toggle()
 
     assert settings.sync_lock_screen is False
+
+
+def test_a_left_click_on_the_icon_opens_the_settings_window():
+    opened = []
+    tray = TrayApp(
+        AppState(), Settings(), on_reauthenticate=lambda: None, on_exit=lambda: None, on_setup=lambda: None,
+        on_open_settings=lambda: opened.append(1),
+    )
+
+    item = next(i for i in tray._build_menu().items if i.default)
+    item(tray._icon)
+
+    assert item.text == "Settings..." and opened == [1]

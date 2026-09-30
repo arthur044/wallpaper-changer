@@ -7,7 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest  # noqa: E402
 from PySide6.QtCore import QTimer, Qt  # noqa: E402
-from PySide6.QtWidgets import QApplication  # noqa: E402
+from PySide6.QtWidgets import QApplication, QWidget  # noqa: E402
 
 from src.lyrics.lrclib import NotFound, SyncedLyrics  # noqa: E402
 from src.lyrics.text import TimedLine  # noqa: E402
@@ -421,3 +421,33 @@ def test_placing_the_window_by_code_is_not_saved_as_the_users_choice():
     assert not host._window._save_timer.isActive()
     assert settings.lyrics_widget_geometry is None
     host.toggle_widget()
+
+
+def test_open_settings_from_the_tray_thread_builds_and_shows_the_window_on_the_qt_thread(host):
+    built = []
+
+    class _Panel(QWidget):
+        def refresh(self):
+            built.append("refresh")
+
+    def factory():
+        built.append(("built", threading.current_thread() is threading.main_thread()))
+        return _Panel()
+
+    host.attach_settings_window(factory)
+
+    def from_tray_thread():
+        host.open_settings()
+        host.open_settings()  # the second click reuses the window
+        host.request_quit()
+
+    threading.Thread(target=from_tray_thread).start()
+    _exec_with_watchdog(host)
+
+    assert built == [("built", True), "refresh", "refresh"]
+
+
+def test_open_settings_without_a_window_does_nothing(host):
+    threading.Thread(target=lambda: (host.open_settings(), host.request_quit())).start()
+
+    _exec_with_watchdog(host)

@@ -374,6 +374,7 @@ class _Bridge(QObject):
     visibility_requested = Signal(bool)
     layer_requested = Signal()
     reset_requested = Signal()
+    settings_requested = Signal()
     quit_requested = Signal()
     lyrics_ready = Signal(str, object)
     lyrics_failed = Signal(str)
@@ -407,6 +408,8 @@ class QtHost:
         self._settings = settings if settings is not None else Settings()
         self._save = save if save is not None else (lambda _settings: None)
         self._window: Optional[LyricsWindow] = None
+        self._settings_factory: Optional[Callable[[], QWidget]] = None
+        self._settings_window: Optional[QWidget] = None
         self._lock = threading.Lock()
         self._visible = self._settings.lyrics_widget_enabled  # the tray's "Show"
         self._locked = self._settings.lyrics_widget_locked
@@ -424,6 +427,7 @@ class QtHost:
         self._bridge.visibility_requested.connect(self._apply_visibility)
         self._bridge.layer_requested.connect(self._apply_layer)
         self._bridge.reset_requested.connect(self._reset_position)
+        self._bridge.settings_requested.connect(self._show_settings)
         self._bridge.quit_requested.connect(self._app.quit)
         self._bridge.lyrics_ready.connect(self._on_lyrics)
         self._bridge.lyrics_failed.connect(self._on_failure)
@@ -467,6 +471,14 @@ class QtHost:
 
     def reset_position(self) -> None:
         self._bridge.reset_requested.emit()
+
+    def attach_settings_window(self, factory: Callable[[], QWidget]) -> None:
+        """How to build the settings window; it is built on first use, on the
+        Qt thread. Call before exec()."""
+        self._settings_factory = factory
+
+    def open_settings(self) -> None:
+        self._bridge.settings_requested.emit()
 
     def request_quit(self) -> None:
         self._bridge.quit_requested.emit()
@@ -512,6 +524,17 @@ class QtHost:
         self._ensure_window()
         self._timer.start()
         self._tick()
+
+    def _show_settings(self) -> None:
+        if self._settings_factory is None:
+            return
+        if self._settings_window is None:
+            self._settings_window = self._settings_factory()
+        window = self._settings_window
+        window.refresh()  # the tray or another thread may have changed things
+        window.show()
+        window.raise_()
+        window.activateWindow()
 
     def _ensure_window(self) -> LyricsWindow:
         if self._window is None:

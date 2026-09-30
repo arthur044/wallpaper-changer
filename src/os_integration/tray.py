@@ -59,6 +59,7 @@ class TrayApp:
         lyrics_widget: Optional[LyricsWidgetControls] = None,
         version: str = "",
         updater: Optional[Updater] = None,
+        on_open_settings: Callable[[], None] = lambda: None,
     ):
         self._app_state = app_state
         self._settings = settings
@@ -68,6 +69,7 @@ class TrayApp:
         # setup hook below, and an instance attribute would shadow it.
         self._launch_wizard = on_setup
         self._on_restart = on_restart
+        self._open_settings = on_open_settings
         self._lyrics_widget = lyrics_widget
         self._version = version
         self._wizard_thread: Optional[threading.Thread] = None
@@ -88,6 +90,8 @@ class TrayApp:
 
     def _build_menu(self) -> pystray.Menu:
         return pystray.Menu(
+            # default=True: a left click on the icon opens it too.
+            pystray.MenuItem("Settings...", lambda icon, item: self._open_settings(), default=True),
             pystray.MenuItem(self._pause_label, self._toggle_pause),
             pystray.MenuItem("Force Sync", self._force_sync),
             pystray.MenuItem("Style", self._build_style_menu()),
@@ -272,6 +276,15 @@ class TrayApp:
         threading.Thread(target=self._apply_lock_sync_toggle, daemon=True).start()
 
     def _apply_lock_sync_toggle(self) -> None:
+        try:
+            self._flip_lock_sync()
+        finally:
+            # pystray rebuilds the menu when the click handler returns, which
+            # here is long before the UAC prompt is answered: without this the
+            # check mark shows the old state and the next click undoes the change.
+            self._icon.update_menu()
+
+    def _flip_lock_sync(self) -> None:
         if self._settings.sync_lock_screen:
             if not lockscreen.uninstall_task():
                 # The task is still registered and runs elevated at logon, so
