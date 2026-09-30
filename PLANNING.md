@@ -4,7 +4,7 @@ Documentação técnica do estado atual. Descreve **como o sistema funciona hoje
 foi construído. Uso e instalação estão no [README](README.md) e no
 [README do Android](android/README.md).
 
-Última revisão: 2026-09-29 · base: `feat/lyrics-widget` (PR #11) @ `620a8d1`, sobre `main` @ `5a5169b`
+Última revisão: 2026-09-30 · base: `main` @ `2e716ee` (PRs #1–#13 mergeados, nenhum aberto)
 
 ---
 
@@ -21,7 +21,7 @@ o mesmo comportamento e o mesmo visual:
 | Código | `main.py`, `src/` | `android/` (módulos `:core` e `:app`) |
 | Interface | Ícone na bandeja (pystray) + assistente Tkinter + widget de letra (PySide6/Qt) | Compose: onboarding, tela principal, bloco nas Configurações rápidas |
 | Render | Pillow | `android.graphics.Canvas` |
-| Testes | 383 (pytest) | 552: 403 JUnit 5 no `:core`; 20 unitários e 129 instrumentados no `:app` |
+| Testes | 465 (pytest) | 552: 403 JUnit 5 no `:core`; 20 unitários e 129 instrumentados no `:app` |
 
 **Regra de paridade:** tudo o que é visual (cor de fundo, mesh, glow, blur, moldura, cartão)
 é **portado** do desktop para o Android, não reimplementado. Os valores são conferidos contra
@@ -124,6 +124,29 @@ do arquivo da base.
 criada uma vez, com `/rl highest` (um prompt UAC). Cada atualização grava
 `lockscreen_pending.json` e roda `schtasks /run`. A task executa `main.py --apply-lockscreen`
 elevado e escreve em `HKLM\...\PersonalizationCSP`. Todo `schtasks` usa `CREATE_NO_WINDOW`.
+
+- `ensure_task` compara o comando registrado (`schtasks /query /xml`, lido na página de
+  código OEM) com o desta pasta. Se a task aponta para outra pasta, ela é **recriada** (um
+  UAC): senão rodaria, com direitos de administrador, o código de outra cópia do app.
+- `uninstall_task` apaga a task e, se ela sobrou (criada elevada, apagar costuma exigir UAC),
+  tenta de novo elevado. Devolve `False` se ela continua lá.
+- Desligar a tela de bloqueio (bandeja ou assistente) só grava `sync_lock_screen=False`
+  depois que a task sumiu. Com o UAC recusado a opção continua ligada, e o assistente avisa.
+
+**Atualização do desktop (`os_integration/updater.py`, `update_menu.py`):** o app roda de um
+clone próprio do repositório, na `main`. O item "Check for updates" da bandeja faz
+`git fetch` e decide (`decide`, pura): `UP_TO_DATE`, `UPDATE` (mudou `main.py`,
+`requirements.txt` ou `src/`), `DOCS_ONLY` (só fast-forward) ou `BLOCKED` (não está na
+`main`, há mudança local ou commit local). Um segundo clique aplica: `pip install` dos
+requisitos de `origin/main` **antes**, depois `merge --ff-only`, depois reinicia. Nada é
+aplicado sem clique; falhas aparecem no rótulo do item, não no status de erro do Spotify.
+Restart e Exit ficam desabilitados enquanto o pip ou o fast-forward rodam. A versão
+(`abc1234 (AAAA-MM-DD)`, de `git log -1`) aparece no menu e na dica do ícone.
+
+**Instância única (`os_integration/single_instance.py`):** mutex `Local\SpotifyWallpaperEngine`,
+adquirido depois do assistente. Uma segunda instância espera até 20 s (o Restart sobe a nova
+antes de a antiga sair) e, se o mutex continua ocupado, encerra. Se o mutex não puder ser
+criado ou esperado, o app roda sem trava em vez de nunca iniciar.
 
 **Composição da base** (`graphics/renderer._build_base_canvas`):
 
@@ -479,6 +502,11 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | Fade no Windows via `IActiveDesktop` + mensagem `0x052C` ao Progman | Único caminho que anima a troca. Sem `AD_APPLY_FORCE`, que falha no Windows 10. Depende das animações do sistema estarem ligadas |
 | Fade no Android via live wallpaper próprio | `setBitmap` pisca preto a cada troca, comportamento do sistema. O quadro vai em pixels crus porque codificar PNG custa centenas de ms |
 | Tela de bloqueio no Windows via Scheduled Task elevada | A chave `PersonalizationCSP` fica em HKLM. A task pede UAC uma vez só |
+| Task apagada ao desligar a opção, e recriada se aponta para outra pasta | Uma task esquecida roda elevada no logon, e uma apontando para outro clone executaria aquele código como administrador |
+| Desktop atualiza por `git` no clone do app, só fast-forward na `main` | Sem instalador nem release no PC: o código que roda é o da `main`. Nunca faz merge nem push, e não mexe em mudança local |
+| `pip` antes do fast-forward, com o `requirements.txt` lido do git | Se o pip falha, o código fica como estava e não há o que desfazer. A cópia vai para `%TEMP%`, então o arquivo não pode ter linhas relativas (`-r`, `-e .`) |
+| Só reinicia se mudou `main.py`, `requirements.txt` ou `src/` | Mudança só em `android/` ou docs entra sem derrubar o app |
+| Instância única por mutex nomeado (`Local\`) | Duas instâncias brigariam pelo wallpaper e pelo `config.json`. `Local\` mantém um motor por sessão de logon |
 | Tokens: Credential Manager / Keystore + Tink | Nunca em texto puro no disco. OAuth PKCE, sem client secret |
 | Arte só de `https` em `scdn.co`/`spotifycdn.com`, conferido também depois de redirects | Os bytes vão direto ao decodificador de imagem. Uma resposta da API forjada não pode apontá-lo para outro host. Nas 114 capas do índice do desktop, todas vinham de `i.scdn.co`. URL recusada é tratada como falha de download comum |
 | Client ID por usuário | Desde 15/05/2025 o Spotify só dá cota estendida a empresas grandes. Cada pessoa usa o próprio app em modo desenvolvimento (Premium, até 5 contas) |
@@ -531,12 +559,10 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | #6 | CI: canais release/debug no GitHub Releases, `versionCode` = contagem de commits, atualização no app |
 | #7 | Android: redesenho ao mudar o tamanho de exibição (zoom/DPI), sem chamada à API. Validado no build de release |
 | #9 | Android: "Compartilhar letra" (§2.5). Testado no A71 (Instagram Stories, WhatsApp, rotação durante a seleção) |
+| #11 | Desktop: widget de letra sincronizada (§2.6). Seek, resolução, escala e redimensionamento testados pelo usuário em 2026-09-29 |
+| #12 | Desktop: atualização pelo clone próprio na `main`, instância única e "Check for updates" na bandeja (§2.2) |
+| #13 | Desktop: o toggle da tela de bloqueio apaga a task `SpotifyWallpaperEngine_LockScreen` ao desligar e a reaponta para esta pasta ao ligar; o assistente avisa quando a task continua ligada (§2.2) |
 | — | Nas duas plataformas: arte baixada só de `https` em `scdn.co`/`spotifycdn.com` (§4) |
-
-**Em revisão, fora da `main`:** #11, widget de letra sincronizada no desktop (§2.6), branch
-`feat/lyrics-widget`. Revisado (nenhum problema crítico ou alto) e com 383/383 testes
-passando. Checklist do PR completo (seek, resolução, escala e redimensionamento testados pelo
-usuário em 2026-09-29).
 
 ### 5.2 Limitações conhecidas
 
@@ -589,6 +615,16 @@ usuário em 2026-09-29).
   - bitmaps de prévias antigas ficam para o GC de propósito (reciclar um que o Compose
     ainda pode estar desenhando é mais arriscado);
   - `LyricsPrefetch.state` não tem mais leitor em produção (a tela usa `watch()`). Mantido.
+- **Atualização do desktop (#12):**
+  - exige o app rodando de um clone git na `main`, sem mudança local nem commits locais; fora
+    disso o item mostra o motivo e não faz nada;
+  - a busca usa o `origin` do clone, sem token: sem rede ou sem acesso ao repositório, a falha
+    aparece no rótulo do item;
+  - pacotes que o pip já atualizou ficam atualizados se o fast-forward falhar depois. Os
+    requisitos usam `>=`, então o código antigo segue funcionando com eles.
+- **Tela de bloqueio no desktop (#13):** desligar a opção com o UAC recusado deixa a task e a
+  opção ligadas. O assistente avisa; a bandeja só registra no log. Mudar o app de pasta
+  recria a task na próxima vez que a opção for ligada, com um UAC.
 - **Widget de letra (#11):**
   - não testado com um segundo monitor de DPI diferente (o usuário tem um monitor só). Trocar
     resolução e escala e redimensionar o widget foram testados pelo usuário em 2026-09-29, sem
@@ -606,9 +642,8 @@ usuário em 2026-09-29).
 
 ### 5.3 Próximas prioridades
 
-1. **Merge do #11** (merge commit, não squash).
-2. **Decidir** se "Compartilhar letra" aparece também com a música pausada.
-3. **Cache em disco da arte original e das cores**, para mudar de estilo sem baixar a arte de
+1. **Decidir** se "Compartilhar letra" aparece também com a música pausada.
+2. **Cache em disco da arte original e das cores**, para mudar de estilo sem baixar a arte de
    novo nem recalcular a paleta.
 
 Descartados por decisão do usuário (2026-09-24): limite de ampliação da arte no desktop,
