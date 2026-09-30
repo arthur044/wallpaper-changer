@@ -98,102 +98,6 @@ def test_setup_menu_item_runs_the_injected_callback():
     assert calls == [1]
 
 
-def _style_tray(monkeypatch, settings):
-    from src.os_integration import tray as tray_module
-
-    saved = []
-    monkeypatch.setattr(tray_module, "save_settings", lambda s: saved.append(s))
-    tray = TrayApp(AppState(), settings, on_reauthenticate=lambda: None, on_exit=lambda: None, on_setup=lambda: None)
-    return tray, saved
-
-
-def test_background_choice_is_saved_and_redraws_now(monkeypatch):
-    settings = Settings()
-    tray, saved = _style_tray(monkeypatch, settings)
-
-    tray._set_background("mesh")
-
-    assert settings.background_style == "mesh"
-    assert saved == [settings]
-    assert tray._app_state.force_sync_event.is_set()
-
-
-def test_same_background_choice_does_nothing(monkeypatch):
-    tray, saved = _style_tray(monkeypatch, Settings())
-
-    tray._set_background("solid")
-
-    assert saved == []
-    assert not tray._app_state.force_sync_event.is_set()
-
-
-def test_glow_and_glass_toggle_and_redraw(monkeypatch):
-    settings = Settings()
-    tray, saved = _style_tray(monkeypatch, settings)
-
-    tray._toggle_glow(tray._icon, None)
-    tray._toggle_glass(tray._icon, None)
-
-    assert settings.art_glow is True
-    assert settings.text_card == "glass"
-    assert len(saved) == 2
-    assert tray._app_state.force_sync_event.is_set()
-
-    tray._toggle_glass(tray._icon, None)
-    assert settings.text_card == "none"
-
-
-class _FakeWidget:
-    def __init__(self):
-        self.visible = self.locked = self.on_top = False
-        self.resets = 0
-
-    def toggle_widget(self):
-        self.visible = not self.visible
-
-    def is_widget_visible(self):
-        return self.visible
-
-    def toggle_locked(self):
-        self.locked = not self.locked
-
-    def is_locked(self):
-        return self.locked
-
-    def toggle_on_top(self):
-        self.on_top = not self.on_top
-
-    def is_on_top(self):
-        return self.on_top
-
-    def reset_position(self):
-        self.resets += 1
-
-
-def _lyrics_items(tray):
-    menu = next(item for item in tray._build_menu().items if item.text == "Lyrics widget")
-    return {item.text: item for item in menu.submenu.items}
-
-
-def test_lyrics_widget_menu_runs_each_control_and_shows_its_state():
-    widget = _FakeWidget()
-    tray = _tray(lyrics_widget=widget)
-    items = _lyrics_items(tray)
-
-    assert [items[name].checked for name in ("Show", "Lock position", "Always on top")] == [False, False, False]
-    for name in ("Show", "Lock position", "Always on top", "Reset position"):
-        items[name](tray._icon)
-
-    assert (widget.visible, widget.locked, widget.on_top, widget.resets) == (True, True, True, 1)
-    assert [items[name].checked for name in ("Show", "Lock position", "Always on top")] == [True, True, True]
-
-
-def test_without_a_lyrics_widget_its_menu_is_hidden():
-    tray = _tray()
-    menu = next(item for item in tray._build_menu().items if item.text == "Lyrics widget")
-    assert menu.visible is False
-
-
 def test_restart_runs_the_callback_and_closes_the_tray(monkeypatch):
     calls = []
     tray = TrayApp(
@@ -214,66 +118,7 @@ def test_restart_runs_the_callback_and_closes_the_tray(monkeypatch):
 
 
 
-def test_blurred_background_is_a_background_choice(monkeypatch):
-    settings = Settings()
-    tray, saved = _style_tray(monkeypatch, settings)
-
-    tray._set_background("blur")
-
-    assert settings.background_style == "blur"
-    assert saved == [settings]
-
-
-def test_the_frame_is_a_three_way_choice(monkeypatch):
-    settings = Settings()
-    tray, saved = _style_tray(monkeypatch, settings)
-
-    tray._set_frame("single")
-    assert settings.art_frame == "single"
-    assert tray._app_state.force_sync_event.is_set()
-
-    tray._set_frame("double")
-    tray._set_frame("none")
-    assert settings.art_frame == "none"
-    assert len(saved) == 3
-
-
-def test_picking_the_current_frame_again_does_nothing(monkeypatch):
-    tray, saved = _style_tray(monkeypatch, Settings())
-
-    tray._set_frame("none")
-
-    assert saved == []
-
-
-
-def test_smooth_transition_toggles_and_redraws(monkeypatch):
-    settings = Settings()
-    tray, saved = _style_tray(monkeypatch, settings)
-
-    tray._toggle_smooth(tray._icon, None)
-    assert settings.smooth_transition is True
-    assert tray._app_state.force_sync_event.is_set()
-
-    tray._toggle_smooth(tray._icon, None)
-    assert settings.smooth_transition is False
-    assert len(saved) == 2
-
-
-
-def test_blur_strength_levels_are_saved_and_redrawn(monkeypatch):
-    settings = Settings()
-    tray, saved = _style_tray(monkeypatch, settings)
-
-    tray._set_blur_strength(60)
-    assert settings.blur_strength == 60
-    assert tray._app_state.force_sync_event.is_set()
-
-    tray._set_blur_strength(60)
-    assert len(saved) == 1, "picking the current level again changes nothing"
-
-
-def test_running_version_is_in_the_tooltip_and_a_disabled_menu_item():
+def test_running_version_is_in_the_tooltip():
     tray = TrayApp(
         AppState(),
         Settings(),
@@ -284,16 +129,12 @@ def test_running_version_is_in_the_tooltip_and_a_disabled_menu_item():
     )
 
     assert tray._icon.title == "Spotify Wallpaper Engine - f93217c (2026-09-29)"
-    item = next(item for item in tray._build_menu().items if "f93217c" in item.text)
-    assert item.text == "Version f93217c (2026-09-29)"
-    assert item.enabled is False
 
 
 def test_without_a_version_the_tray_keeps_its_plain_title():
     tray = _tray()
 
     assert tray._icon.title == "Spotify Wallpaper Engine"
-    assert not any(item.visible for item in tray._build_menu().items if item.text.startswith("Version"))
 
 
 class _InlineUpdater:
@@ -310,63 +151,6 @@ class _InlineUpdater:
 
     def apply(self):
         return self._result
-
-
-def _update_item(tray):
-    return next(item for item in tray._build_menu().items if item.visible and "update" in item.text.lower())
-
-
-def test_update_item_checks_then_applies_through_restart(monkeypatch):
-    calls = []
-    tray = TrayApp(
-        AppState(),
-        Settings(),
-        on_reauthenticate=lambda: None,
-        on_exit=lambda: None,
-        on_setup=lambda: None,
-        on_restart=lambda: calls.append("restart"),
-        updater=_InlineUpdater(),
-    )
-    monkeypatch.setattr(tray._update_menu, "_spawn", lambda fn: fn())
-    stopped = []
-    monkeypatch.setattr(tray._icon, "stop", lambda: stopped.append(1))
-
-    assert _update_item(tray).text == "Check for updates"
-    _update_item(tray)(tray._icon)
-    assert _update_item(tray).text == "Update to bbbbbbb (2 commits)"
-    assert calls == []
-
-    _update_item(tray)(tray._icon)
-    assert calls == ["restart"] and stopped == [1]
-
-
-def test_without_an_updater_the_update_item_is_hidden():
-    tray = _tray()
-
-    assert not any(item.visible and "update" in item.text.lower() for item in tray._build_menu().items)
-
-
-def test_restart_and_exit_are_disabled_while_an_update_is_applied(monkeypatch):
-    tray = TrayApp(
-        AppState(),
-        Settings(),
-        on_reauthenticate=lambda: None,
-        on_exit=lambda: None,
-        on_setup=lambda: None,
-        updater=_InlineUpdater(),
-    )
-    pending = []
-    monkeypatch.setattr(tray._update_menu, "_spawn", pending.append)
-
-    def enabled():
-        return {item.text: item.enabled for item in tray._build_menu().items if item.text in ("Restart", "Exit")}
-
-    _update_item(tray)(tray._icon)
-    assert enabled() == {"Restart": True, "Exit": True}  # a check is harmless
-    pending.pop()()  # the check finds the update
-
-    _update_item(tray)(tray._icon)
-    assert enabled() == {"Restart": False, "Exit": False}
 
 
 def test_lock_sync_stays_on_when_its_task_cannot_be_removed(monkeypatch):
@@ -395,6 +179,167 @@ def test_lock_sync_turns_off_once_its_task_is_gone(monkeypatch):
     tray._apply_lock_sync_toggle()
 
     assert settings.sync_lock_screen is False
+
+
+def test_a_left_click_on_the_icon_opens_the_settings_window():
+    opened = []
+    tray = TrayApp(
+        AppState(), Settings(), on_reauthenticate=lambda: None, on_exit=lambda: None, on_setup=lambda: None,
+        on_open_settings=lambda: opened.append(1),
+    )
+
+    item = next(i for i in tray._build_menu().items if i.default)
+    item(tray._icon)
+
+    assert item.text == "Settings..." and opened == [1]
+
+
+def _commands_tray(monkeypatch, **kwargs):
+    tray = TrayApp(
+        AppState(), Settings(), on_reauthenticate=lambda: None, on_exit=lambda: None, on_setup=lambda: None, **kwargs
+    )
+    stopped = []
+    monkeypatch.setattr(tray._icon, "stop", lambda: stopped.append(1))
+    return tray, stopped
+
+
+def _join_background_threads():
+    import threading
+
+    for thread in threading.enumerate():
+        if thread.name in ("restart", "exit"):
+            thread.join(timeout=5.0)
+
+
+def test_the_menu_is_only_open_pause_reauthenticate_and_exit():
+    tray = _tray()
+
+    shown = [i.text for i in tray._build_menu().items if i.visible and i.text and not i.text.startswith("-")]
+    assert shown == ["Settings...", "Pause", "Exit"]
+
+
+def test_reauthenticate_shows_in_the_menu_only_on_an_error():
+    tray = _tray()
+    item = next(i for i in tray._build_menu().items if i.text == "Re-authenticate")
+    assert item.visible is False
+
+    tray._app_state.set_error("expired")
+
+    assert item.visible is True
+    assert tray.commands().needs_reauthentication() is True
+
+
+def test_commands_pause_and_sync_reach_the_app_state():
+    tray = _tray()
+    commands = tray.commands()
+
+    commands.toggle_pause()
+    assert commands.is_paused() is True
+    commands.force_sync()
+
+    assert tray._app_state.force_sync_event.is_set()
+
+
+def test_commands_restart_runs_off_the_calling_thread_and_closes_the_tray(monkeypatch):
+    import threading
+
+    calls = []
+    tray, stopped = _commands_tray(monkeypatch, on_restart=lambda: calls.append(threading.current_thread().name))
+
+    tray.commands().restart()
+    _join_background_threads()
+
+    assert calls == ["restart"] and stopped == [1]
+
+
+def test_commands_exit_stops_the_app_and_the_tray(monkeypatch):
+    exits = []
+    tray, stopped = _commands_tray(monkeypatch)
+    tray._on_exit = lambda: exits.append(1)
+
+    tray.commands().exit()
+    _join_background_threads()
+
+    assert exits == [1] and stopped == [1] and tray._app_state.stop_event.is_set()
+
+
+def test_commands_carry_the_version_and_whether_there_is_an_updater():
+    plain = _tray().commands()
+    assert plain.version == "" and plain.has_updater() is False and plain.update_label() == ""
+
+    tray = TrayApp(
+        AppState(), Settings(), on_reauthenticate=lambda: None, on_exit=lambda: None, on_setup=lambda: None,
+        version="f93217c (2026-09-29)", updater=_InlineUpdater(),
+    )
+    commands = tray.commands()
+    assert commands.version == "f93217c (2026-09-29)"
+    assert commands.has_updater() is True and commands.update_label() == "Check for updates"
+
+
+def test_commands_update_checks_then_applies_through_restart(monkeypatch):
+    calls = []
+    tray, stopped = _commands_tray(monkeypatch, on_restart=lambda: calls.append("restart"), updater=_InlineUpdater())
+    monkeypatch.setattr(tray._update_menu, "_spawn", lambda fn: fn())
+    commands = tray.commands()
+
+    commands.update_click()
+    assert commands.update_label() == "Update to bbbbbbb (2 commits)" and calls == []
+    commands.update_click()
+
+    assert calls == ["restart"] and stopped == [1]
+
+
+def test_exit_in_the_menu_is_blocked_while_an_update_is_applied(monkeypatch):
+    tray, _ = _commands_tray(monkeypatch, updater=_InlineUpdater())
+    pending = []
+    monkeypatch.setattr(tray._update_menu, "_spawn", pending.append)
+    commands = tray.commands()
+    exit_item = next(i for i in tray._build_menu().items if i.text == "Exit")
+
+    commands.update_click()
+    assert commands.updating() is False and exit_item.enabled is True  # a check is harmless
+    pending.pop()()  # the check finds the update
+
+    commands.update_click()
+    assert commands.updating() is True and exit_item.enabled is False
+
+
+def test_a_second_lock_sync_click_is_ignored_while_the_first_is_pending(monkeypatch):
+    import threading
+    import time
+
+    from src.os_integration import tray as tray_module
+
+    release, started = threading.Event(), []
+
+    def slow_install():
+        started.append(1)
+        release.wait(timeout=5.0)
+        return True
+
+    monkeypatch.setattr(tray_module.lockscreen, "ensure_task", slow_install)
+    monkeypatch.setattr(tray_module, "save_settings", lambda s: None)
+    tray = TrayApp(AppState(), Settings(), on_reauthenticate=lambda: None, on_exit=lambda: None, on_setup=lambda: None)
+    monkeypatch.setattr(tray._icon, "update_menu", lambda: None)
+    commands = tray.commands()
+    try:
+        commands.toggle_lock_sync()
+        for _ in range(200):
+            if started:
+                break
+            release.wait(timeout=0.01)
+        assert commands.lock_sync_busy() is True
+
+        commands.toggle_lock_sync()  # the UAC prompt is still open
+
+        assert started == [1]
+    finally:
+        release.set()
+    for _ in range(500):
+        if not commands.lock_sync_busy():
+            break
+        time.sleep(0.01)
+    assert commands.lock_sync_busy() is False and tray._settings.sync_lock_screen is True
 
 
 @pytest.mark.parametrize(

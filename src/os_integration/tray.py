@@ -1,6 +1,6 @@
 import logging
 import threading
-from typing import Callable, Optional, Protocol, Tuple
+from typing import Callable, Optional, Tuple
 
 import pystray
 from PIL import Image, ImageDraw
@@ -9,6 +9,7 @@ from src.config.settings import Settings, save_settings
 from src.os_integration import lockscreen
 from src.os_integration.update_menu import UpdateMenu
 from src.os_integration.updater import Updater
+from src.settings_window.commands import AppCommands
 from src.utils.app_state import AppState, AppStatus
 
 logger = logging.getLogger(__name__)
@@ -28,25 +29,6 @@ def _build_icon_image(color: Tuple[int, int, int]) -> Image.Image:
     return image
 
 
-class LyricsWidgetControls(Protocol):
-    """What the tray can do to the lyrics widget (QtHost). Every method is
-    safe to call from the tray's thread."""
-
-    def toggle_widget(self) -> None: ...
-
-    def is_widget_visible(self) -> bool: ...
-
-    def toggle_locked(self) -> None: ...
-
-    def is_locked(self) -> bool: ...
-
-    def toggle_on_top(self) -> None: ...
-
-    def is_on_top(self) -> bool: ...
-
-    def reset_position(self) -> None: ...
-
-
 class TrayApp:
     def __init__(
         self,
@@ -56,9 +38,9 @@ class TrayApp:
         on_exit: Callable[[], None],
         on_setup: Callable[[], None],
         on_restart: Callable[[], None] = lambda: None,
-        lyrics_widget: Optional[LyricsWidgetControls] = None,
         version: str = "",
         updater: Optional[Updater] = None,
+        on_open_settings: Callable[[], None] = lambda: None,
     ):
         self._app_state = app_state
         self._settings = settings
@@ -68,7 +50,8 @@ class TrayApp:
         # setup hook below, and an instance attribute would shadow it.
         self._launch_wizard = on_setup
         self._on_restart = on_restart
-        self._lyrics_widget = lyrics_widget
+        self._open_settings = on_open_settings
+        self._lock_sync_busy = False
         self._version = version
         self._wizard_thread: Optional[threading.Thread] = None
         self._icon = pystray.Icon(
@@ -87,91 +70,48 @@ class TrayApp:
             )
 
     def _build_menu(self) -> pystray.Menu:
+        # The rest of the controls live in the settings window: a menu closes
+        # after every click.
         return pystray.Menu(
+            # default=True: a left click on the icon opens it too.
+            pystray.MenuItem("Settings...", lambda icon, item: self._open_settings(), default=True),
             pystray.MenuItem(self._pause_label, self._toggle_pause),
-            pystray.MenuItem("Force Sync", self._force_sync),
-            pystray.MenuItem("Style", self._build_style_menu()),
-            pystray.MenuItem(
-                "Sync Lock Screen",
-                self._toggle_lock_sync,
-                checked=lambda item: self._settings.sync_lock_screen,
-            ),
-            pystray.MenuItem(
-                "Lyrics widget",
-                self._build_lyrics_menu(),
-                visible=lambda item: self._lyrics_widget is not None,
-            ),
             pystray.MenuItem(
                 "Re-authenticate",
                 self._reauthenticate,
-                visible=lambda item: self._app_state.snapshot().status == AppStatus.ERROR,
+                visible=lambda item: self._needs_reauthentication(),
             ),
-            pystray.MenuItem("Setup...", self._setup),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem(
-                lambda item: self._update_menu.label() if self._update_menu else "",
-                lambda icon, item: self._update_menu.click() if self._update_menu else None,
-                visible=lambda item: self._update_menu is not None,
-            ),
-            pystray.MenuItem(
-                f"Version {self._version}",
-                None,
-                enabled=False,
-                visible=bool(self._version),
-            ),
-            pystray.MenuItem("Restart", self._restart, enabled=lambda item: not self._updating()),
             pystray.MenuItem("Exit", self._exit, enabled=lambda item: not self._updating()),
         )
 
-    def _build_style_menu(self) -> pystray.Menu:
-        return pystray.Menu(
-            pystray.MenuItem(
-                "Solid background",
-                lambda icon, item: self._set_background("solid"),
-                checked=lambda item: self._settings.background_style == "solid",
-                radio=True,
-            ),
-            pystray.MenuItem(
-                "Mesh background",
-                lambda icon, item: self._set_background("mesh"),
-                checked=lambda item: self._settings.background_style == "mesh",
-                radio=True,
-            ),
-            pystray.MenuItem(
-                "Blurred art background",
-                lambda icon, item: self._set_background("blur"),
-                checked=lambda item: self._settings.background_style == "blur",
-                radio=True,
-            ),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Art glow", self._toggle_glow, checked=lambda item: self._settings.art_glow),
-            pystray.MenuItem("Blur strength", self._build_blur_menu()),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem(
-                "No frame",
-                lambda icon, item: self._set_frame("none"),
-                checked=lambda item: self._settings.art_frame == "none",
-                radio=True,
-            ),
-            pystray.MenuItem(
-                "Single glass frame",
-                lambda icon, item: self._set_frame("single"),
-                checked=lambda item: self._settings.art_frame == "single",
-                radio=True,
-            ),
-            pystray.MenuItem(
-                "Double glass frame",
-                lambda icon, item: self._set_frame("double"),
-                checked=lambda item: self._settings.art_frame == "double",
-                radio=True,
-            ),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Glass card", self._toggle_glass, checked=lambda item: self._settings.text_card == "glass"),
-            pystray.Menu.SEPARATOR,
-            pystray.MenuItem(
-                "Smooth transition", self._toggle_smooth, checked=lambda item: self._settings.smooth_transition
-            ),
+    def commands(self) -> AppCommands:
+        """What the settings window can ask of the app, tied to this tray."""
+        return AppCommands(
+            version=self._version,
+            is_paused=self._app_state.is_paused,
+            toggle_pause=lambda: self._toggle_pause(self._icon, None),
+            force_sync=lambda: self._force_sync(self._icon, None),
+            lock_sync_busy=lambda: self._lock_sync_busy,
+            toggle_lock_sync=lambda: self._toggle_lock_sync(self._icon, None),
+            has_updater=lambda: self._update_menu is not None,
+            update_label=lambda: self._update_menu.label() if self._update_menu else "",
+            update_click=lambda: self._update_menu.click() if self._update_menu else None,
+            updating=self._updating,
+            needs_reauthentication=self._needs_reauthentication,
+            reauthenticate=lambda: self._reauthenticate(self._icon, None),
+            setup=lambda: self._setup(self._icon, None),
+            restart=lambda: self._in_background(lambda: self._restart(self._icon, None), "restart"),
+            exit=lambda: self._in_background(lambda: self._exit(self._icon, None), "exit"),
         )
+
+    @staticmethod
+    def _in_background(fn: Callable[[], None], name: str) -> None:
+        # Restart waits for the poller to finish its render: not on the Qt thread.
+        threading.Thread(target=fn, daemon=True, name=name).start()
+
+    def _needs_reauthentication(self) -> bool:
+        return self._app_state.snapshot().status == AppStatus.ERROR
 
     def _pause_label(self, item) -> str:
         return "Resume" if self._app_state.is_paused() else "Pause"
@@ -182,69 +122,6 @@ class TrayApp:
 
     def _force_sync(self, icon, item) -> None:
         self._app_state.force_sync_event.set()
-
-    def _set_background(self, style: str) -> None:
-        if self._settings.background_style == style:
-            return
-        self._settings.background_style = style
-        self._apply_style_change()
-
-    def _toggle_glow(self, icon, item) -> None:
-        self._settings.art_glow = not self._settings.art_glow
-        self._apply_style_change()
-
-    # Presets for the blurred background; any 0-100 value works from config.json.
-    _BLUR_LEVELS = (("Soft", 10), ("Medium (default)", 26), ("Strong", 50), ("Maximum", 100))
-
-    def _build_blur_menu(self) -> pystray.Menu:
-        return pystray.Menu(*(self._blur_item(name, value) for name, value in self._BLUR_LEVELS))
-
-    # A factory, not a lambda with value=value: pystray counts an action's
-    # parameters, defaults included, and rejects more than (icon, item).
-    def _blur_item(self, name: str, value: int) -> pystray.MenuItem:
-        return pystray.MenuItem(
-            name,
-            lambda icon, item: self._set_blur_strength(value),
-            checked=lambda item: self._settings.blur_strength == value,
-            radio=True,
-        )
-
-    def _set_blur_strength(self, value: int) -> None:
-        if self._settings.blur_strength == value:
-            return
-        self._settings.blur_strength = value
-        self._apply_style_change()
-
-    def _set_frame(self, frame: str) -> None:
-        if self._settings.art_frame == frame:
-            return
-        self._settings.art_frame = frame
-        self._apply_style_change()
-
-    def _toggle_smooth(self, icon, item) -> None:
-        self._settings.smooth_transition = not self._settings.smooth_transition
-        self._apply_style_change()
-
-    def _toggle_glass(self, icon, item) -> None:
-        self._settings.text_card = "none" if self._settings.text_card == "glass" else "glass"
-        self._apply_style_change()
-
-    def _apply_style_change(self) -> None:
-        # The render reads this same Settings object, and the base cache key
-        # includes the style, so a forced redraw is all it takes to show it.
-        save_settings(self._settings)
-        self._app_state.force_sync_event.set()
-
-    def _build_lyrics_menu(self) -> pystray.Menu:
-        widget = self._lyrics_widget
-        if widget is None:
-            return pystray.Menu()
-        return pystray.Menu(
-            pystray.MenuItem("Show", lambda icon, item: widget.toggle_widget(), checked=lambda item: widget.is_widget_visible()),
-            pystray.MenuItem("Lock position", lambda icon, item: widget.toggle_locked(), checked=lambda item: widget.is_locked()),
-            pystray.MenuItem("Always on top", lambda icon, item: widget.toggle_on_top(), checked=lambda item: widget.is_on_top()),
-            pystray.MenuItem("Reset position", lambda icon, item: widget.reset_position()),
-        )
 
     def _updating(self) -> bool:
         return self._update_menu is not None and self._update_menu.is_applying()
@@ -269,12 +146,16 @@ class TrayApp:
         self._wizard_thread.start()
 
     def _toggle_lock_sync(self, icon, item) -> None:
+        if self._lock_sync_busy:  # the UAC prompt is still open: one change at a time
+            return
+        self._lock_sync_busy = True
         threading.Thread(target=self._apply_lock_sync_toggle, daemon=True).start()
 
     def _apply_lock_sync_toggle(self) -> None:
         try:
             self._flip_lock_sync()
         finally:
+            self._lock_sync_busy = False
             # pystray rebuilds the menu when the click handler returns, which
             # here is long before the UAC prompt is answered: without this the
             # check mark shows the old state and the next click undoes the change.

@@ -12,6 +12,8 @@ from src.graphics.layout import compute_layout
 from src.graphics.renderer import render_for_now_playing
 from src.lyrics_widget.colors import TintHolder
 from src.lyrics_widget.qt_host import QtHost
+from src.settings_window.style_actions import StyleActions
+from src.settings_window.window import SettingsWindow
 from src.os_integration import lockscreen
 from src.os_integration import app_version
 from src.os_integration import restart
@@ -121,6 +123,9 @@ def _run_app(settings) -> int:
         smtc_watcher = SmtcWatcher()
         smtc_watcher.start()
     qt_host.attach_smtc(smtc_watcher)
+    style = StyleActions(settings, save_settings, app_state.force_sync_event.set)
+    # Built on first open, on the Qt thread; the tray exists by then.
+    qt_host.attach_settings_window(lambda: SettingsWindow(settings, style, qt_host, tray.commands()))
 
     try:
         client = _build_client(settings)
@@ -198,9 +203,9 @@ def _run_app(settings) -> int:
         on_exit=on_exit,
         on_setup=on_setup,
         on_restart=on_restart,
-        lyrics_widget=qt_host,
         version=app_version.version_label(app_version.read_version(app_version.app_dir())),
         updater=Updater(app_version.app_dir()),
+        on_open_settings=qt_host.open_settings,
     )
     tray_thread = qt_host.run_tray_in_thread(tray.run)
     qt_host.exec()  # blocks until Exit or Restart ends the tray loop
