@@ -292,10 +292,12 @@ status da tela principal. A notificação não tem esse botão.
 |---|---|
 | `Showing` | A que está tocando |
 | `Idle` (música pausada) | A que o wallpaper ainda mostra: `SyncEngine.onScreen` |
-| Sync pausado, falha de desenho, deslogado, bloqueado | Nenhuma: o wallpaper não está sendo mantido |
+| `Starting`, sync pausado, falha de desenho, deslogado, bloqueado | Nenhuma: o wallpaper não está sendo mantido |
+| `Retrying`, `Failing` | Nenhuma: o wallpaper existe, mas o botão some durante o problema de rede, como antes |
 
-`SyncEngine.onScreen` é a última faixa em `Showing`, só em memória (atualizada a cada
-`Showing`). Nada novo vai para o disco.
+`shareTarget` devolve `null` para todo status que não seja `Showing` ou `Idle`.
+`SyncEngine.onScreen` é a última faixa em `Showing` (inclusive quando a faixa já estava no
+wallpaper), só em memória. Nada novo vai para o disco.
 
 ```
 tela principal visível ─► LyricsPrefetch.follow ─► LyricsSlot (1 resposta, em memória)
@@ -402,7 +404,7 @@ Com a música pausada, a posição congela e a letra fica parada na linha atual.
 
 | Caminho | Conteúdo | Escrita |
 |---|---|---|
-| `%APPDATA%\SpotifyWallpaperEngine\config.json` | `Settings` (dataclass → JSON) | Criado com os padrões. Bandeja, assistente e widget de letra (thread do Qt) regravam; `save_settings` grava um de cada vez (`_SAVE_LOCK`) |
+| `%APPDATA%\SpotifyWallpaperEngine\config.json` | `Settings` (dataclass → JSON) | Criado com os padrões. Bandeja, assistente, janela de configurações e widget de letra (thread do Qt) regravam; `save_settings` grava um de cada vez (`_SAVE_LOCK`) |
 | `%LOCALAPPDATA%\...\track_index.json` | Índice faixa → álbum | Atômica (`.tmp` + `os.replace`), só quando muda |
 | `%LOCALAPPDATA%\...\cache\album_bases\<key>.png` | Base por álbum (sem texto) | Uma vez por chave, PNG `compress_level=1` |
 | `%LOCALAPPDATA%\...\cache\album_art\<id>.art`, `<id>.colors.json` | Capa original do álbum e suas cores (`{"version": 1, "dominant": [r,g,b], "accents": [[r,g,b],...]}`) (#19, aberto) | A capa, na primeira vez que o álbum é desenhado; as cores, quando calculadas. Teto de 60 MB, LRU por mtime, nunca apaga o álbum recém-gravado |
@@ -545,7 +547,7 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | Chave de cache pelas *entradas* do layout | O layout depende do tamanho da arte, que só se conhece depois do download que o cache existe para evitar |
 | PNG `compress_level=1` | A saída é regravada a cada faixa. Com o dither do mesh, o nível 6 levava 0,2–0,7 s |
 | Dois arquivos de saída alternados | O Explorer/DWM não segura lock no arquivo que está sendo escrito |
-| Snapshot das settings no render (desktop) | A bandeja muda settings em outra thread. Sem cópia, a chave e o desenho podiam usar estilos diferentes e envenenar o cache |
+| Snapshot das settings no render (desktop) | A bandeja e a janela de configurações mudam settings em outra thread. Sem cópia, a chave e o desenho podiam usar estilos diferentes e envenenar o cache |
 | Fade no Windows via `IActiveDesktop` + mensagem `0x052C` ao Progman | Único caminho que anima a troca. Sem `AD_APPLY_FORCE`, que falha no Windows 10. Depende das animações do sistema estarem ligadas |
 | Fade no Android via live wallpaper próprio | `setBitmap` pisca preto a cada troca, comportamento do sistema. O quadro vai em pixels crus porque codificar PNG custa centenas de ms |
 | Tela de bloqueio no Windows via Scheduled Task elevada | A chave `PersonalizationCSP` fica em HKLM. A task pede UAC uma vez só |
@@ -588,7 +590,7 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | Cor do widget tirada da base do wallpaper já em memória | Custa 2–4 ms e não faz uma segunda quantização do ColorThief. O quarto inferior direito é onde o widget começa. Escurecer até 4,5:1 (WCAG AA) mantém o texto branco legível |
 | Widget: `/get` só com texto ainda consulta o `/search` atrás de uma versão sincronizada | Texto sem tempos não acompanha a música, então vale uma chamada a mais. O compartilhar do Android continua com o texto do `/get`, porque não precisa de tempos. O selo "Not synced" deixa claro que rolar sem acompanhar é esperado, não um defeito |
 | Buscar letra só com o widget ligado; uma resposta em memória | Mesma regra do Android: sem rede gasta à toa e sem texto protegido no disco |
-| `_SAVE_LOCK` em `save_settings` | A bandeja e a thread do Qt gravam o `config.json`. Sem o lock, duas escritas podiam se misturar no arquivo |
+| `_SAVE_LOCK` em `save_settings` | A bandeja, a janela de configurações e a thread do Qt gravam o `config.json`. Sem o lock, duas escritas podiam se misturar no arquivo |
 | Janela de configurações no lugar do menu da bandeja (#17, aberto) | Um menu fecha a cada clique, então ajustar estilo, blur e glow em sequência era penoso. A janela fica aberta e o Qt já é dono da thread principal |
 | `StyleActions` e `AppCommands` sem Qt | A lógica de estilo e as ações do app são testadas sem janela; a `SettingsWindow` só liga botões a elas |
 | A janela relê o estado a cada 0,5 s, só visível | A bandeja, o widget de letra e o updater também mudam as settings e o estado. Ler de volta mostra o que realmente aconteceu (UAC recusado volta a desmarcado) em vez do que foi clicado, sem custo com a janela fechada |
@@ -664,13 +666,13 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 - **Zoom no Android < 12:** a densidade vem dos resources da window context, que podem ficar
   presos à configuração da criação. Não tratado.
 - **Cache da arte original (#19, aberto):** o custo no Android não foi medido no A71. Os 5 testes
-  instrumentados novos de `WallpaperComposerTest` só compilam no ambiente de desenvolvimento
-  (rodam no aparelho). O cache só evita download e cálculo de cor; a base do estilo novo ainda
+  instrumentados novos de `WallpaperComposerTest` ainda não foram executados no aparelho
+  (só compilam); precisam do celular desbloqueado e de `leaveApksInstalledAfterRun`. O cache só evita download e cálculo de cor; a base do estilo novo ainda
   é composta (0,5–2,4 s).
 - **Compartilhar letra (#9):**
   - (#18, aberto) o botão aparece com a música pausada, pela faixa do wallpaper. **Limite:**
     a faixa vem da memória; depois de reiniciar o app com a música já pausada não há
-    `onScreen`, e o botão só volta na próxima faixa desenhada;
+    `onScreen`, e o botão volta quando uma faixa voltar a tocar (`Showing`);
   - o LRCLIB é mantido pela comunidade: a letra pode faltar ou estar errada. A comparação
     solta aceita trechos contidos ("love" em "lovesong"), mantida pela paridade com o
     spotifast;
