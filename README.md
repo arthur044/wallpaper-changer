@@ -15,7 +15,7 @@ Tem também uma **versão Android** em [`android/`](android/README.md), que faz 
 
 **Ciente da tela bloqueada:** estação bloqueada + Spotify desktop fechado → polling para por completo, zero requisição desperdiçada. Bloqueada + Spotify ainda tocando → SMTC continua funcionando (é grátis de qualquer forma).
 
-**Widget de letra (só no Windows):** uma janelinha na área de trabalho com a letra da faixa tocando, sincronizada com a música — a linha atual fica destacada e a letra rola junto. O fundo usa a cor do álbum do wallpaper. Fica atrás das janelas (some com Win+D) ou, se preferir, sempre na frente (e aí se esconde em tela cheia). Dá pra arrastar e redimensionar, e a posição é lembrada por monitor. As letras vêm do [LRCLIB](https://lrclib.net), um serviço comunitário, então podem faltar ou ter erros. Quando a faixa não tem versão sincronizada por lá (comum em música brasileira), o widget mostra o texto simples rolando junto com a música, com o selo **"Not synced"** no canto. Só é buscada com o widget ligado e fica apenas em memória. Precisa do Spotify desktop aberto (SMTC) para saber em que ponto a música está. Vem desligado; liga pelo menu da bandeja.
+**Widget de letra (só no Windows):** uma janelinha na área de trabalho com a letra da faixa tocando, sincronizada com a música — a linha atual fica destacada e a letra rola junto. O fundo usa a cor do álbum do wallpaper. Fica atrás das janelas (some com Win+D) ou, se preferir, sempre na frente (e aí se esconde em tela cheia). Dá pra arrastar e redimensionar, e a posição é lembrada por monitor. As letras vêm do [LRCLIB](https://lrclib.net), um serviço comunitário, então podem faltar ou ter erros. Quando a faixa não tem versão sincronizada por lá (comum em música brasileira), o widget mostra o texto simples rolando junto com a música, com o selo **"Not synced"** no canto. Só é buscada com o widget ligado e fica apenas em memória. Precisa do Spotify desktop aberto (SMTC) para saber em que ponto a música está. Vem desligado; liga na janela de configurações.
 
 **Cache:** o fundo composto de cada álbum (arte + sombra + cantos arredondados) é renderizado uma vez e cacheado sob o `album_id` real do Spotify em `%LOCALAPPDATA%\SpotifyWallpaperEngine\cache\album_bases\`. Trocas de faixa dentro de um álbum já cacheado só redesenham o texto sobreposto.
 
@@ -44,7 +44,7 @@ Na primeira execução abre um assistente de configuração que conduz os 6 pass
 5. **Verificar** — uma consulta ao Spotify confirmando que está tudo funcionando
 6. **Opções finais** — iniciar com o Windows e/ou sincronizar a tela de bloqueio
 
-Pra rodar de novo depois (trocar de conta, token revogado): `python main.py --setup`, ou o item **Setup...** no menu da bandeja.
+Pra rodar de novo depois (trocar de conta, token revogado): `python main.py --setup`, ou o botão **Setup...** da janela de configurações.
 
 ## Configuração (`config.json`)
 
@@ -66,7 +66,7 @@ Pra rodar de novo depois (trocar de conta, token revogado): `python main.py --se
 | `smooth_transition` | `false` | Troca o wallpaper com o fade do próprio Windows (precisa das animações do sistema ligadas); se falhar, troca na hora |
 | `text_card` | `"none"` | Cartão atrás do título/artista: `"none"` ou `"glass"` (vidro fosco sobre o fundo). Só com `show_track_info` |
 | `sync_lock_screen` | `false` | Também aplica o wallpaper na tela de bloqueio real do Windows (exige uma Scheduled Task elevada via UAC, uma vez só) |
-| `lyrics_widget_enabled` | `false` | Mostra o widget de letra (o mesmo que **Lyrics widget › Show** na bandeja) |
+| `lyrics_widget_enabled` | `false` | Mostra o widget de letra (o mesmo que **Lyrics widget › Show** na janela de configurações) |
 | `lyrics_widget_locked` | `false` | Trava o widget no lugar; os cliques passam por ele |
 | `lyrics_widget_on_top` | `false` | Widget sempre na frente das janelas, em vez de atrás delas |
 | `lyrics_widget_geometry` | `null` | Onde o widget ficou: `{"monitor": ..., "rect": [x, y, largura, altura]}`. Gravado ao mover; `null` = canto inferior direito do monitor principal |
@@ -81,9 +81,11 @@ python main.py --uninstall-autostart
 python main.py --apply-lockscreen       # interno: chamado pela scheduled task, não usar manualmente
 ```
 
-## Menu da bandeja
+## Janela de configurações e bandeja
 
-Pause/Resume, Force Sync, alternar Sync Lock Screen, **Lyrics widget** (submenu: Show, Lock position, Always on top, Reset position), Re-authenticate (aparece em erro de auth), Setup..., Exit.
+Clique no ícone da bandeja (ou em **Settings...** no menu dele) para abrir a janela de configurações. Ela fica aberta enquanto você muda as coisas e tem: Pause/Resume e Sync now, o estilo do wallpaper (fundo, blur, brilho, moldura, cartão de vidro, transição suave), a sincronização da tela de bloqueio, o **Lyrics widget** (Show, Lock position, Always on top, Reset position) e o app (Check for updates, Re-authenticate, Setup..., Restart, Exit).
+
+O menu da bandeja tem só Settings..., Pause/Resume, Re-authenticate (aparece em erro de auth) e Exit.
 
 ## Testes
 
@@ -104,7 +106,7 @@ para Kotlin, não substituído — trocá-lo por outro muda as cores).
 | Fonte principal | SMTC (Spotify desktop aberto) | API Web, a cada 25 s, só com a tela ligada |
 | Fonte instantânea | SMTC, sempre | MediaSession local, **opcional** (pede acesso a notificações) |
 | Tela de bloqueio | Tarefa agendada com elevação | Direto, pelo `WallpaperManager` |
-| Controles | Menu da bandeja | Tela do app e bloco nas Configurações rápidas |
+| Controles | Janela de configurações (aberta pela bandeja) | Tela do app e bloco nas Configurações rápidas |
 | Ajuste do visual | Editar o `config.json` | Sliders na tela, com redesenho na hora |
 
 **Além disso, no Android:** guia de primeiro uso que valida o Client ID e explica a
@@ -138,6 +140,7 @@ src/os_integration/        watcher SMTC, detecção de bloqueio, wallpaper/locks
 src/graphics/              renderização da arte pro wallpaper (Pillow)
 src/lyrics/                cliente do LRCLIB, parse de LRC, resposta em memória, relógio da faixa
 src/lyrics_widget/         widget de letra (Qt): host, janela, controller puro, posição, cor
+src/settings_window/        janela de configurações (Qt): janela, ações de estilo, ações do app
 tests/
 android/                   port Android (Kotlin): :core puro + :app, veja android/README.md
 ```

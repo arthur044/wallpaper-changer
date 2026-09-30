@@ -77,7 +77,7 @@ class Settings:
     fallback_resolution: List[int] = field(default_factory=lambda: [1920, 1080])
     log_level: str = "INFO"
     sync_lock_screen: bool = False
-    # Widget de letra (só no desktop). Ligado pelo item da bandeja; travado,
+    # Widget de letra (só no desktop). Ligado pela janela de configurações; travado,
     # os cliques passam por ele; "sempre na frente" em vez de atrás das janelas.
     lyrics_widget_enabled: bool = False
     lyrics_widget_locked: bool = False

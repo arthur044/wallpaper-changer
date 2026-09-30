@@ -53,7 +53,7 @@ _STEP_BODIES = {
     ),
     OnboardingStep.OPTIONS: (
         "Tudo pronto. Estas opções são opcionais e podem ser mudadas depois "
-        "pelo menu da bandeja."
+        "pela janela de configurações (clique no ícone da bandeja)."
     ),
 }
 
