@@ -1,3 +1,4 @@
+import pytest
 import asyncio
 from datetime import datetime, timedelta, timezone
 
@@ -121,3 +122,27 @@ def test_stable_key_handles_missing_fields():
 def test_track_key_matches_artist_and_title():
     snapshot = _snapshot(artist="Avenged Sevenfold", title="Mattel")
     assert snapshot.track_key == _stable_key("Avenged Sevenfold", "Mattel")
+
+
+class _FakeSession:
+    def __init__(self, aumid):
+        self.source_app_user_model_id = aumid
+
+
+class _FakeManager:
+    def __init__(self, *aumids):
+        self._sessions = [_FakeSession(a) for a in aumids]
+
+    def get_sessions(self):
+        return self._sessions
+
+
+@pytest.mark.parametrize("aumid", ["Spotify.exe", "SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify", "spotifast.exe"])
+def test_a_spotify_client_session_is_found(aumid):
+    manager = _FakeManager("chrome.exe", aumid)
+
+    assert SmtcWatcher._find_spotify_session(manager).source_app_user_model_id == aumid
+
+
+def test_other_players_are_not_taken_for_spotify():
+    assert SmtcWatcher._find_spotify_session(_FakeManager("chrome.exe", "vlc.exe")) is None
