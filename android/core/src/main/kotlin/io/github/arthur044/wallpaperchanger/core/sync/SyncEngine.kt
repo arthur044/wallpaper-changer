@@ -57,9 +57,7 @@ class SyncEngine(
     private var undrawableTrackId: String? = null
     private var memoryLoaded = false
     private val redrawPending = AtomicBoolean(false)
-    // The track on the wallpaper, in memory only (a restart forgets it, like
-    // the desktop): what redraw() repaints when nothing is playing.
-    private var lastDrawn: NowPlaying? = null
+    private val mutableOnScreen = MutableStateFlow<NowPlaying?>(null)
     // An album whose tracklist is fetched right after the render, not before it.
     private var pendingTracklist: ResolvedAlbum? = null
     // Tracks already forgotten once after failing to draw (see forgetOnce).
@@ -72,6 +70,13 @@ class SyncEngine(
     private var resolveBackoff = Duration.ZERO
 
     val status: StateFlow<SyncStatus> = mutableStatus.asStateFlow()
+
+    /**
+     * The track on the wallpaper, in memory only (a restart forgets it, like the
+     * desktop). Unlike [status] it survives the music pausing: what redraw()
+     * repaints when nothing is playing, and what "share lyrics" still refers to.
+     */
+    val onScreen: StateFlow<NowPlaying?> = mutableOnScreen.asStateFlow()
 
     /**
      * Polls until cancelled, or until the session expires or the wallpaper is blocked.
@@ -150,8 +155,8 @@ class SyncEngine(
         if (redrawPending.getAndSet(false)) {
             // With the music paused the status is Idle, yet the wallpaper still
             // shows the last track: a look change must repaint that one too.
-            val onScreen = (status.value as? SyncStatus.Showing)?.nowPlaying ?: lastDrawn
-            if (onScreen != null && !render(onScreen)) return null
+            val drawn = (status.value as? SyncStatus.Showing)?.nowPlaying ?: mutableOnScreen.value
+            if (drawn != null && !render(drawn)) return null
             // Then poll as usual (if the throttle allows): the track may have changed.
         }
         // Playing on this phone and the option is on: no poll needed at all.
@@ -181,7 +186,7 @@ class SyncEngine(
 
         when (decide(nowPlaying, lastRenderedTrackId)) {
             PollDecision.IDLE -> mutableStatus.value = SyncStatus.Idle
-            PollDecision.NOOP -> mutableStatus.value = SyncStatus.Showing(checkNotNull(nowPlaying))
+            PollDecision.NOOP -> showing(checkNotNull(nowPlaying))
             PollDecision.RENDER -> if (!render(checkNotNull(nowPlaying))) return null
         }
         return interval
@@ -227,7 +232,7 @@ class SyncEngine(
         )
         when (decide(nowPlaying, lastRenderedTrackId)) {
             PollDecision.IDLE -> mutableStatus.value = SyncStatus.Idle
-            PollDecision.NOOP -> mutableStatus.value = SyncStatus.Showing(nowPlaying)
+            PollDecision.NOOP -> showing(nowPlaying)
             PollDecision.RENDER -> if (!render(nowPlaying)) return null
         }
         fetchPendingTracklist()
@@ -342,12 +347,16 @@ class SyncEngine(
             return true
         }
         lastRenderedTrackId = nowPlaying.trackId
-        lastDrawn = nowPlaying
         // Drawn fine: if its link expires some day, it may be forgotten again.
         nowPlaying.trackId?.let(forgottenAfterFailure::remove)
         memory.remember(nowPlaying.trackId)
-        mutableStatus.value = SyncStatus.Showing(nowPlaying)
+        showing(nowPlaying)
         return true
+    }
+
+    private fun showing(nowPlaying: NowPlaying) {
+        mutableOnScreen.value = nowPlaying
+        mutableStatus.value = SyncStatus.Showing(nowPlaying)
     }
 
     private fun retryIn(wait: Duration, cause: Exception): Duration {

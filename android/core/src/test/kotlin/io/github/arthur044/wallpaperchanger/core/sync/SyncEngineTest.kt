@@ -87,6 +87,44 @@ class SyncEngineTest {
     }
 
     @Test
+    fun `the track on the wallpaper stays known while the music is paused`() = runTest {
+        val engine = engine()
+        assertEquals(null, engine.onScreen.value)
+        source.playing = { airbag }
+        cycle(engine)
+        source.playing = { airbag.copy(isPlaying = false) }
+        cycle(engine)
+
+        assertEquals(SyncStatus.Idle, engine.status.value)
+        assertEquals(airbag, engine.onScreen.value)
+    }
+
+    @Test
+    fun `a track already on the wallpaper from before a restart is known too`() = runTest {
+        memory.saved = "t1"
+        val engine = engine()
+        source.playing = { airbag }
+        cycle(engine)
+        source.playing = { null }
+        cycle(engine)
+
+        assertTrue(sink.shown.isEmpty())
+        assertEquals(airbag, engine.onScreen.value)
+    }
+
+    @Test
+    fun `a track that failed to draw is not on the wallpaper`() = runTest {
+        val engine = engine()
+        source.playing = { airbag }
+        sink.failures = 1
+        cycle(engine)
+        source.playing = { null }
+        cycle(engine)
+
+        assertEquals(null, engine.onScreen.value)
+    }
+
+    @Test
     fun `paused in settings makes no API call`() = runTest {
         val engine = engine()
         settings.value = Settings(paused = true)
