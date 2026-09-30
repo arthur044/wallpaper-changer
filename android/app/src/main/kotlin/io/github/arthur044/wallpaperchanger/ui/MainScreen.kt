@@ -37,6 +37,7 @@ import io.github.arthur044.wallpaperchanger.BuildConfig
 import io.github.arthur044.wallpaperchanger.R
 import io.github.arthur044.wallpaperchanger.share.LyricsShareViewModel
 import io.github.arthur044.wallpaperchanger.share.shareImageIntent
+import io.github.arthur044.wallpaperchanger.core.lyrics.shareTarget
 import io.github.arthur044.wallpaperchanger.core.spotify.ArtSource
 import io.github.arthur044.wallpaperchanger.core.sync.SyncStatus
 import io.github.arthur044.wallpaperchanger.core.update.InstallOutcome
@@ -61,6 +62,8 @@ fun MainScreen(
     val scope = container.appScope
     val settings by container.settings.settings.collectAsState(initial = null)
     val status by container.syncEngine.status.collectAsState()
+    val onScreen by container.syncEngine.onScreen.collectAsState()
+    val shareTarget = shareTarget(status, onScreen)
     val update by container.updates.state.collectAsState()
     val pendingConfirmation by container.pendingInstallConfirmation.collectAsState()
     LaunchedEffect(Unit) { container.updates.loadBranches() }
@@ -143,7 +146,7 @@ fun MainScreen(
             showDebugTools = BuildConfig.DEBUG,
             update = update,
             updateConfirmationPending = pendingConfirmation != null,
-            canShareLyrics = status is SyncStatus.Showing,
+            canShareLyrics = shareTarget != null,
         ),
         callbacks = MainCallbacks(
             onSyncEnabledChange = { on ->
@@ -188,7 +191,7 @@ fun MainScreen(
             onPickLiveWallpaper = { context.pickLiveWallpaper() },
             onConnect = onConnect,
             onOpenDebug = onOpenDebug,
-            onShareLyrics = { (status as? SyncStatus.Showing)?.nowPlaying?.let(share::open) },
+            onShareLyrics = { shareTarget?.let(share::open) },
             update = UpdateCallbacks(
                 onUpdate = container.updates::update,
                 onSelectBranch = container.updates::selectBranch,
