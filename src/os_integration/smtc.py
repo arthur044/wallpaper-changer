@@ -9,7 +9,8 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-_SPOTIFY_AUMID_HINT = "spotify"
+# "spotifast.exe" is a Spotify client whose id does not contain "spotify".
+_SPOTIFY_AUMID_HINTS = ("spotify", "spotifast")
 _PLAYBACK_STATUS_PLAYING = 4  # GlobalSystemMediaTransportControlsSessionPlaybackStatus.PLAYING
 _SAFETY_POLL_SECONDS = 2.0  # events are the primary signal; this is just a floor in case one is missed
 # An update stamped longer ago than this is no stamp at all (an unset SMTC
@@ -254,6 +255,6 @@ class SmtcWatcher:
     def _find_spotify_session(manager):
         for session in manager.get_sessions():
             aumid = (session.source_app_user_model_id or "").lower()
-            if _SPOTIFY_AUMID_HINT in aumid:
+            if any(hint in aumid for hint in _SPOTIFY_AUMID_HINTS):
                 return session
         return None
