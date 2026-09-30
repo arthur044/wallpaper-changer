@@ -395,3 +395,34 @@ def test_lock_sync_turns_off_once_its_task_is_gone(monkeypatch):
     tray._apply_lock_sync_toggle()
 
     assert settings.sync_lock_screen is False
+
+
+@pytest.mark.parametrize(
+    "start, uninstall_ok, ensure_ok",
+    [(True, True, None), (True, False, None), (False, None, True), (False, None, False)],
+    ids=["turned-off", "removal-declined", "turned-on", "install-declined"],
+)
+def test_lock_sync_refreshes_the_menu_once_the_slow_toggle_finishes(monkeypatch, start, uninstall_ok, ensure_ok):
+    # pystray rebuilds the menu right after the click handler returns. The toggle
+    # runs on a thread (UAC), so that rebuild sees the old state and the check
+    # mark stays stale until something else refreshes it: the user clicks again
+    # and undoes the change.
+    from src.os_integration import tray as tray_module
+
+    monkeypatch.setattr(tray_module.lockscreen, "uninstall_task", lambda: uninstall_ok)
+    monkeypatch.setattr(tray_module.lockscreen, "ensure_task", lambda: ensure_ok)
+    monkeypatch.setattr(tray_module, "save_settings", lambda s: None)
+    settings = Settings(sync_lock_screen=start)
+    tray = TrayApp(AppState(), settings, on_reauthenticate=lambda: None, on_exit=lambda: None, on_setup=lambda: None)
+    seen = []
+
+    class _Icon:
+        def update_menu(self):
+            seen.append(settings.sync_lock_screen)
+
+    tray._icon = _Icon()
+
+    tray._apply_lock_sync_toggle()
+
+    expected = (not start) if (uninstall_ok or ensure_ok) else start
+    assert seen == [expected]

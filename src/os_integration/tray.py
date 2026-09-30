@@ -272,6 +272,15 @@ class TrayApp:
         threading.Thread(target=self._apply_lock_sync_toggle, daemon=True).start()
 
     def _apply_lock_sync_toggle(self) -> None:
+        try:
+            self._flip_lock_sync()
+        finally:
+            # pystray rebuilds the menu when the click handler returns, which
+            # here is long before the UAC prompt is answered: without this the
+            # check mark shows the old state and the next click undoes the change.
+            self._icon.update_menu()
+
+    def _flip_lock_sync(self) -> None:
         if self._settings.sync_lock_screen:
             if not lockscreen.uninstall_task():
                 # The task is still registered and runs elevated at logon, so
