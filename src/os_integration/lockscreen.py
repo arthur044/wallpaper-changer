@@ -31,7 +31,9 @@ _NO_WINDOW = NO_WINDOW
 def follows_the_wallpaper() -> bool:
     """Off Windows there is nothing to sync: Omarchy's lock screen reads the
     same background link as the desktop (plugins/lock/Service.qml). Every
-    call below is then a no-op, so no toggle can reach schtasks or UAC."""
+    call below is then a no-op, so no toggle can reach schtasks or UAC:
+    install/ensure/uninstall report success, and is_task_installed() is
+    always False, since there is no task."""
     return sys.platform != "win32"
 
 

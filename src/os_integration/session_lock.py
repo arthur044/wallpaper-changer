@@ -79,9 +79,20 @@ def is_omarchy_session_locked(run: Optional[Callable] = None) -> bool:
     try:
         result = run([_OMARCHY_LOCK_CHECK], capture_output=True, timeout=_OMARCHY_TIMEOUT_S)
     except (OSError, subprocess.SubprocessError) as exc:
-        if not _omarchy_check_failing:
-            logger.warning("Could not check the session lock (%s); taking the session as unlocked", exc)
-        _omarchy_check_failing = True
+        _log_failing_once(f"could not run it: {exc}")
+        return False
+    if result.returncode == 2:
+        # Undetermined: what it says when hyprctl or jq fails, e.g. the app
+        # started without HYPRLAND_INSTANCE_SIGNATURE. The poller would then
+        # call the API with the screen locked; at least the log says why.
+        _log_failing_once("it could not tell (exit 2)")
         return False
     _omarchy_check_failing = False
     return result.returncode == 0
+
+
+def _log_failing_once(why: str) -> None:
+    global _omarchy_check_failing
+    if not _omarchy_check_failing:
+        logger.warning("Could not check the session lock (%s); taking the session as unlocked", why)
+    _omarchy_check_failing = True

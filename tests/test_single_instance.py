@@ -200,3 +200,25 @@ def test_without_a_runtime_dir_the_lock_file_goes_to_the_state_dir(monkeypatch, 
     monkeypatch.setattr(paths, "state_dir", lambda: tmp_path)
 
     assert single_instance._Flock()._lock_path("Local\\Test") == tmp_path / "Test.lock"
+
+
+@linux_only
+def test_a_lock_file_opened_as_fd_0_is_moved_off_it(tmp_path):
+    # With stdin closed, the lock file would get fd 0, which acquire() reads
+    # as "no handle": it must be moved to another fd.
+    import subprocess
+
+    code = (
+        "import os, sys; sys.path.insert(0, os.getcwd()); os.close(0)\n"
+        "from pathlib import Path\n"
+        "from src.os_integration import single_instance as si\n"
+        f"api = si._Flock(Path({str(tmp_path)!r}))\n"
+        "fd = api.create_mutex('Local\\\\Test')\n"
+        "print(fd, flush=True)\n"
+        "lock = si.acquire('Local\\\\Test', timeout_s=0.1, api=api)\n"
+        "print(lock is not None and lock._handle != 0, flush=True)\n"
+    )
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+
+    fd, guarded = result.stdout.split()
+    assert int(fd) > 0 and guarded == "True"

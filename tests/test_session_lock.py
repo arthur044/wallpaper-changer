@@ -63,3 +63,13 @@ def test_off_windows_the_app_asks_omarchy(monkeypatch):
     monkeypatch.setattr(session_lock, "is_omarchy_session_locked", lambda: True)
 
     assert session_lock.is_workstation_locked() is True
+
+
+def test_an_undetermined_answer_is_logged_like_a_failure(monkeypatch, caplog):
+    monkeypatch.setattr(session_lock, "_omarchy_check_failing", False)
+
+    with caplog.at_level("WARNING"):
+        assert session_lock.is_omarchy_session_locked(_check(2)) is False
+        assert session_lock.is_omarchy_session_locked(_check(2)) is False
+
+    assert [r.message for r in caplog.records if "exit 2" in r.message] and len(caplog.records) == 1
