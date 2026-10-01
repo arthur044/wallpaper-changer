@@ -1,3 +1,4 @@
+import os
 import sys
 import threading
 import uuid
@@ -123,3 +124,79 @@ def test_real_mutex_lets_only_one_holder_through():
 
 def test_mutex_name_is_per_session():
     assert single_instance.MUTEX_NAME == "Local\\SpotifyWallpaperEngine"
+
+
+# --- Linux: flock -----------------------------------------------------------------
+
+linux_only = pytest.mark.skipif(sys.platform == "win32", reason="flock: not on Windows")
+
+
+@linux_only
+def test_flock_lets_only_one_holder_through(tmp_path):
+    api = single_instance._Flock(tmp_path)
+    first = acquire("Local\\Test", timeout_s=0.1, api=api)
+    assert first is not None
+
+    # A second open of the file is a second lock, even in the same process.
+    assert acquire("Local\\Test", timeout_s=0.2, api=api) is None
+
+    first.release()
+    again = acquire("Local\\Test", timeout_s=0.1, api=api)
+    assert again is not None
+    again.release()
+
+
+@linux_only
+def test_flock_waits_for_the_old_instance_of_a_restart(tmp_path):
+    api = single_instance._Flock(tmp_path)
+    old = acquire("Local\\Test", timeout_s=0.1, api=api)
+    threading.Timer(0.3, old.release).start()
+
+    new = acquire("Local\\Test", timeout_s=5.0, api=api)
+
+    assert new is not None
+    new.release()
+
+
+@linux_only
+def test_a_dead_holder_leaves_the_lock_free(tmp_path):
+    import subprocess
+
+    lock_file = tmp_path / "Test.lock"
+    # Another process takes the lock and dies without releasing it.
+    subprocess.run(
+        [sys.executable, "-c", f"import fcntl, os; fd = os.open({str(lock_file)!r}, os.O_RDWR | os.O_CREAT); fcntl.flock(fd, fcntl.LOCK_EX); os._exit(0)"],
+        check=True,
+    )
+
+    lock = acquire("Local\\Test", timeout_s=0.5, api=single_instance._Flock(tmp_path))
+
+    assert lock is not None
+    lock.release()
+
+
+@linux_only
+def test_the_lock_is_not_inherited_by_the_instance_a_restart_launches(tmp_path):
+    api = single_instance._Flock(tmp_path)
+    handle = api.create_mutex("Local\\Test")
+    try:
+        assert os.get_inheritable(handle) is False
+    finally:
+        api.close(handle)
+
+
+@linux_only
+def test_the_lock_file_lives_in_the_runtime_dir(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+
+    assert single_instance._Flock()._lock_path(single_instance.MUTEX_NAME) == tmp_path / "SpotifyWallpaperEngine.lock"
+
+
+@linux_only
+def test_without_a_runtime_dir_the_lock_file_goes_to_the_state_dir(monkeypatch, tmp_path):
+    from src.config import paths
+
+    monkeypatch.setenv("XDG_RUNTIME_DIR", "relative/is/invalid")
+    monkeypatch.setattr(paths, "state_dir", lambda: tmp_path)
+
+    assert single_instance._Flock()._lock_path("Local\\Test") == tmp_path / "Test.lock"
