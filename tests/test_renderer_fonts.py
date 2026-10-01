@@ -28,7 +28,7 @@ def test_off_windows_the_text_is_a_real_font_at_the_asked_size():
     assert _height(large) > 2 * _height(small) and _height(large) >= 35
 
 
-def test_fontconfigs_bold_and_regular_picks_are_used(monkeypatch, tmp_path):
+def test_fontconfigs_bold_and_regular_picks_are_used(monkeypatch):
     monkeypatch.setattr(renderer.sys, "platform", "linux")
     asked = []
 
