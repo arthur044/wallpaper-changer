@@ -314,7 +314,7 @@ def test_on_linux_pip_runs_with_the_clones_venv_python(monkeypatch, tmp_path):
     monkeypatch.setattr(updater_module.sys, "platform", "linux")
     venv_python = tmp_path / ".venv" / "bin" / "python"
 
-    assert updater_module._default_python(tmp_path) == updater_module.sys.executable  # no venv yet
+    assert updater_module.app_python(tmp_path) == updater_module.sys.executable  # no venv yet
     venv_python.parent.mkdir(parents=True)
     venv_python.write_text("")
-    assert updater_module._default_python(tmp_path) == str(venv_python)
+    assert updater_module.app_python(tmp_path) == str(venv_python)

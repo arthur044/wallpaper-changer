@@ -22,16 +22,36 @@ def _launch_command() -> str:
     return f'"{interpreter}" "{_main_script()}"'
 
 
-# --- Linux: an XDG autostart entry -------------------------------------------------
+# --- Linux: an XDG autostart entry ------------------------------------------
 # uwsm (Omarchy) runs ~/.config/autostart entries as systemd units with
 # ExitType=cgroup, in the session's environment: Restart's new instance,
 # started before the old one exits, keeps the unit alive.
 
 
 def desktop_entry_path() -> Path:
-    root = os.environ.get("XDG_CONFIG_HOME")
-    base = Path(root) if root and os.path.isabs(root) else Path.home() / ".config"
-    return base / "autostart" / f"{_VALUE_NAME}.desktop"
+    from src.config.paths import xdg_config_home
+
+    return xdg_config_home() / "autostart" / f"{_VALUE_NAME}.desktop"
+
+
+# The Desktop Entry spec can quote these, but systemd's autostart generator
+# (how uwsm starts the entry) then can't run the path: "%" stays doubled, "$"
+# keeps its backslash, a quote is "special characters". Checked 2026-10-01.
+_PATH_CHARACTERS_SYSTEMD_REFUSES = set("%$'\"`\\")
+
+
+def _app_command() -> list:
+    from src.os_integration.updater import app_python
+
+    command = [app_python(_main_script().parent), str(_main_script())]
+    for part in command:
+        refused = sorted(_PATH_CHARACTERS_SYSTEMD_REFUSES & set(part))
+        if refused:
+            raise OSError(
+                f"the app's path has {' '.join(refused)}, which the session's autostart can't run: "
+                f"move the app to a folder without them ({part})"
+            )
+    return command
 
 
 def _exec_argument(argument: str) -> str:
@@ -43,7 +63,7 @@ def _exec_argument(argument: str) -> str:
 
 
 def desktop_entry() -> str:
-    command = " ".join(_exec_argument(part) for part in (sys.executable, str(_main_script())))
+    command = " ".join(_exec_argument(part) for part in _app_command())
     return (
         "[Desktop Entry]\n"
         "Type=Application\n"

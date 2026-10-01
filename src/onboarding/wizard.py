@@ -29,10 +29,6 @@ _STEP_TITLES = {
     OnboardingStep.OPTIONS: "6. Opções finais",
 }
 
-def autostart_label() -> str:
-    return "Iniciar junto com o Windows" if sys.platform == "win32" else "Iniciar com a sessão"
-
-
 _STEP_BODIES = {
     OnboardingStep.CREATE_APP: (
         "Este app precisa de um app registrado no painel de desenvolvedor do Spotify.\n\n"
@@ -62,6 +58,10 @@ _STEP_BODIES = {
         "pela janela de configurações (clique no ícone da bandeja)."
     ),
 }
+
+
+def autostart_label() -> str:
+    return "Iniciar junto com o Windows" if sys.platform == "win32" else "Iniciar com a sessão"
 
 
 def run_wizard(settings: Settings) -> bool:
