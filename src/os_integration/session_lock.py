@@ -1,7 +1,12 @@
 import ctypes
 import functools
+import logging
+import subprocess
+import sys
 from ctypes import wintypes
-from typing import Optional
+from typing import Callable, Optional
+
+logger = logging.getLogger(__name__)
 
 _DESKTOP_SWITCHDESKTOP = 0x0100
 _UOI_NAME = 2
@@ -53,4 +58,41 @@ def _desktop_name_indicates_locked(name: Optional[str]) -> bool:
 
 
 def is_workstation_locked() -> bool:
-    return _desktop_name_indicates_locked(_get_input_desktop_name())
+    if sys.platform == "win32":
+        return _desktop_name_indicates_locked(_get_input_desktop_name())
+    return is_omarchy_session_locked()
+
+
+_OMARCHY_LOCK_CHECK = "omarchy-hyprland-session-locked"
+_OMARCHY_TIMEOUT_S = 2.0
+# Logged once, not on every poll, until a check works again.
+_omarchy_check_failing = False
+
+
+def is_omarchy_session_locked(run: Optional[Callable] = None) -> bool:
+    """Omarchy's own check (Hyprland's ext-session-lock): exit 0 locked,
+    1 unlocked, 2 undetermined. Anything but 0, a failure included, counts as
+    unlocked, as Omarchy's own callers do: the cost of a wrong "unlocked" is
+    one API call, of a wrong "locked" a wallpaper that never changes."""
+    global _omarchy_check_failing
+    run = run if run is not None else subprocess.run
+    try:
+        result = run([_OMARCHY_LOCK_CHECK], capture_output=True, timeout=_OMARCHY_TIMEOUT_S)
+    except (OSError, subprocess.SubprocessError) as exc:
+        _log_failing_once(f"could not run it: {exc}")
+        return False
+    if result.returncode == 2:
+        # Undetermined: what it says when hyprctl or jq fails, e.g. the app
+        # started without HYPRLAND_INSTANCE_SIGNATURE. The poller would then
+        # call the API with the screen locked; at least the log says why.
+        _log_failing_once("it could not tell (exit 2)")
+        return False
+    _omarchy_check_failing = False
+    return result.returncode == 0
+
+
+def _log_failing_once(why: str) -> None:
+    global _omarchy_check_failing
+    if not _omarchy_check_failing:
+        logger.warning("Could not check the session lock (%s); taking the session as unlocked", why)
+    _omarchy_check_failing = True
