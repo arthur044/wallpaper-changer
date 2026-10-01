@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from src.os_integration import updater as updater_module
 from src.os_integration.updater import (
     Action,
     RepoStatus,
@@ -283,7 +284,10 @@ def test_git_missing_is_an_error_not_a_crash(tmp_path):
     assert result.error and "git" in result.error and result.restart is False
 
 
-def test_git_is_run_without_a_console_or_a_password_prompt(tmp_path):
+def test_git_is_run_without_a_console_or_a_password_prompt(monkeypatch, tmp_path):
+    # A sentinel, not the real flag: outside Windows NO_WINDOW is 0, which a
+    # hard-coded creationflags=0 would also match.
+    monkeypatch.setattr(updater_module, "NO_WINDOW", 0x08000000)
     seen = []
 
     def run(cmd, **kwargs):
@@ -292,7 +296,7 @@ def test_git_is_run_without_a_console_or_a_password_prompt(tmp_path):
 
     Updater(tmp_path, run=run, pip=_Pip()).check()
 
-    assert seen[0]["creationflags"] == subprocess.CREATE_NO_WINDOW
+    assert seen[0]["creationflags"] == 0x08000000
     assert seen[0]["env"]["GIT_TERMINAL_PROMPT"] == "0"
 
 

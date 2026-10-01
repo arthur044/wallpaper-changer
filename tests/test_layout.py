@@ -24,7 +24,8 @@ def test_get_primary_resolution_falls_back_on_error(monkeypatch):
         def __getattr__(self, name):
             raise AttributeError(name)
 
-    monkeypatch.setattr(layout_module.ctypes, "windll", BrokenWindll())
+    # raising=False: ctypes has no windll outside Windows.
+    monkeypatch.setattr(layout_module.ctypes, "windll", BrokenWindll(), raising=False)
 
     result = layout_module.get_primary_resolution((1920, 1080))
 

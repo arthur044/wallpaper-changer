@@ -8,6 +8,8 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Callable, Iterable, Optional, Tuple
 
+from src.os_integration.no_window import NO_WINDOW
+
 logger = logging.getLogger(__name__)
 
 MAIN_BRANCH = "main"
@@ -94,7 +96,7 @@ def run_pip(repo: Path, requirements: Path, run: Callable = subprocess.run) -> b
             capture_output=True,
             text=True,
             timeout=_PIP_TIMEOUT_S,
-            creationflags=subprocess.CREATE_NO_WINDOW,
+            creationflags=NO_WINDOW,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         logger.error("pip failed to run: %s", exc)
@@ -129,7 +131,7 @@ class Updater:
                 text=True,
                 timeout=_GIT_TIMEOUT_S,
                 env=self._env,
-                creationflags=subprocess.CREATE_NO_WINDOW,
+                creationflags=NO_WINDOW,
             )
         except (OSError, subprocess.SubprocessError) as exc:
             raise GitError(f"git {args[0]} could not run: {exc}") from exc

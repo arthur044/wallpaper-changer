@@ -5,12 +5,15 @@ import logging
 import re
 import subprocess
 import sys
-import winreg
 from ctypes import wintypes
 from pathlib import Path
 from typing import Optional
 
 from src.config.paths import data_dir
+from src.os_integration.no_window import NO_WINDOW
+
+if sys.platform == "win32":
+    import winreg
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +25,7 @@ _WAIT_TIMEOUT_MS = 30_000
 # schtasks.exe is a console program. The app runs under pythonw, which has no
 # console to share, so without this Windows opens one per call: a terminal
 # flashing on screen on every track change.
-_NO_WINDOW = subprocess.CREATE_NO_WINDOW
+_NO_WINDOW = NO_WINDOW
 
 
 def _pending_path_file() -> Path:

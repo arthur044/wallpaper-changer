@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
+from src.os_integration.no_window import NO_WINDOW
+
 logger = logging.getLogger(__name__)
 
 _GIT_TIMEOUT_S = 5.0
@@ -31,7 +33,7 @@ def read_version(repo: Path, run: Callable = subprocess.run) -> Optional[AppVers
             timeout=_GIT_TIMEOUT_S,
             # Same reason as schtasks in lockscreen.py: pythonw has no console,
             # so a console program would flash a terminal of its own.
-            creationflags=subprocess.CREATE_NO_WINDOW,
+            creationflags=NO_WINDOW,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         logger.info("Could not read the app version: %s", exc)
