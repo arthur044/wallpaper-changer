@@ -1,5 +1,6 @@
 import ctypes
 import logging
+import sys
 from dataclasses import dataclass
 from typing import Tuple
 
@@ -23,15 +24,23 @@ def _ensure_dpi_awareness() -> None:
     _DPI_AWARENESS_SET = True
 
 
-def get_primary_resolution(fallback: Tuple[int, int]) -> Tuple[int, int]:
+def _windows_resolution() -> Tuple[int, int]:
     _ensure_dpi_awareness()
+    user32 = ctypes.windll.user32
+    width = user32.GetSystemMetrics(0)
+    height = user32.GetSystemMetrics(1)
+    if width <= 0 or height <= 0:
+        raise ValueError(f"Invalid resolution reported: {width}x{height}")
+    return width, height
+
+
+def get_primary_resolution(fallback: Tuple[int, int]) -> Tuple[int, int]:
     try:
-        user32 = ctypes.windll.user32
-        width = user32.GetSystemMetrics(0)
-        height = user32.GetSystemMetrics(1)
-        if width <= 0 or height <= 0:
-            raise ValueError(f"Invalid resolution reported: {width}x{height}")
-        return width, height
+        if sys.platform == "win32":
+            return _windows_resolution()
+        from src.os_integration import hyprland
+
+        return hyprland.primary_resolution()
     except Exception as exc:  # noqa: BLE001 - resolution detection must never crash the app
         logger.error("Resolution detection failed (%s), using fallback %s", exc, fallback)
         return fallback
