@@ -20,6 +20,7 @@ Measured on Hyprland 0.56 (Lua config), 2026-10-01:
 import json
 import logging
 import os
+import socket
 import subprocess
 from typing import Callable, Optional, Tuple
 
@@ -31,7 +32,12 @@ TITLE = "Spotify Wallpaper Engine lyrics"
 _RULE_NAME = "spotify-wallpaper-engine-lyrics"
 _RULE_GLOBAL = "SPOTIFY_WALLPAPER_ENGINE_LYRICS_RULE"
 _TIMEOUT_S = 2.0
-_FULLSCREEN = 2  # hyprctl's fullscreen mode: 0 none, 1 maximized, 2 fullscreen
+# The reads run on the Qt thread once a second: through Hyprland's socket they
+# take ~0.2 ms (hyprctl: ~7 ms of fork and exec), and a hung Hyprland costs at
+# most this, not hyprctl's 2 s.
+_SOCKET_TIMEOUT_S = 0.25
+# Hyprland's fullscreen state is a bit mask: 1 maximized, 2 fullscreen (3 both).
+_FULLSCREEN = 2
 
 Rect = Tuple[int, int, int, int]
 
@@ -94,10 +100,42 @@ class HyprlandWidgetWindow:
     one works again) and otherwise ignored: the widget still shows, only not
     where it should."""
 
-    def __init__(self, run: Optional[Callable] = None, pid: Optional[int] = None) -> None:
+    def __init__(
+        self, run: Optional[Callable] = None, pid: Optional[int] = None, query: Optional[Callable] = None
+    ) -> None:
         self._run = run if run is not None else subprocess.run
         self._pid = pid if pid is not None else os.getpid()
         self._failing = False
+        # Reads go through the socket; with a fake [run] (tests), through it.
+        self._query = query if query is not None else (self._socket_query if run is None else None)
+
+    def _read(self, what: str) -> Optional[str]:
+        """A JSON read (clients, activewindow, monitors)."""
+        if self._query is None:
+            return self._hyprctl(what, "-j")
+        try:
+            output = self._query(what)
+        except OSError as exc:
+            return self._failed(f"reading {what} failed: {exc}")
+        self._failing = False
+        return output
+
+    @staticmethod
+    def _socket_query(what: str) -> str:
+        path = os.path.join(
+            os.environ.get("XDG_RUNTIME_DIR", ""), "hypr", os.environ.get("HYPRLAND_INSTANCE_SIGNATURE", ""), ".socket.sock"
+        )
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            connection.settimeout(_SOCKET_TIMEOUT_S)
+            connection.connect(path)
+            connection.sendall(f"j/{what}".encode())
+            chunks = []
+            while True:
+                chunk = connection.recv(65536)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+        return b"".join(chunks).decode("utf-8", "replace")
 
     def _hyprctl(self, *args: str) -> Optional[str]:
         try:
@@ -129,7 +167,7 @@ class HyprlandWidgetWindow:
     def window_rect(self) -> Optional[Tuple[Rect, Optional[int]]]:
         """Where the widget really is, and the id of its monitor; None when it
         isn't mapped (or Hyprland can't be asked)."""
-        output = self._hyprctl("clients", "-j")
+        output = self._read("clients")
         if output is None:
             return None
         try:
@@ -142,7 +180,7 @@ class HyprlandWidgetWindow:
         return rect, client.get("monitor")
 
     def monitor_name(self, monitor_id) -> Optional[str]:
-        output = self._hyprctl("monitors", "-j")
+        output = self._read("monitors")
         try:
             for monitor in json.loads(output) if output else []:
                 if monitor.get("id") == monitor_id:
@@ -154,9 +192,10 @@ class HyprlandWidgetWindow:
     def full_screen_active(self) -> bool:
         """A full-screen window has the focus: a game, a video. Maximized
         doesn't count, as on Windows."""
-        output = self._hyprctl("activewindow", "-j")
+        output = self._read("activewindow")
         try:
             active = json.loads(output) if output else {}
         except ValueError:
             return False
-        return isinstance(active, dict) and active.get("fullscreen") == _FULLSCREEN
+        state = active.get("fullscreen") if isinstance(active, dict) else None
+        return isinstance(state, int) and bool(state & _FULLSCREEN)

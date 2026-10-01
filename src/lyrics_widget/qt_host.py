@@ -113,9 +113,11 @@ def window_flags(locked: bool, on_top: bool) -> Qt.WindowFlags:
 
 def _hyprland_if_running(app) -> Optional[HyprlandWidgetWindow]:
     """Hyprland on Wayland: Qt talks Wayland and HYPRLAND_INSTANCE_SIGNATURE says whose."""
-    if sys.platform == "win32" or app.platformName() != "wayland":
+    if sys.platform == "win32" or not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
         return None
-    if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+    if app.platformName() != "wayland":
+        # XWayland (QT_QPA_PLATFORM=xcb) or offscreen: Hyprland's rules aren't set.
+        logger.info("Hyprland with Qt on %s: the lyrics widget's place is not managed", app.platformName())
         return None
     return HyprlandWidgetWindow()
 

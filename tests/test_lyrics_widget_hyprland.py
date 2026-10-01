@@ -83,7 +83,9 @@ def test_window_rect_and_its_monitor_name():
     assert window.monitor_name(monitor_id) == "HDMI-A-1"
 
 
-@pytest.mark.parametrize("fullscreen, hides", [(0, False), (1, False), (2, True)], ids=["none", "maximized", "fullscreen"])
+@pytest.mark.parametrize(
+    "fullscreen, hides", [(0, False), (1, False), (2, True), (3, True)], ids=["none", "maximized", "fullscreen", "both"]
+)
 def test_only_a_full_screen_window_hides_the_widget(fullscreen, hides):
     run = Hyprctl(activewindow=json.dumps({"title": "mpv", "fullscreen": fullscreen}))
 
@@ -266,3 +268,21 @@ class _ShowingController:
         from src.lyrics_widget.view_model import Phase, View
 
         return View(Phase.LOADING), None
+
+
+def test_the_once_a_second_reads_go_through_the_socket_not_hyprctl():
+    asked, ran = [], []
+    window = hw.HyprlandWidgetWindow(pid=42, query=lambda what: asked.append(what) or json.dumps(_CLIENTS))
+    window._run = lambda *a, **k: ran.append(a)
+
+    assert window.window_rect() == ((1500, 800, 400, 150), 1)
+    assert asked == ["clients"] and ran == []
+
+
+def test_a_socket_that_fails_reads_as_nothing():
+    def broken(what):
+        raise TimeoutError("timed out")
+
+    window = hw.HyprlandWidgetWindow(query=broken)
+
+    assert window.window_rect() is None and window.full_screen_active() is False
