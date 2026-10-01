@@ -624,7 +624,7 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | #15 | Desktop: o menu da tela de bloqueio se atualiza quando o toggle termina (o menu era refeito antes de o UAC ser respondido) |
 | #16 | Desktop: o SMTC reconhece o `spotifast.exe` além de `spotify`, então o widget de letra vê a faixa |
 | — | Nas duas plataformas: arte baixada só de `https` em `scdn.co`/`spotifycdn.com` (§4) |
-| #17 | Desktop: janela de configurações e bandeja enxuta (§2.2). Testes automatizados passam; o teste manual da janela pelo usuário não foi registrado |
+| #17 | Desktop: janela de configurações e bandeja enxuta (§2.2). Testes automatizados passam; a janela ainda não foi testada manualmente pelo usuário (confirmado em 2026-10-01) |
 | #18 | Android: "Compartilhar letra" também com a música pausada (§2.5). Testado no A71 (debug) |
 | #19 | Desktop + Android: cache em disco da capa original e das cores por álbum (§3.1, §3.2). Desktop medido; Android testado à mão no A71 pelo usuário (troca de estilo sem esperar o download) e não medido |
 | #20 | Documentação: `PLANNING.md` reflete #15–#19 |
@@ -712,7 +712,11 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 
 ### 5.3 Próximas prioridades
 
-1. **Medir o cache da arte original no A71** (#19) e rodar no aparelho os 5 testes
+1. **Port do desktop para Linux (Omarchy/Hyprland), em andamento** (decidido em 2026-10-01).
+   Abertos: #21 (fase 1: a suíte roda no Linux, caminhos XDG) e #22 (fase 2, etapa 8:
+   `MprisWatcher`). Antes do merge do #21, a suíte precisa passar no Windows. O resto do
+   Linux entra neste documento depois do merge.
+2. **Medir o cache da arte original no A71** (#19) e rodar no aparelho os 5 testes
    instrumentados novos de `WallpaperComposerTest` (§5.2).
 
 Entregues em #18 e #19 (mergeados em 2026-09-30): "Compartilhar letra" com a música pausada (#18) e o cache
