@@ -306,3 +306,15 @@ def test_requirements_have_no_relative_lines():
     lines = (Path(__file__).resolve().parents[1] / "requirements.txt").read_text(encoding="utf-8").splitlines()
 
     assert not [line for line in lines if line.strip().startswith(("-r", "-c", "-e", "."))]
+
+
+def test_on_linux_pip_runs_with_the_clones_venv_python(monkeypatch, tmp_path):
+    from src.os_integration import updater as updater_module
+
+    monkeypatch.setattr(updater_module.sys, "platform", "linux")
+    venv_python = tmp_path / ".venv" / "bin" / "python"
+
+    assert updater_module.app_python(tmp_path) == updater_module.sys.executable  # no venv yet
+    venv_python.parent.mkdir(parents=True)
+    venv_python.write_text("")
+    assert updater_module.app_python(tmp_path) == str(venv_python)

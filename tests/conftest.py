@@ -35,3 +35,23 @@ def _no_real_scheduled_task(monkeypatch):
 
     monkeypatch.setattr(lockscreen, "_run_elevated", refuse_elevation)
     monkeypatch.setattr(subprocess, "run", guarded_run)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_home(monkeypatch, tmp_path_factory):
+    """Every test, every file, off Windows: nothing lands in the user's real
+    home.
+
+    A test once wrote the real ~/.config/autostart entry on Linux (it would
+    have started a stray copy of the app at the next login). Path.home()
+    reads $HOME off Windows and config/data/cache/state follow the XDG
+    variables there, so all of them point into a throwaway folder. On
+    Windows Python reads USERPROFILE and the app APPDATA/LOCALAPPDATA, which
+    this leaves alone, as before. $XDG_RUNTIME_DIR is left too: Qt's GTK
+    platform theme finds the display through it, and without it the process
+    exits; the flock tests give their own folder. Tests that need a specific
+    home still patch it themselves."""
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
+    for var in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"):
+        monkeypatch.delenv(var, raising=False)

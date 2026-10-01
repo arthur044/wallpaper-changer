@@ -78,7 +78,13 @@ class GitError(Exception):
     pass
 
 
-def _default_python(repo: Path) -> str:
+def app_python(repo: Path) -> str:
+    """The interpreter of the app's clone: what pip installs into, and what
+    the Linux autostart runs."""
+    if sys.platform != "win32":
+        # The clone's own venv; outside one, whatever runs the app.
+        venv_python = repo / ".venv" / "bin" / "python"
+        return str(venv_python) if venv_python.exists() else sys.executable
     venv_python = repo / ".venv" / "Scripts" / "python.exe"
     if venv_python.exists():
         return str(venv_python)
@@ -87,7 +93,7 @@ def _default_python(repo: Path) -> str:
 
 
 def run_pip(repo: Path, requirements: Path, run: Callable = subprocess.run) -> bool:
-    command = [_default_python(repo), "-m", "pip", "install", "-r", str(requirements)]
+    command = [app_python(repo), "-m", "pip", "install", "-r", str(requirements)]
     logger.info("Installing requirements: %s", command)
     try:
         result = run(

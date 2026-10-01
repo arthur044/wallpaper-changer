@@ -116,3 +116,38 @@ def test_navigation_is_ignored_while_a_step_is_running(wizard):
     wizard._on_back()
 
     assert wizard._step is OnboardingStep.CLIENT_ID
+
+
+def _option_labels(wizard):
+    return [child.cget("text") for child in wizard._body.winfo_children() if child.winfo_class() == "TCheckbutton"]
+
+
+def test_on_linux_the_last_step_offers_starting_with_the_session_and_no_lock_screen_task(wizard, monkeypatch):
+    from src.onboarding import wizard as wizard_module
+    from src.os_integration import lockscreen
+
+    monkeypatch.setattr(wizard_module.sys, "platform", "linux")
+    monkeypatch.setattr(lockscreen.sys, "platform", "linux")
+    for child in wizard._body.winfo_children():
+        child.destroy()
+
+    wizard._render_options()
+
+    assert _option_labels(wizard) == ["Iniciar com a sessão"]
+
+
+def test_on_windows_the_last_step_keeps_both_options(wizard, monkeypatch):
+    from src.onboarding import wizard as wizard_module
+    from src.os_integration import lockscreen
+
+    monkeypatch.setattr(wizard_module.sys, "platform", "win32")
+    monkeypatch.setattr(lockscreen.sys, "platform", "win32")
+    for child in wizard._body.winfo_children():
+        child.destroy()
+
+    wizard._render_options()
+
+    assert _option_labels(wizard) == [
+        "Iniciar junto com o Windows",
+        "Sincronizar também a tela de bloqueio (pede permissão do Windows uma vez)",
+    ]

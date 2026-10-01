@@ -13,7 +13,8 @@ _USERNAME = "default"
 
 
 class KeyringCacheHandler(CacheHandler):
-    """Persists the spotipy token info in the Windows Credential Manager instead of a plaintext file."""
+    """Persists the spotipy token info in the system keyring instead of a plaintext file:
+    the Windows Credential Manager, or the Secret Service (gnome-keyring) on Linux."""
 
     def get_cached_token(self) -> Optional[dict]:
         try:
