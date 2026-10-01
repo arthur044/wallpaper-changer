@@ -1,9 +1,19 @@
 import logging
+import os
+import sys
 import threading
 from typing import Callable, Optional, Tuple
 
-import pystray
-from PIL import Image, ImageDraw
+if sys.platform != "win32":
+    # Off Windows the icon is drawn by Qt (qt_tray.QtTrayIcon) and pystray only
+    # describes the menu. Left to choose, it would load a backend at import
+    # that needs GTK/AppIndicator or an X display, and fail without them.
+    # Forced, not a default: a PYSTRAY_BACKEND=xorg left in the environment
+    # would fail without X, and here pystray only describes the menu.
+    os.environ["PYSTRAY_BACKEND"] = "dummy"
+
+import pystray  # noqa: E402 - after the backend is chosen
+from PIL import Image, ImageDraw  # noqa: E402
 
 from src.config.settings import Settings, save_settings
 from src.os_integration import lockscreen
@@ -41,6 +51,7 @@ class TrayApp:
         version: str = "",
         updater: Optional[Updater] = None,
         on_open_settings: Callable[[], None] = lambda: None,
+        icon_factory: Optional[Callable] = None,
     ):
         self._app_state = app_state
         self._settings = settings
@@ -54,7 +65,8 @@ class TrayApp:
         self._lock_sync_busy = False
         self._version = version
         self._wizard_thread: Optional[threading.Thread] = None
-        self._icon = pystray.Icon(
+        # pystray.Icon, or anything with its interface (qt_tray.QtTrayIcon).
+        self._icon = (icon_factory or pystray.Icon)(
             "spotify_wallpaper_engine",
             _build_icon_image(_ICON_COLORS[AppStatus.RUNNING]),
             f"Spotify Wallpaper Engine - {version}" if version else "Spotify Wallpaper Engine",

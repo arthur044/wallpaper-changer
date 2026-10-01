@@ -18,7 +18,15 @@ def _launch_command() -> str:
     return f'"{interpreter}" "{main_script}"'
 
 
+def _require_windows() -> None:
+    # A clean error the wizard can show, not a NameError on winreg. Starting
+    # with the session on Linux is its own step of the port.
+    if sys.platform != "win32":
+        raise OSError("starting with the session is not supported on this platform yet")
+
+
 def install_autostart() -> None:
+    _require_windows()
     command = _launch_command()
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
         winreg.SetValueEx(key, _VALUE_NAME, 0, winreg.REG_SZ, command)
@@ -26,6 +34,7 @@ def install_autostart() -> None:
 
 
 def uninstall_autostart() -> None:
+    _require_windows()
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
             winreg.DeleteValue(key, _VALUE_NAME)
@@ -35,6 +44,8 @@ def uninstall_autostart() -> None:
 
 
 def is_autostart_installed() -> bool:
+    if sys.platform != "win32":
+        return False
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_READ) as key:
             winreg.QueryValueEx(key, _VALUE_NAME)
