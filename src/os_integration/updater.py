@@ -79,6 +79,10 @@ class GitError(Exception):
 
 
 def _default_python(repo: Path) -> str:
+    if sys.platform != "win32":
+        # The clone's own venv; outside one, whatever runs the app.
+        venv_python = repo / ".venv" / "bin" / "python"
+        return str(venv_python) if venv_python.exists() else sys.executable
     venv_python = repo / ".venv" / "Scripts" / "python.exe"
     if venv_python.exists():
         return str(venv_python)
