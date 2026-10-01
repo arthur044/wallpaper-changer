@@ -1,3 +1,4 @@
+import json
 import subprocess
 
 import pytest
@@ -17,8 +18,6 @@ def _run(stdout="", returncode=0, stderr=""):
 
 
 def test_the_dev_machines_monitor():
-    import json
-
     assert hyprland.primary_resolution(_run(json.dumps([_DP1]))) == (1920, 1080)
 
 

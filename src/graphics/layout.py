@@ -9,6 +9,9 @@ from src.config.settings import Settings
 logger = logging.getLogger(__name__)
 
 _DPI_AWARENESS_SET = False
+# compute_layout runs on every render: a detection that keeps failing (say,
+# the app started outside Hyprland's environment) is an ERROR once, then DEBUG.
+_DETECTION_FAILING = False
 
 
 def _ensure_dpi_awareness() -> None:
@@ -35,15 +38,21 @@ def _windows_resolution() -> Tuple[int, int]:
 
 
 def get_primary_resolution(fallback: Tuple[int, int]) -> Tuple[int, int]:
+    global _DETECTION_FAILING
     try:
         if sys.platform == "win32":
-            return _windows_resolution()
-        from src.os_integration import hyprland
+            resolution = _windows_resolution()
+        else:
+            from src.os_integration import hyprland
 
-        return hyprland.primary_resolution()
+            resolution = hyprland.primary_resolution()
     except Exception as exc:  # noqa: BLE001 - resolution detection must never crash the app
-        logger.error("Resolution detection failed (%s), using fallback %s", exc, fallback)
+        log = logger.debug if _DETECTION_FAILING else logger.error
+        log("Resolution detection failed (%s), using fallback %s", exc, fallback)
+        _DETECTION_FAILING = True
         return fallback
+    _DETECTION_FAILING = False
+    return resolution
 
 
 @dataclass(frozen=True)

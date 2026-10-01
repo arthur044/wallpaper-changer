@@ -61,3 +61,22 @@ def test_without_hyprland_the_fallback_is_used(monkeypatch):
     monkeypatch.setattr(hyprland.subprocess, "run", no_hyprctl)
 
     assert layout_module.get_primary_resolution((1366, 768)) == (1366, 768)
+
+
+def test_a_detection_that_keeps_failing_is_an_error_once_until_it_works(monkeypatch, caplog):
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(layout_module, "_DETECTION_FAILING", False)
+    answers = iter([FileNotFoundError("hyprctl"), FileNotFoundError("hyprctl"), "ok", FileNotFoundError("hyprctl")])
+
+    def run(args, **kwargs):
+        answer = next(answers)
+        if isinstance(answer, Exception):
+            raise answer
+        return subprocess.CompletedProcess(args, 0, '[{"id": 0, "width": 1920, "height": 1080}]', "")
+
+    monkeypatch.setattr(hyprland.subprocess, "run", run)
+    with caplog.at_level("DEBUG"):
+        for _ in range(4):
+            layout_module.get_primary_resolution((1366, 768))
+
+    assert [r.levelname for r in caplog.records if "Resolution detection failed" in r.message] == ["ERROR", "DEBUG", "ERROR"]
