@@ -20,13 +20,12 @@ from src.os_integration import app_version
 from src.os_integration import restart
 from src.os_integration import single_instance
 from src.os_integration.autostart import install_autostart, uninstall_autostart
+from src.os_integration.desktop import MediaWatcher, next_output_path, set_wallpaper, tray_icon_factory
 from src.onboarding.state import needs_onboarding, should_abort_after_wizard
 from src.onboarding.wizard import run_wizard
 from src.os_integration.session_lock import is_workstation_locked
-from src.os_integration.smtc import SmtcWatcher
 from src.os_integration.tray import TrayApp
 from src.os_integration.updater import Updater
-from src.os_integration.wallpaper import next_output_path, set_wallpaper
 from src.spotify.auth import build_auth_manager, reauthenticate
 from src.spotify.client import NowPlaying
 from src.spotify.poller import Poller
@@ -120,8 +119,8 @@ def _run_app(settings) -> int:
     app_state = AppState()
 
     smtc_watcher = None
-    if settings.use_smtc:
-        smtc_watcher = SmtcWatcher()
+    if settings.use_smtc:  # "the local source": SMTC on Windows, MPRIS on Linux
+        smtc_watcher = MediaWatcher()
         smtc_watcher.start()
     qt_host.attach_smtc(smtc_watcher)
     style = StyleActions(settings, save_settings, app_state.force_sync_event.set)
@@ -207,6 +206,7 @@ def _run_app(settings) -> int:
         version=app_version.version_label(app_version.read_version(app_version.app_dir())),
         updater=Updater(app_version.app_dir()),
         on_open_settings=qt_host.open_settings,
+        icon_factory=tray_icon_factory,
     )
     tray_thread = qt_host.run_tray_in_thread(tray.run)
     qt_host.exec()  # blocks until Exit or Restart ends the tray loop
