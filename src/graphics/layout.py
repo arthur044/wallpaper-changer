@@ -1,5 +1,6 @@
 import ctypes
 import logging
+import sys
 from dataclasses import dataclass
 from typing import Tuple
 
@@ -8,6 +9,9 @@ from src.config.settings import Settings
 logger = logging.getLogger(__name__)
 
 _DPI_AWARENESS_SET = False
+# compute_layout runs on every render: a detection that keeps failing (say,
+# the app started outside Hyprland's environment) is an ERROR once, then DEBUG.
+_DETECTION_FAILING = False
 
 
 def _ensure_dpi_awareness() -> None:
@@ -23,18 +27,32 @@ def _ensure_dpi_awareness() -> None:
     _DPI_AWARENESS_SET = True
 
 
-def get_primary_resolution(fallback: Tuple[int, int]) -> Tuple[int, int]:
+def _windows_resolution() -> Tuple[int, int]:
     _ensure_dpi_awareness()
+    user32 = ctypes.windll.user32
+    width = user32.GetSystemMetrics(0)
+    height = user32.GetSystemMetrics(1)
+    if width <= 0 or height <= 0:
+        raise ValueError(f"Invalid resolution reported: {width}x{height}")
+    return width, height
+
+
+def get_primary_resolution(fallback: Tuple[int, int]) -> Tuple[int, int]:
+    global _DETECTION_FAILING
     try:
-        user32 = ctypes.windll.user32
-        width = user32.GetSystemMetrics(0)
-        height = user32.GetSystemMetrics(1)
-        if width <= 0 or height <= 0:
-            raise ValueError(f"Invalid resolution reported: {width}x{height}")
-        return width, height
+        if sys.platform == "win32":
+            resolution = _windows_resolution()
+        else:
+            from src.os_integration import hyprland
+
+            resolution = hyprland.primary_resolution()
     except Exception as exc:  # noqa: BLE001 - resolution detection must never crash the app
-        logger.error("Resolution detection failed (%s), using fallback %s", exc, fallback)
+        log = logger.debug if _DETECTION_FAILING else logger.error
+        log("Resolution detection failed (%s), using fallback %s", exc, fallback)
+        _DETECTION_FAILING = True
         return fallback
+    _DETECTION_FAILING = False
+    return resolution
 
 
 @dataclass(frozen=True)
