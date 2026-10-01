@@ -145,7 +145,7 @@ def test_a_blur_value_outside_the_presets_stays_selectable(app):
     assert window._blur.currentData() == 10
 
 
-def test_the_lyrics_controls_drive_the_widget_and_show_its_state(app):
+def test_the_lyrics_controls_drive_the_widget_and_show_its_state(app, windows):
     window, _s, _sv, _r, lyrics, _app = _window(app)
 
     for box in (window._lyrics_show, window._lyrics_locked, window._lyrics_on_top):
@@ -256,3 +256,17 @@ def test_the_window_refreshes_itself_only_while_it_is_visible(app):
     assert window._timer.isActive()
     window.hide()
     assert not window._timer.isActive()
+
+
+def test_on_linux_always_on_top_is_explained_not_offered(app, monkeypatch):
+    # Hyprland keeps a floating window above the tiled ones: there is no "behind".
+    monkeypatch.setattr(lockscreen.sys, "platform", "linux")
+    window, _s, _sv, _r, lyrics, _app = _window(app)
+
+    window._lyrics_show.click()
+    window._lyrics_locked.click()
+    window.refresh()
+
+    assert window._lyrics_on_top is None
+    assert any("can't stay behind" in label.text() for label in window.findChildren(QLabel))
+    assert (lyrics.visible, lyrics.locked, lyrics.on_top) == (True, True, False)
