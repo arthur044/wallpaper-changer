@@ -375,3 +375,110 @@ def test_a_broken_wait_falls_back_to_the_poll_instead_of_spinning():
     watcher.stop()
 
     assert 1 <= bus.waits <= 10  # ~6 at a 0.05 s floor, not thousands
+
+
+# --- review of #22: failures keep what was known ---------------------------------
+
+
+def test_a_failed_read_of_the_only_player_keeps_the_snapshot_and_the_timeline():
+    # As SMTC does: one slow reply must not send the poller to the Web API.
+    bus = FakeBus({SPOTIFAST: _props()})
+    watcher = MprisWatcher(connect=lambda: bus)
+    watcher.refresh(bus)
+    before = (watcher.get_snapshot(), watcher.get_timeline())
+
+    bus.failing.add(SPOTIFAST)
+    watcher.refresh(bus)
+
+    assert (watcher.get_snapshot(), watcher.get_timeline()) == before
+
+
+def test_a_failed_read_does_not_switch_between_two_playing_players():
+    bus = FakeBus({SPOTIFAST: _props(), SPOTIFY: _props(album_artist=("Bring Me The Horizon",))})
+    clock = Clock(0.0)
+    watcher = MprisWatcher(connect=lambda: bus, now=clock)
+    watcher.refresh(bus)
+    followed = watcher.get_snapshot().album_artist
+
+    for failing in (SPOTIFAST, SPOTIFY):
+        bus.failing = {failing}
+        clock.t += 1
+        watcher.refresh(bus)
+        bus.failing = set()
+        clock.t += 1
+        watcher.refresh(bus)
+
+    assert watcher.get_snapshot().album_artist == followed
+
+
+def test_reads_failing_for_long_drop_the_snapshot():
+    bus = FakeBus({SPOTIFAST: _props()})
+    clock = Clock(0.0)
+    names = bus.player_names
+    calls = []
+
+    def failing_after_the_first():
+        calls.append(1)
+        clock.t += 1.0  # each cycle, a second of fake time
+        if len(calls) > 1:
+            raise TimeoutError("ListNames timed out")
+        return names()
+
+    bus.player_names = failing_after_the_first
+    watcher = MprisWatcher(connect=lambda: bus, now=clock, poll_seconds=0.001)
+    watcher.start()
+    try:
+        assert watcher.wait_ready(timeout=2.0)
+        for _ in range(500):
+            if watcher.get_snapshot() is None:
+                break
+            threading.Event().wait(0.005)
+        assert watcher.get_snapshot() is None
+        assert clock.t > 5.0  # held through the first seconds of failures
+    finally:
+        watcher.stop()
+
+
+def test_a_value_of_the_wrong_type_reads_as_unknown_instead_of_failing_the_read():
+    bus = FakeBus({SPOTIFAST: _props(title=5, artist=("Ok", 7))})
+    watcher = MprisWatcher(connect=lambda: bus)
+
+    watcher.refresh(bus)
+
+    assert (watcher.get_snapshot().title, watcher.get_snapshot().artist) == (None, "Ok")
+
+
+def test_a_storm_of_signals_is_read_at_most_four_times_a_second():
+    bus = FakeBus({SPOTIFAST: _props()})
+    reads = []
+    names = bus.player_names
+    bus.player_names = lambda: reads.append(1) or names()
+    bus.wait_for_event = lambda timeout: True  # a browser sending signals nonstop
+    watcher = MprisWatcher(connect=lambda: bus)
+    watcher.start()
+    threading.Event().wait(0.6)
+    watcher.stop()
+
+    assert len(reads) <= 4  # 0, 0.25, 0.5 s (+1 for the stop)
+
+
+def test_the_connection_is_closed_when_subscribing_fails(monkeypatch):
+    pytest.importorskip("jeepney")
+    from jeepney.io import blocking
+
+    from src.os_integration import mpris
+
+    class Conn:
+        closed = False
+
+        def send_and_get_reply(self, message, timeout=None):
+            raise PermissionError("AddMatch refused")
+
+        def close(self):
+            Conn.closed = True
+
+    monkeypatch.setattr(blocking, "open_dbus_connection", lambda bus="SESSION": Conn())
+
+    with pytest.raises(PermissionError):
+        mpris.JeepneyBus()
+    assert Conn.closed
