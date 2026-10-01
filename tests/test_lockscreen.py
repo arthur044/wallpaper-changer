@@ -1,11 +1,12 @@
 import json
 import subprocess
-import sys
 from types import SimpleNamespace
 
 import pytest
 
 from src.os_integration import lockscreen
+
+_SENTINEL_FLAG = 0x08000000  # CREATE_NO_WINDOW's value
 
 # conftest.py refuses the real schtasks and the real elevation in every test:
 # each test here fakes subprocess.run (and _run_elevated when it needs it).
@@ -33,12 +34,14 @@ def test_request_update_writes_pending_path_and_triggers_task(monkeypatch, tmp_p
     assert calls == [["schtasks", "/run", "/tn", lockscreen._TASK_NAME]]
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="CREATE_NO_WINDOW only exists on Windows")
 def test_no_schtasks_call_opens_a_console_window(monkeypatch, tmp_path):
     # The app runs under pythonw, which has no console: without CREATE_NO_WINDOW
     # Windows gives each schtasks.exe a console of its own, a terminal that
     # flashes on screen on every track change.
     monkeypatch.setattr(lockscreen, "data_dir", lambda: tmp_path)
+    # A sentinel, not the real flag: outside Windows NO_WINDOW is 0, which a
+    # hard-coded creationflags=0 would also match.
+    monkeypatch.setattr(lockscreen, "_NO_WINDOW", _SENTINEL_FLAG)
     flags = []
 
     def fake_run(args, **kwargs):
@@ -53,7 +56,7 @@ def test_no_schtasks_call_opens_a_console_window(monkeypatch, tmp_path):
     lockscreen.uninstall_task()  # the /delete succeeds, so no elevated retry
 
     assert len(flags) == 4  # /run, /query, /delete, /query to confirm
-    assert all(f & subprocess.CREATE_NO_WINDOW for f in flags)
+    assert all(f == _SENTINEL_FLAG for f in flags)
 
 
 def test_request_update_logs_and_skips_run_when_write_fails(monkeypatch, tmp_path):
