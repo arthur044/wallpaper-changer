@@ -28,6 +28,13 @@ _WAIT_TIMEOUT_MS = 30_000
 _NO_WINDOW = NO_WINDOW
 
 
+def follows_the_wallpaper() -> bool:
+    """Off Windows there is nothing to sync: Omarchy's lock screen reads the
+    same background link as the desktop (plugins/lock/Service.qml). Every
+    call below is then a no-op, so no toggle can reach schtasks or UAC."""
+    return sys.platform != "win32"
+
+
 def _pending_path_file() -> Path:
     return data_dir() / "lockscreen_pending.json"
 
@@ -84,6 +91,8 @@ def _run_elevated(exe: str, params: str) -> bool:
 
 
 def is_task_installed() -> bool:
+    if follows_the_wallpaper():
+        return False
     result = subprocess.run(["schtasks", "/query", "/tn", _TASK_NAME], capture_output=True, creationflags=_NO_WINDOW)
     return result.returncode == 0
 
@@ -92,6 +101,8 @@ def install_task() -> bool:
     """Elevates once (UAC) to register a Task Scheduler task with 'highest'
     privileges. Windows treats that consent as durable for the task, so
     subsequent /run calls execute elevated without prompting again."""
+    if follows_the_wallpaper():
+        return True
     command = _launch_command()
     escaped_command = command.replace('"', '\\"')
     params = f'/create /tn "{_TASK_NAME}" /tr "{escaped_command}" /sc onlogon /rl highest /f'
@@ -134,6 +145,8 @@ def ensure_task() -> bool:
     """The task, pointing at this copy of the app. A task left by another
     folder (the app moved to its own clone) is replaced, not kept: it would
     run that folder's code with admin rights."""
+    if follows_the_wallpaper():
+        return True
     registered = _registered_command()
     if registered is not None and registered.lower() == _launch_command().lower():
         return True
@@ -145,6 +158,8 @@ def ensure_task() -> bool:
 def uninstall_task() -> bool:
     """False when the task is still there afterwards (UAC declined). The task
     was created elevated, and deleting it usually needs elevation too."""
+    if follows_the_wallpaper():
+        return True
     subprocess.run(["schtasks", "/delete", "/tn", _TASK_NAME, "/f"], capture_output=True, creationflags=_NO_WINDOW)
     if not is_task_installed():
         logger.info("Lock screen scheduled task removed")
@@ -159,6 +174,8 @@ def uninstall_task() -> bool:
 def request_update(path: Path) -> None:
     """Fire-and-forget: records the target path, then triggers the
     pre-elevated scheduled task. No UAC prompt on this path."""
+    if follows_the_wallpaper():
+        return
     try:
         _pending_path_file().write_text(json.dumps({"path": str(path.resolve())}), encoding="utf-8")
     except OSError as exc:
@@ -193,6 +210,8 @@ def apply_pending() -> None:
     """Runs elevated, invoked by the scheduled task. Reads the path written by
     request_update() and writes it into the registry keys Windows reads for
     the lock screen image."""
+    if follows_the_wallpaper():
+        return
     image_path = _read_pending_path()
     if image_path is None:
         return

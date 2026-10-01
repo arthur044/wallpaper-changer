@@ -12,6 +12,13 @@ _SENTINEL_FLAG = 0x08000000  # CREATE_NO_WINDOW's value
 # each test here fakes subprocess.run (and _run_elevated when it needs it).
 
 
+@pytest.fixture(autouse=True)
+def _windows(monkeypatch):
+    # The schtasks path only runs on Windows; elsewhere every call is a no-op
+    # (test_lockscreen_off_windows.py).
+    monkeypatch.setattr(lockscreen.sys, "platform", "win32")
+
+
 def _fake_completed(returncode=0, stderr=b""):
     return SimpleNamespace(returncode=returncode, stdout=b"", stderr=stderr)
 
