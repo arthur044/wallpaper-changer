@@ -1,3 +1,4 @@
+import sys
 from typing import Callable
 
 from PySide6.QtCore import QTimer
@@ -99,7 +100,14 @@ class SettingsWindow(QWidget):
         layout = QVBoxLayout(box)
         self._lyrics_show = self._toggle(layout, "Show", self._lyrics.toggle_widget)
         self._lyrics_locked = self._toggle(layout, "Lock position (clicks pass through)", self._lyrics.toggle_locked)
-        self._lyrics_on_top = self._toggle(layout, "Always on top", self._lyrics.toggle_on_top)
+        if sys.platform == "win32":
+            self._lyrics_on_top = self._toggle(layout, "Always on top", self._lyrics.toggle_on_top)
+        else:
+            # Hyprland keeps a floating window above the tiled ones: no "behind".
+            note = QLabel("Always on top: on Linux the widget can't stay behind the other windows.")
+            note.setWordWrap(True)
+            layout.addWidget(note)
+            self._lyrics_on_top = None
         row = QHBoxLayout()
         self._button(row, "Reset position", self._lyrics.reset_position)
         row.addStretch(1)
@@ -178,7 +186,8 @@ class SettingsWindow(QWidget):
             self._lock_sync.setEnabled(not c.lock_sync_busy())
         self._lyrics_show.setChecked(self._lyrics.is_widget_visible())
         self._lyrics_locked.setChecked(self._lyrics.is_locked())
-        self._lyrics_on_top.setChecked(self._lyrics.is_on_top())
+        if self._lyrics_on_top is not None:
+            self._lyrics_on_top.setChecked(self._lyrics.is_on_top())
         self._update.setVisible(c.has_updater())
         self._update.setText(c.update_label())
         self._reauth.setVisible(c.needs_reauthentication())

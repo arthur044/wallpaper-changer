@@ -1,6 +1,8 @@
 import logging
+import os
+import sys
 import threading
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 from PySide6.QtCore import QEasingCurve, QObject, QPointF, QRectF, Qt, QTimer, QVariantAnimation, Signal
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPainterPath, QTextLayout, QTextOption
@@ -12,6 +14,8 @@ from src.lyrics.slot import LyricsSlot
 from src.lyrics_widget.colors import DEFAULT_BACKGROUND, TintHolder, widget_background
 from src.lyrics_widget.controller import FetchRequest, LyricsWidgetController
 from src.lyrics_widget.geometry import DEFAULT_SIZE, default_position, edges_at, hide_for_full_screen, restore_rect
+from src.lyrics_widget.hyprland_window import TITLE as HYPRLAND_TITLE
+from src.lyrics_widget.hyprland_window import HyprlandWidgetWindow
 from src.lyrics_widget.view_model import (
     BREAK_HEIGHT,
     LINE_SPACING,
@@ -107,14 +111,33 @@ def window_flags(locked: bool, on_top: bool) -> Qt.WindowFlags:
     return flags
 
 
+def _hyprland_if_running(app) -> Optional[HyprlandWidgetWindow]:
+    """Hyprland on Wayland: Qt talks Wayland and HYPRLAND_INSTANCE_SIGNATURE says whose."""
+    if sys.platform == "win32" or not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        return None
+    if app.platformName() != "wayland":
+        # XWayland (QT_QPA_PLATFORM=xcb) or offscreen: Hyprland's rules aren't set.
+        logger.info("Hyprland with Qt on %s: the lyrics widget's place is not managed", app.platformName())
+        return None
+    return HyprlandWidgetWindow()
+
+
 class LyricsWindow(QWidget):
     """The widget's window, with a per-pixel translucent rounded background.
     Shows the lines of a View, the one being sung highlighted and scrolled to
     with an animation. Unlocked, a press moves it, or resizes it near the
     border; [on_user_moved] runs once the user has let go."""
 
-    def __init__(self, on_user_moved: Callable[[], None] = lambda: None) -> None:
+    def __init__(
+        self,
+        on_user_moved: Callable[[], None] = lambda: None,
+        before_show: Optional[Callable[[], None]] = None,
+    ) -> None:
         super().__init__(None, window_flags(locked=False, on_top=False))
+        # On Hyprland: runs right before the window maps (see hyprland_window).
+        self._before_show = before_show
+        if before_show is not None:
+            self.setWindowTitle(HYPRLAND_TITLE)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.setMouseTracking(True)
@@ -169,8 +192,16 @@ class LyricsWindow(QWidget):
         if was_visible:
             self.show()  # showEvent sets the layer
 
+    def setVisible(self, visible: bool) -> None:  # noqa: N802 - Qt override
+        # show(), and the show that follows a flag change, all come through here.
+        if visible and not self.isVisible() and self._before_show is not None:
+            self._before_show()
+        super().setVisible(visible)
+
     def showEvent(self, event) -> None:  # noqa: N802 - Qt override
         super().showEvent(event)
+        if self._before_show is not None:
+            return  # Hyprland: the window rule set the layer
         # The flags alone don't move an existing window between the bottom and
         # the top of the stack on Windows; see set_window_layer.
         set_window_layer(int(self.winId()), self._on_top)
@@ -401,8 +432,15 @@ class QtHost:
         save: Optional[Callable[[Settings], None]] = None,
         lyrics_source: Optional[LyricsSource] = None,
         tint: Optional[TintHolder] = None,
+        hyprland: Optional[HyprlandWidgetWindow] = None,
     ) -> None:
         self._app = QApplication.instance() or QApplication([])
+        # On Hyprland the compositor places the widget; None elsewhere (and in
+        # the tests, which run offscreen unless they pass a fake).
+        self._hyprland = hyprland if hyprland is not None else _hyprland_if_running(self._app)
+        # Where the widget is on Hyprland, as last placed or seen (global).
+        self._hyprland_rect: Optional[Tuple[int, int, int, int]] = None
+        self._hyprland_seen: Optional[Tuple[int, int, int, int]] = None
         # The widget is the only window; hiding it must not end the app.
         self._app.setQuitOnLastWindowClosed(False)
         self._settings = settings if settings is not None else Settings()
@@ -432,6 +470,9 @@ class QtHost:
         self._bridge.lyrics_ready.connect(self._on_lyrics)
         self._bridge.lyrics_failed.connect(self._on_failure)
         self._app.screenRemoved.connect(self._on_screen_removed)
+        if self._hyprland is not None:
+            # No rule left behind in the user's Hyprland after Exit or Restart.
+            self._app.aboutToQuit.connect(self._hyprland.remove_rule)
 
     def attach_smtc(self, watcher) -> None:
         """The track and position come from SMTC; without it (use_smtc off)
@@ -538,7 +579,8 @@ class QtHost:
 
     def _ensure_window(self) -> LyricsWindow:
         if self._window is None:
-            self._window = LyricsWindow(on_user_moved=self._save_geometry)
+            before_show = self._before_hyprland_show if self._hyprland is not None else None
+            self._window = LyricsWindow(on_user_moved=self._save_geometry, before_show=before_show)
             self._window.apply_layer(self.is_locked(), self.is_on_top())
             self._place_window()
         return self._window
@@ -567,6 +609,7 @@ class QtHost:
         rect = restore_rect(saved, self._screens())
         if rect is not None:
             window.setGeometry(*rect)
+            self._placed_on_hyprland()
             return
         # The default corner, keeping the size the user chose, if any, but
         # never bigger than the primary screen (it may come from a 4K one).
@@ -577,6 +620,7 @@ class QtHost:
             width, height = min(width, area.width()), min(height, area.height())
         window.resize(width, height)
         window.move_to_default_position()
+        self._placed_on_hyprland()
 
     def _save_geometry(self) -> None:
         window = self._window
@@ -596,6 +640,9 @@ class QtHost:
             self._window.cancel_user_move()
             self._window.resize(*DEFAULT_SIZE)
             self._window.move_to_default_position()
+            self._placed_on_hyprland()
+            if self._hyprland is not None and self._window.isVisible():
+                self._hyprland.move_resize(self._hyprland_rect)
 
     def _on_screen_removed(self, _screen) -> None:
         # Its monitor may be the one gone: the saved spot or the default.
@@ -612,7 +659,13 @@ class QtHost:
         if window is None:
             return
         if self._ticks % _FULL_SCREEN_CHECK_TICKS == 0:
-            self._full_screen = hide_for_full_screen(self.is_on_top(), notification_state())
+            if self._hyprland is not None:
+                # Always on top there: a full-screen window always hides it.
+                self._full_screen = self._hyprland.full_screen_active()
+                if window.isVisible():
+                    self._follow_hyprland_moves()
+            else:
+                self._full_screen = hide_for_full_screen(self.is_on_top(), notification_state())
         self._ticks += 1
         if self._tint is not None:
             window.set_background(widget_background(self._tint.get()))
@@ -621,6 +674,54 @@ class QtHost:
             window.hide()
         elif not window.isVisible():
             window.show()
+
+    # --- Hyprland (Qt thread) -------------------------------------------------
+
+    def _placed_on_hyprland(self) -> None:
+        """The code just placed the window: that is where it goes on Hyprland."""
+        if self._hyprland is not None and self._window is not None:
+            geometry = self._window.geometry()
+            self._hyprland_rect = (geometry.x(), geometry.y(), geometry.width(), geometry.height())
+            self._hyprland_seen = None
+
+    def _screen_at(self, rect):
+        center_x, center_y = rect[0] + rect[2] // 2, rect[1] + rect[3] // 2
+        for screen in self._app.screens():
+            if screen.geometry().contains(center_x, center_y):
+                return screen
+        return self._app.primaryScreen()
+
+    def _before_hyprland_show(self) -> None:
+        if self._hyprland_rect is None:
+            self._placed_on_hyprland()
+        rect = self._hyprland_rect
+        screen = self._screen_at(rect)
+        if rect is None or screen is None:
+            return
+        origin = screen.geometry().topLeft()
+        self._hyprland.before_show(rect, screen.name(), (origin.x(), origin.y()))
+
+    def _follow_hyprland_moves(self) -> None:
+        """Hyprland moves and resizes the window (a drag, a keybinding) without
+        telling Qt: once a second, a new place that held still for a second is
+        the user's choice, saved like a move on Windows."""
+        found = self._hyprland.window_rect()
+        if found is None:
+            return
+        rect, monitor_id = found
+        if rect == self._hyprland_rect:
+            self._hyprland_seen = None
+            return
+        if rect != self._hyprland_seen:
+            self._hyprland_seen = rect  # still moving, or just moved: wait a second
+            return
+        self._hyprland_rect, self._hyprland_seen = rect, None
+        name = self._hyprland.monitor_name(monitor_id)
+        screen = next((s for s in self._app.screens() if s.name() == name), None) or self._screen_at(rect)
+        if screen is None:
+            return
+        self._settings.lyrics_widget_geometry = {"monitor": screen_key(screen), "rect": list(rect)}
+        self._persist()
 
     def _start_lookup(self, request: FetchRequest) -> None:
         # A daemon thread, not a pool: exiting never waits on a slow LRCLIB.
