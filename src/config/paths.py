@@ -32,7 +32,7 @@ def config_dir() -> Path:
 
 
 def data_dir() -> Path:
-    """Track index, logs and other state. %LOCALAPPDATA% on Windows,
+    """Track index and lock screen hand-off. %LOCALAPPDATA% on Windows,
     $XDG_DATA_HOME (~/.local/share) elsewhere."""
     if sys.platform == "win32":
         return _app_dir(_windows_root("LOCALAPPDATA"))
@@ -50,8 +50,17 @@ def cache_dir() -> Path:
     return _app_dir(_xdg_root("XDG_CACHE_HOME", ".cache"))
 
 
+def state_dir() -> Path:
+    """What the app leaves behind while it runs, such as its logs: data_dir()
+    on Windows, $XDG_STATE_HOME (~/.local/state) elsewhere, where the XDG spec
+    puts logs."""
+    if sys.platform == "win32":
+        return data_dir()
+    return _app_dir(_xdg_root("XDG_STATE_HOME", ".local/state"))
+
+
 def logs_dir() -> Path:
-    path = data_dir() / "logs"
+    path = state_dir() / "logs"
     path.mkdir(parents=True, exist_ok=True)
     return path
 

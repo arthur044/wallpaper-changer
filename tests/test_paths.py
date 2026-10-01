@@ -8,7 +8,7 @@ from src.config import paths
 @pytest.fixture
 def home(monkeypatch, tmp_path):
     monkeypatch.setattr(paths.Path, "home", lambda: tmp_path / "home")
-    for var in ("APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"):
+    for var in ("APPDATA", "LOCALAPPDATA", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"):
         monkeypatch.delenv(var, raising=False)
     return tmp_path / "home"
 
@@ -27,6 +27,7 @@ def test_linux_defaults_follow_the_xdg_base_directories(home, linux):
     assert paths.config_dir() == home / ".config" / paths.APP_NAME
     assert paths.data_dir() == home / ".local" / "share" / paths.APP_NAME
     assert paths.cache_dir() == home / ".cache" / paths.APP_NAME
+    assert paths.logs_dir() == home / ".local" / "state" / paths.APP_NAME / "logs"
     assert paths.config_file() == home / ".config" / paths.APP_NAME / "config.json"
 
 
@@ -34,10 +35,12 @@ def test_linux_honours_the_xdg_variables(monkeypatch, tmp_path, home, linux):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "cfg"))
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
 
     assert paths.config_dir() == tmp_path / "cfg" / paths.APP_NAME
     assert paths.data_dir() == tmp_path / "data" / paths.APP_NAME
     assert paths.cache_dir() == tmp_path / "cache" / paths.APP_NAME
+    assert paths.logs_dir() == tmp_path / "state" / paths.APP_NAME / "logs"
 
 
 def test_linux_ignores_a_relative_xdg_variable(monkeypatch, home, linux):
