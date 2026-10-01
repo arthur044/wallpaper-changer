@@ -3,7 +3,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Dict, Optional
 
 from src.config.paths import state_dir
 
@@ -11,6 +11,15 @@ logger = logging.getLogger(__name__)
 
 _PREFIX = "wallpaper_"
 _IPC_TIMEOUT_S = 5.0
+# How long a replaced wallpaper is kept. With smooth on, the shell fades for
+# 420 ms (Background.qml's revealAnimation) and keeps showing the background
+# from before the first of several quick changes until the fade ends: after
+# A, B and C in a row it still draws A, from disk (cache: false).
+_LINGER_S = 2.0
+
+# When each replaced wallpaper stopped being the current one (monotonic).
+# Only the poller thread sets the wallpaper.
+_replaced_at: Dict[Path, float] = {}
 
 
 def background_link() -> Path:
@@ -35,7 +44,9 @@ def next_output_path() -> Path:
     return _wallpaper_dir() / f"{_PREFIX}{time.time_ns()}.png"
 
 
-def set_wallpaper(path: Path, smooth: bool = False, run: Callable = subprocess.run) -> None:
+def set_wallpaper(
+    path: Path, smooth: bool = False, run: Callable = subprocess.run, now: Callable[[], float] = time.monotonic
+) -> None:
     """Points Omarchy's background link at [path] and tells the running shell.
     The link is what the lock screen and a restarted shell read; the shell
     itself only rereads it when told, through its IPC. [smooth] is the
@@ -43,12 +54,18 @@ def set_wallpaper(path: Path, smooth: bool = False, run: Callable = subprocess.r
     link = background_link()
     if not link.parent.is_dir():
         raise OSError(f"Omarchy's background link folder is missing ({link.parent}); is this Omarchy?")
+    # As omarchy-theme-bg-set checks: a link to nothing leaves the lock screen bare.
+    if not path.is_file():
+        raise OSError(f"Wallpaper file does not exist: {path}")
     absolute = path.resolve()
     previous = _link_target(link)
     _replace_link(link, absolute)
     _tell_the_shell(absolute, smooth, run)
     logger.info("Wallpaper set to %s", absolute)
-    _remove_old_wallpapers(keep={absolute, previous})
+    moment = now()
+    if previous is not None and previous != absolute:
+        _replaced_at[previous] = moment
+    _remove_old_wallpapers(current=absolute, moment=moment)
 
 
 def _link_target(link: Path) -> Optional[Path]:
@@ -90,16 +107,15 @@ def _tell_the_shell(absolute: Path, smooth: bool, run: Callable) -> None:
         )
 
 
-def _remove_old_wallpapers(keep: set) -> None:
-    """The files older than the new one and the one it replaces (which the
-    shell may still be fading out from). Names carry the time they were made,
-    so a newer file, written but not set yet, is never touched."""
-    folder = _wallpaper_dir()
-    kept = sorted(path.name for path in keep if path is not None and path.parent == folder.resolve())
-    if not kept:
-        return
-    for file in folder.glob(f"{_PREFIX}*.png"):
-        if file.name >= kept[0]:
+def _remove_old_wallpapers(current: Path, moment: float) -> None:
+    """Every wallpaper of ours but the current one and those replaced less
+    than _LINGER_S ago, which the shell may still be fading out from."""
+    for path, replaced in list(_replaced_at.items()):
+        if moment - replaced > _LINGER_S:
+            del _replaced_at[path]
+    for file in _wallpaper_dir().glob(f"{_PREFIX}*.png"):
+        resolved = file.resolve()
+        if resolved == current or resolved in _replaced_at:
             continue
         try:
             file.unlink()

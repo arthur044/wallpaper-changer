@@ -1,10 +1,14 @@
 import os
 import subprocess
+import sys
 
 import pytest
 
 from src.config import paths
 from src.os_integration import omarchy_wallpaper
+
+# Omarchy is Linux, and symlinks on Windows need Developer Mode or admin.
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="Omarchy backend: Linux only")
 
 
 @pytest.fixture
@@ -14,6 +18,7 @@ def home(monkeypatch, tmp_path):
     monkeypatch.setattr(paths.sys, "platform", "linux")
     monkeypatch.delenv("XDG_STATE_HOME", raising=False)
     (home / ".local" / "state" / "omarchy" / "current").mkdir(parents=True)
+    monkeypatch.setattr(omarchy_wallpaper, "_replaced_at", {})
     return home
 
 
@@ -105,28 +110,71 @@ def test_without_omarchy_nothing_is_touched_and_it_fails(home):
     assert shell.calls == []
 
 
-def test_only_the_new_wallpaper_and_the_one_it_replaces_are_kept(home):
-    first = _wallpaper("1")
-    omarchy_wallpaper.set_wallpaper(first, run=Shell())
-    second = _wallpaper("2")
-    omarchy_wallpaper.set_wallpaper(second, run=Shell())
-    third = _wallpaper("3")
+class Clock:
+    def __init__(self):
+        self.t = 1000.0
 
-    omarchy_wallpaper.set_wallpaper(third, run=Shell())
+    def __call__(self):
+        return self.t
+
+
+def _draw_and_set(clock, smooth=False):
+    """As the poller does: draw the next wallpaper, then set it."""
+    path = _wallpaper()
+    omarchy_wallpaper.set_wallpaper(path, smooth=smooth, run=Shell(), now=clock)
+    return path
+
+
+def test_spaced_out_changes_keep_only_the_current_wallpaper_and_the_one_it_replaced(home):
+    clock = Clock()
+    first = _draw_and_set(clock)
+    clock.t += 10
+    second = _draw_and_set(clock)
+    clock.t += 10
+    third = _draw_and_set(clock)
 
     assert sorted(first.parent.iterdir()) == sorted([second, third])
 
 
-def test_a_newer_file_not_set_yet_is_never_removed(home):
-    current = _wallpaper("1")
-    newer = _wallpaper("2")
+def test_quick_changes_keep_what_the_shell_may_still_be_fading_from(home):
+    # smooth on and three skips inside the 420 ms fade: the shell still draws
+    # the first one under the fade, reading it from disk.
+    clock = Clock()
+    paths_set = []
+    for _ in range(4):
+        paths_set.append(_draw_and_set(clock, smooth=True))
+        clock.t += 0.1
 
-    omarchy_wallpaper.set_wallpaper(current, run=Shell())
-
-    assert newer.exists()
+    assert all(path.exists() for path in paths_set)
 
 
-def test_after_a_theme_background_only_older_files_of_ours_go(home):
+def test_once_things_settle_the_lingering_wallpapers_go(home):
+    clock = Clock()
+    quick = []
+    for _ in range(3):
+        quick.append(_draw_and_set(clock))
+        clock.t += 0.1
+    clock.t += 10
+
+    latest = _draw_and_set(clock)
+
+    assert sorted(latest.parent.iterdir()) == sorted([quick[-1], latest])
+
+
+def test_a_missing_file_leaves_the_link_alone(home):
+    theme_file = home / "theme-bg.jpg"
+    theme_file.write_bytes(b"jpg")
+    _link(home).symlink_to(theme_file)
+    shell = Shell()
+
+    with pytest.raises(OSError, match="does not exist"):
+        omarchy_wallpaper.set_wallpaper(home / "nowhere.png", run=shell)
+
+    assert os.readlink(_link(home)) == str(theme_file)
+    assert shell.calls == []
+
+
+def test_after_a_theme_background_our_old_files_go_and_the_theme_file_stays(home):
     stale = _wallpaper("old")
     theme_file = home / "theme-bg.jpg"
     theme_file.write_bytes(b"jpg")
