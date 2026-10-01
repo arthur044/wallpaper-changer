@@ -8,7 +8,9 @@ if sys.platform != "win32":
     # Off Windows the icon is drawn by Qt (qt_tray.QtTrayIcon) and pystray only
     # describes the menu. Left to choose, it would load a backend at import
     # that needs GTK/AppIndicator or an X display, and fail without them.
-    os.environ.setdefault("PYSTRAY_BACKEND", "dummy")
+    # Forced, not a default: a PYSTRAY_BACKEND=xorg left in the environment
+    # would fail without X, and here pystray only describes the menu.
+    os.environ["PYSTRAY_BACKEND"] = "dummy"
 
 import pystray  # noqa: E402 - after the backend is chosen
 from PIL import Image, ImageDraw  # noqa: E402

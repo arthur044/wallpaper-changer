@@ -134,3 +134,44 @@ def test_the_tray_app_on_qt_shows_its_menu_and_follows_pause(app):
     tray.commands().toggle_pause()
 
     assert _wait_for(lambda: "Resume" in _labels(icon))
+
+
+def test_clicks_run_one_after_another_like_pystrays_loop(app):
+    # Restart then Exit must not run at once: pystray runs actions on its loop, in order.
+    release = threading.Event()
+    order = []
+
+    def slow(icon, item):
+        order.append("restart started")
+        release.wait(2.0)
+        order.append("restart done")
+
+    menu = pystray.Menu(
+        pystray.MenuItem("Restart", slow),
+        pystray.MenuItem("Exit", lambda icon, item: order.append("exit")),
+    )
+    icon = QtTrayIcon("test", _GREEN, menu=menu)
+    assert _wait_for(lambda: len(icon._qmenu.actions()) == 2)
+
+    restart, exit_ = icon._qmenu.actions()
+    restart.trigger()
+    exit_.trigger()
+    assert _wait_for(lambda: order == ["restart started"])
+    threading.Event().wait(0.1)
+    assert order == ["restart started"]  # Exit waits its turn
+
+    release.set()
+    assert _wait_for(lambda: order == ["restart started", "restart done", "exit"])
+
+
+def test_a_submenu_is_left_out_with_a_warning_not_shown_dead(app, caplog):
+    menu = pystray.Menu(
+        pystray.MenuItem("Settings...", lambda icon, item: None),
+        pystray.MenuItem("More", pystray.Menu(pystray.MenuItem("Inner", lambda icon, item: None))),
+    )
+
+    with caplog.at_level("WARNING"):
+        icon = QtTrayIcon("test", _GREEN, menu=menu)
+        assert _wait_for(lambda: _labels(icon) == ["Settings..."])
+
+    assert any("submenu" in record.message for record in caplog.records)

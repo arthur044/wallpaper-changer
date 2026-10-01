@@ -1,4 +1,5 @@
 import logging
+import queue
 import threading
 from typing import Callable, Optional
 
@@ -40,13 +41,19 @@ class QtTrayIcon:
     run, stop), so the menu stays the very pystray.Menu Windows shows.
 
     Build it on the Qt thread; the rest may be called from any thread. Menu
-    clicks run on a thread of their own, as pystray runs them off its loop:
-    Restart waits for the poller and must not block Qt."""
+    clicks run off the Qt thread, one after another on a single worker, as
+    pystray runs them on its loop: Restart waits for the poller and must not
+    block Qt, and Restart then Exit must not run at once."""
 
     def __init__(self, name: str, icon: Image.Image, title: Optional[str] = None, menu=None) -> None:
         self.name = name
         self._menu_spec = menu
         self._stopped = threading.Event()
+        self._clicks: queue.Queue = queue.Queue()
+        self._worker: Optional[threading.Thread] = None
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            # Then nothing shows the icon, and its menu is the only way to Exit.
+            logger.warning("No system tray to show the icon in (no StatusNotifierItem host?)")
         self._tray = QSystemTrayIcon()
         if title:
             self._tray.setToolTip(title)
@@ -112,6 +119,10 @@ class QtTrayIcon:
             if _is_separator(item):
                 self._qmenu.addSeparator()
                 continue
+            if item.submenu is not None:
+                # Not drawn here yet: say so rather than show an item that does nothing.
+                logger.warning("Tray submenu %r is not supported on this platform; left out", item.text)
+                continue
             action = self._qmenu.addAction(item.text)
             action.setEnabled(item.enabled)
             if item.checked is not None:
@@ -122,17 +133,21 @@ class QtTrayIcon:
     def _activated(self, reason) -> None:
         # A left click runs the default item (Settings...), as on Windows.
         if reason == QSystemTrayIcon.ActivationReason.Trigger and self._menu_spec is not None:
-            self._in_background(lambda: self._menu_spec(self), "tray-default")
+            self._in_background(lambda: self._menu_spec(self))
 
     def _click(self, item) -> None:
-        self._in_background(lambda: item(self), "tray-click")
+        self._in_background(lambda: item(self))
 
-    @staticmethod
-    def _in_background(fn: Callable[[], None], name: str) -> None:
-        def run() -> None:
+    def _in_background(self, fn: Callable[[], None]) -> None:
+        self._clicks.put(fn)
+        if self._worker is None:
+            self._worker = threading.Thread(target=self._run_clicks, daemon=True, name="tray-clicks")
+            self._worker.start()
+
+    def _run_clicks(self) -> None:
+        while True:
+            fn = self._clicks.get()
             try:
                 fn()
             except Exception:  # noqa: BLE001 - a failing menu action must not go unseen
                 logger.exception("Tray menu action failed")
-
-        threading.Thread(target=run, daemon=True, name=name).start()
