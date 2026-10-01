@@ -139,3 +139,15 @@ def test_blur_strength_only_matters_to_the_blurred_background():
     assert base_cache_key("abc123", _CANVAS, solid) == base_cache_key(
         "abc123", _CANVAS, dataclasses.replace(solid, blur_strength=80)
     )
+
+
+def test_pruning_removes_bases_left_half_written_by_a_crash(tmp_path):
+    current = tmp_path / f"{base_cache_key('a1', (100, 100), Settings())}.png"
+    current.write_bytes(b"x")
+    leftover = tmp_path / f"{base_cache_key('a2', (100, 100), Settings())}.png.tmp"
+    leftover.write_bytes(b"half")
+
+    prune_album_bases(tmp_path, keep=current)
+
+    assert current.exists()
+    assert not leftover.exists()

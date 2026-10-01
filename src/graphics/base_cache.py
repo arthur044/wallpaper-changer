@@ -68,6 +68,12 @@ def prune_album_bases(directory: Path, keep: Path, max_bytes: int = DEFAULT_MAX_
     the folder fits in [max_bytes]. [keep], the base in use, always stays.
     Recency is the file's mtime, refreshed whenever a base is reused. Best
     effort: a file that can't be deleted now is left for next time."""
+    # Left by a crash mid-write; nothing else is writing a base right after one was saved.
+    for path in directory.glob("*.png.tmp"):
+        try:
+            path.unlink()
+        except OSError as exc:
+            logger.warning("Could not remove leftover base %s: %s", path.name, exc)
     entries = []
     for path in directory.glob("*.png"):
         try:
