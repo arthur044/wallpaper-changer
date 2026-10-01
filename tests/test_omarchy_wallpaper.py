@@ -184,3 +184,20 @@ def test_after_a_theme_background_our_old_files_go_and_the_theme_file_stays(home
     omarchy_wallpaper.set_wallpaper(path, run=Shell())
 
     assert not stale.exists() and path.exists() and theme_file.exists()
+
+
+def test_the_file_the_link_points_to_is_never_removed(home, monkeypatch):
+    # Say the link was set to one of ours by someone else (or a crash between
+    # the link and the cleanup): the lock screen and the boot read it.
+    clock = Clock()
+    pinned = _draw_and_set(clock)
+    clock.t += 10
+    other = _wallpaper("other")
+    # Before the change the link pointed elsewhere (the theme); at cleanup
+    # time it points to [pinned].
+    targets = iter([home / "theme-bg.jpg", pinned.resolve()])
+    monkeypatch.setattr(omarchy_wallpaper, "_link_target", lambda link: next(targets))
+
+    omarchy_wallpaper.set_wallpaper(other, run=Shell(), now=clock)
+
+    assert pinned.exists()

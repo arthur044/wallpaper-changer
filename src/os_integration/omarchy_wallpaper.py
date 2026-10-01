@@ -109,13 +109,16 @@ def _tell_the_shell(absolute: Path, smooth: bool, run: Callable) -> None:
 
 def _remove_old_wallpapers(current: Path, moment: float) -> None:
     """Every wallpaper of ours but the current one and those replaced less
-    than _LINGER_S ago, which the shell may still be fading out from."""
+    than _LINGER_S ago, which the shell may still be fading out from. Never
+    the file the link points to, whoever set it: the lock screen and the
+    next boot read it."""
     for path, replaced in list(_replaced_at.items()):
         if moment - replaced > _LINGER_S:
             del _replaced_at[path]
+    linked = _link_target(background_link())
     for file in _wallpaper_dir().glob(f"{_PREFIX}*.png"):
         resolved = file.resolve()
-        if resolved == current or resolved in _replaced_at:
+        if resolved in (current, linked) or resolved in _replaced_at:
             continue
         try:
             file.unlink()
