@@ -4,8 +4,12 @@ Pillow>=10.3.0
 colorthief>=0.2.1
 pystray>=0.19.5
 keyring>=24.3.0
-pywin32>=306
-winsdk>=1.0.0b10
+# Windows only: COM/Win32 calls and the SMTC media session.
+pywin32>=306; sys_platform == "win32"
+winsdk>=1.0.0b10; sys_platform == "win32"
+# Linux only: the MPRIS media session over D-Bus (keyring already pulls it in
+# for the Secret Service; pinned here because the app imports it directly).
+jeepney>=0.8; sys_platform == "linux"
 # Lyrics widget window. Essentials = QtCore/QtGui/QtWidgets only (~211 MB
 # installed); the full PySide6 adds the Addons (WebEngine, 3D...) unused here.
 PySide6-Essentials>=6.11.2
