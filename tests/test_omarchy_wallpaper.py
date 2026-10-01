@@ -195,8 +195,13 @@ def test_the_file_the_link_points_to_is_never_removed(home, monkeypatch):
     other = _wallpaper("other")
     # Before the change the link pointed elsewhere (the theme); at cleanup
     # time it points to [pinned].
-    targets = iter([home / "theme-bg.jpg", pinned.resolve()])
-    monkeypatch.setattr(omarchy_wallpaper, "_link_target", lambda link: next(targets))
+    reads = []
+
+    def link_target(link):
+        reads.append(link)
+        return home / "theme-bg.jpg" if len(reads) == 1 else pinned.resolve()
+
+    monkeypatch.setattr(omarchy_wallpaper, "_link_target", link_target)
 
     omarchy_wallpaper.set_wallpaper(other, run=Shell(), now=clock)
 
