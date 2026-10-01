@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from src.os_integration.no_window import NO_WINDOW
 from src.os_integration.updater import (
     Action,
     RepoStatus,
@@ -292,7 +293,7 @@ def test_git_is_run_without_a_console_or_a_password_prompt(tmp_path):
 
     Updater(tmp_path, run=run, pip=_Pip()).check()
 
-    assert seen[0]["creationflags"] == subprocess.CREATE_NO_WINDOW
+    assert seen[0]["creationflags"] == NO_WINDOW
     assert seen[0]["env"]["GIT_TERMINAL_PROMPT"] == "0"
 
 

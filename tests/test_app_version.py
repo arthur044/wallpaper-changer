@@ -2,6 +2,7 @@ import subprocess
 from pathlib import Path
 
 from src.os_integration import app_version
+from src.os_integration.no_window import NO_WINDOW
 from src.os_integration.app_version import AppVersion, read_version, version_label
 
 
@@ -22,7 +23,7 @@ def test_reads_the_short_commit_and_its_date():
     cmd, kwargs = calls[0]
     assert cmd[:3] == ["git", "-C", str(Path("C:/app"))]
     # pythonw has no console: without this every call flashes a terminal.
-    assert kwargs["creationflags"] == subprocess.CREATE_NO_WINDOW
+    assert kwargs["creationflags"] == NO_WINDOW
 
 
 def test_git_missing_from_path_is_an_unknown_version():

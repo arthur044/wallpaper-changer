@@ -1,5 +1,6 @@
 import json
 import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -32,6 +33,7 @@ def test_request_update_writes_pending_path_and_triggers_task(monkeypatch, tmp_p
     assert calls == [["schtasks", "/run", "/tn", lockscreen._TASK_NAME]]
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="CREATE_NO_WINDOW only exists on Windows")
 def test_no_schtasks_call_opens_a_console_window(monkeypatch, tmp_path):
     # The app runs under pythonw, which has no console: without CREATE_NO_WINDOW
     # Windows gives each schtasks.exe a console of its own, a terminal that

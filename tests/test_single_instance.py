@@ -1,5 +1,8 @@
+import sys
 import threading
 import uuid
+
+import pytest
 
 from src.os_integration import single_instance
 from src.os_integration.single_instance import (
@@ -90,6 +93,7 @@ def test_release_gives_the_mutex_back_once():
     assert api.closed == [7]
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="a real Win32 mutex")
 def test_real_mutex_lets_only_one_holder_through():
     name = f"Local\\SpotifyWallpaperEngineTest-{uuid.uuid4()}"
     first = acquire(name, timeout_s=0.1)
