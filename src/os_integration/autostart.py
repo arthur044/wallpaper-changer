@@ -1,7 +1,9 @@
 import logging
 import sys
-import winreg
 from pathlib import Path
+
+if sys.platform == "win32":
+    import winreg
 
 logger = logging.getLogger(__name__)
 

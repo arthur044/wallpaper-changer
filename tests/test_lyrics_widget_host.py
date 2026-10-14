@@ -3,7 +3,7 @@ import threading
 import time
 
 # No real window during the tests; must be set before the QApplication exists.
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 import pytest  # noqa: E402
 from PySide6.QtCore import QTimer, Qt  # noqa: E402
