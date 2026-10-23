@@ -43,3 +43,18 @@ def is_autostart_installed() -> bool:
             return True
     except FileNotFoundError:
         return False
+
+
+def refresh_autostart() -> None:
+    """At startup of the exe: the Run key keeps the path it was written with, and
+    an updated exe is another file (a new download, a new folder). When autostart
+    is on and points elsewhere, it follows the exe that is running."""
+    if not frozen.is_frozen():
+        return
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_READ) as key:
+            registered, _ = winreg.QueryValueEx(key, _VALUE_NAME)
+    except FileNotFoundError:
+        return  # autostart is off: not ours to turn on
+    if str(registered).lower() != _launch_command().lower():
+        install_autostart()

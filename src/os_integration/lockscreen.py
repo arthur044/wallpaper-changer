@@ -3,6 +3,7 @@ import html
 import json
 import logging
 import re
+import shutil
 import subprocess
 import sys
 import winreg
@@ -16,6 +17,8 @@ from src.os_integration import frozen
 logger = logging.getLogger(__name__)
 
 _TASK_NAME = "SpotifyWallpaperEngine_LockScreen"
+# The exe build packs this small exe (scripts/apply_lockscreen.py) inside the app.
+HELPER_NAME = "apply-lockscreen.exe"
 _CSP_KEY = r"SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP"
 _SEE_MASK_NOCLOSEPROCESS = 0x00000040
 _SW_HIDE = 0
@@ -30,8 +33,39 @@ def _pending_path_file() -> Path:
     return data_dir() / "lockscreen_pending.json"
 
 
+def _installed_helper() -> Path:
+    return data_dir() / HELPER_NAME
+
+
+def _sync_helper() -> bool:
+    """Copies the helper packed in the exe to a folder that never moves. False
+    when this exe has none. The task runs on every track change: it must not
+    unpack the whole app each time, and it must not point at an exe the user
+    replaces or moves when updating."""
+    bundled = frozen.bundled_file(HELPER_NAME)
+    if bundled is None or not bundled.exists():
+        return False
+    target = _installed_helper()
+    try:
+        if not target.exists() or target.read_bytes() != bundled.read_bytes():
+            shutil.copyfile(bundled, target)
+    except OSError as exc:
+        logger.warning("Could not copy the lock screen helper to %s: %s", target, exc)
+        return target.exists()
+    return True
+
+
+def refresh_helper() -> None:
+    """At startup of the exe: an installed task keeps running the helper of an
+    older build otherwise. Needs no elevation."""
+    if frozen.is_frozen() and _installed_helper().exists():
+        _sync_helper()
+
+
 def _launch_command() -> str:
     if frozen.is_frozen():
+        if _sync_helper():
+            return f'"{_installed_helper()}"'
         return f'"{sys.executable}" --apply-lockscreen'
     main_script = Path(__file__).resolve().parents[2] / "main.py"
     pythonw = Path(sys.executable).with_name("pythonw.exe")

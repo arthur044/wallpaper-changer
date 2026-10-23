@@ -266,7 +266,9 @@ push em main (desktop)   → windows.yml → mesmo build → pré-release `deskt
 
 `scripts/build-exe.ps1` gera o exe de um arquivo só (`--onefile --windowed`) e grava `build_info.txt` (`<sha> <data>`) dentro dele: sem git, a bandeja lê a versão dali (`app_version.current_version`). `scripts/smoke-exe.ps1` abre o exe com um perfil descartável e um `client_id` falso, espera 25 s e falha se ele morrer ou se o log tiver `ModuleNotFoundError`, `ImportError` ou "SMTC watcher failed" (o `SmtcWatcher` engole o erro e só loga, então um módulo do `winsdk` faltando passaria batido).
 
-No exe (`sys.frozen`): Restart, autostart e a task da tela de bloqueio rodam o próprio exe, sem `main.py`; o Restart passa `PYINSTALLER_RESET_ENVIRONMENT=1` para o novo exe não usar a pasta temporária do antigo, que some quando o antigo sai; o item "Check for updates" não aparece (`updater=None`).
+No exe (`sys.frozen`): Restart e autostart rodam o próprio exe, sem `main.py`; o Restart passa `PYINSTALLER_RESET_ENVIRONMENT=1` para o novo exe não usar a pasta temporária do antigo, que some quando o antigo sai; o item "Check for updates" não aparece (`updater=None`).
+
+**Tela de bloqueio no exe:** a task roda elevada a cada troca de faixa, e um `--onefile` desempacota ~100 MB a cada execução. O build faz um segundo exe minúsculo, `apply-lockscreen.exe` (`scripts/apply_lockscreen.py`, só `winreg` e JSON), e o empacota dentro do app; `lockscreen._sync_helper` o copia para `%LOCALAPPDATA%\SpotifyWallpaperEngine\` e a task aponta para essa cópia, que não muda de lugar quando o usuário baixa um exe novo. A cada início, `refresh_helper` atualiza a cópia se ela já existe, e `refresh_autostart` reaponta a chave `Run` para o exe em execução quando o autostart está ligado e o caminho mudou (um exe novo baixado em outra pasta). Não liga o autostart sozinho.
 
 ### 2.4 Android: CI e atualização no app
 
@@ -568,6 +570,7 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | Só reinicia se mudou `main.py`, `requirements.txt` ou `src/` | Mudança só em `android/` ou docs entra sem derrubar o app |
 | Instância única por mutex nomeado (`Local\`) | Duas instâncias brigariam pelo wallpaper e pelo `config.json`. `Local\` mantém um motor por sessão de logon |
 | Exe do Windows na pré-release `desktop`, nunca `latest`, sem tag `r<N>` nem `debug-*` | O app Android lê `releases/latest` e as pré-releases `debug-*`; um exe ali quebraria a atualização dele. Uma só release, substituída a cada push, para não juntar um exe de ~100 MB por merge |
+| Exe da tela de bloqueio à parte (`apply-lockscreen.exe`), copiado para a pasta de dados | A task roda a cada faixa, elevada: desempacotar o app inteiro a cada vez custa segundos e ~100 MB de disco. A cópia fica num caminho fixo, então atualizar ou mover o exe não deixa a task apontando para um arquivo velho ou apagado |
 | Exe sem auto-update; sem assinatura de código | O updater é git, que o exe não tem. Auto-update pelo Release é um PR à parte (troca do exe em uso + SHA-256). Sem certificado, o SmartScreen avisa na primeira execução |
 | Tokens: Credential Manager / Keystore + Tink | Nunca em texto puro no disco. OAuth PKCE, sem client secret |
 | Arte só de `https` em `scdn.co`/`spotifycdn.com`, conferido também depois de redirects | Os bytes vão direto ao decodificador de imagem. Uma resposta da API forjada não pode apontá-lo para outro host. Nas 114 capas do índice do desktop, todas vinham de `i.scdn.co`. URL recusada é tratada como falha de download comum |

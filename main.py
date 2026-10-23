@@ -20,7 +20,7 @@ from src.os_integration import app_version
 from src.os_integration import frozen
 from src.os_integration import restart
 from src.os_integration import single_instance
-from src.os_integration.autostart import install_autostart, uninstall_autostart
+from src.os_integration.autostart import install_autostart, refresh_autostart, uninstall_autostart
 from src.onboarding.state import needs_onboarding, should_abort_after_wizard
 from src.onboarding.wizard import run_wizard
 from src.os_integration.session_lock import is_workstation_locked
@@ -99,6 +99,10 @@ def main() -> int:
         if should_abort_after_wizard(completed, settings.client_id):
             logger.info("Setup cancelled and no client_id configured; nothing to run")
             return 1
+
+    # The exe only: autostart and the lock screen helper follow an updated exe.
+    refresh_autostart()
+    lockscreen.refresh_helper()
 
     # After the wizard, so --setup still works while the app is open. The wait
     # covers Restart, whose new instance starts before the old one exits.
