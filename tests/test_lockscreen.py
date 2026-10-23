@@ -1,5 +1,6 @@
 import json
 import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -148,6 +149,16 @@ def _split_launch_command():
     command = lockscreen._launch_command()
     exe_end = command.index('"', 1) + 1
     return command[:exe_end], command[exe_end + 1 :]
+
+
+def test_frozen_task_runs_the_exe_itself(monkeypatch):
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", "C:/app/SpotifyWallpaperEngine.exe")
+
+    exe, args = _split_launch_command()
+
+    assert exe == '"C:/app/SpotifyWallpaperEngine.exe"'
+    assert args == "--apply-lockscreen"
 
 
 def test_ensure_task_keeps_a_task_that_runs_this_folder(monkeypatch):

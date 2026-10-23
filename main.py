@@ -17,6 +17,7 @@ from src.settings_window.style_actions import StyleActions
 from src.settings_window.window import SettingsWindow
 from src.os_integration import lockscreen
 from src.os_integration import app_version
+from src.os_integration import frozen
 from src.os_integration import restart
 from src.os_integration import single_instance
 from src.os_integration.autostart import install_autostart, uninstall_autostart
@@ -204,8 +205,9 @@ def _run_app(settings) -> int:
         on_exit=on_exit,
         on_setup=on_setup,
         on_restart=on_restart,
-        version=app_version.version_label(app_version.read_version(app_version.app_dir())),
-        updater=Updater(app_version.app_dir()),
+        version=app_version.version_label(app_version.current_version()),
+        # The exe has no git clone to fast-forward: a new build is a new download.
+        updater=None if frozen.is_frozen() else Updater(app_version.app_dir()),
         on_open_settings=qt_host.open_settings,
     )
     tray_thread = qt_host.run_tray_in_thread(tray.run)

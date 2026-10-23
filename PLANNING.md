@@ -257,6 +257,17 @@ o loop, e o serviço mostra o motivo numa notificação.
    `TrackNotDrawableException` (álbum sem imagem) marca a faixa como impossível de desenhar,
    para não tentar de novo a cada consulta.
 
+### 2.3b Desktop: exe do Windows (CI)
+
+```
+PR com código do desktop → windows.yml → pytest + PyInstaller + smoke test (sem publicar)
+push em main (desktop)   → windows.yml → mesmo build → pré-release `desktop` (substituída a cada push)
+```
+
+`scripts/build-exe.ps1` gera o exe de um arquivo só (`--onefile --windowed`) e grava `build_info.txt` (`<sha> <data>`) dentro dele: sem git, a bandeja lê a versão dali (`app_version.current_version`). `scripts/smoke-exe.ps1` abre o exe com um perfil descartável e um `client_id` falso, espera 25 s e falha se ele morrer ou se o log tiver `ModuleNotFoundError`, `ImportError` ou "SMTC watcher failed" (o `SmtcWatcher` engole o erro e só loga, então um módulo do `winsdk` faltando passaria batido).
+
+No exe (`sys.frozen`): Restart, autostart e a task da tela de bloqueio rodam o próprio exe, sem `main.py`; o Restart passa `PYINSTALLER_RESET_ENVIRONMENT=1` para o novo exe não usar a pasta temporária do antigo, que some quando o antigo sai; o item "Check for updates" não aparece (`updater=None`).
+
 ### 2.4 Android: CI e atualização no app
 
 ```
@@ -556,6 +567,8 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | `pip` antes do fast-forward, com o `requirements.txt` lido do git | Se o pip falha, o código fica como estava e não há o que desfazer. A cópia vai para `%TEMP%`, então o arquivo não pode ter linhas relativas (`-r`, `-e .`) |
 | Só reinicia se mudou `main.py`, `requirements.txt` ou `src/` | Mudança só em `android/` ou docs entra sem derrubar o app |
 | Instância única por mutex nomeado (`Local\`) | Duas instâncias brigariam pelo wallpaper e pelo `config.json`. `Local\` mantém um motor por sessão de logon |
+| Exe do Windows na pré-release `desktop`, nunca `latest`, sem tag `r<N>` nem `debug-*` | O app Android lê `releases/latest` e as pré-releases `debug-*`; um exe ali quebraria a atualização dele. Uma só release, substituída a cada push, para não juntar um exe de ~100 MB por merge |
+| Exe sem auto-update; sem assinatura de código | O updater é git, que o exe não tem. Auto-update pelo Release é um PR à parte (troca do exe em uso + SHA-256). Sem certificado, o SmartScreen avisa na primeira execução |
 | Tokens: Credential Manager / Keystore + Tink | Nunca em texto puro no disco. OAuth PKCE, sem client secret |
 | Arte só de `https` em `scdn.co`/`spotifycdn.com`, conferido também depois de redirects | Os bytes vão direto ao decodificador de imagem. Uma resposta da API forjada não pode apontá-lo para outro host. Nas 114 capas do índice do desktop, todas vinham de `i.scdn.co`. URL recusada é tratada como falha de download comum |
 | Client ID por usuário | Desde 15/05/2025 o Spotify só dá cota estendida a empresas grandes. Cada pessoa usa o próprio app em modo desenvolvimento (Premium, até 5 contas) |

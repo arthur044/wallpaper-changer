@@ -3,6 +3,8 @@ import sys
 import winreg
 from pathlib import Path
 
+from src.os_integration import frozen
+
 logger = logging.getLogger(__name__)
 
 _RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -10,6 +12,8 @@ _VALUE_NAME = "SpotifyWallpaperEngine"
 
 
 def _launch_command() -> str:
+    if frozen.is_frozen():
+        return f'"{sys.executable}"'
     main_script = Path(__file__).resolve().parents[2] / "main.py"
     pythonw = Path(sys.executable).with_name("pythonw.exe")
     interpreter = str(pythonw) if pythonw.exists() else sys.executable

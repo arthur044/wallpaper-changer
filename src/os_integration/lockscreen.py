@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from src.config.paths import data_dir
+from src.os_integration import frozen
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,8 @@ def _pending_path_file() -> Path:
 
 
 def _launch_command() -> str:
+    if frozen.is_frozen():
+        return f'"{sys.executable}" --apply-lockscreen'
     main_script = Path(__file__).resolve().parents[2] / "main.py"
     pythonw = Path(sys.executable).with_name("pythonw.exe")
     interpreter = str(pythonw) if pythonw.exists() else sys.executable

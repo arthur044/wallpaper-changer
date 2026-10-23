@@ -4,9 +4,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
+from src.os_integration import frozen
+
 logger = logging.getLogger(__name__)
 
 _GIT_TIMEOUT_S = 5.0
+# Written by the exe build (see .github/workflows/windows.yml) and packed next to the code.
+BUNDLED_VERSION_FILE = "build_info.txt"
 
 
 @dataclass(frozen=True)
@@ -44,6 +48,24 @@ def read_version(repo: Path, run: Callable = subprocess.run) -> Optional[AppVers
         logger.info("Unexpected git output for the app version: %r", result.stdout)
         return None
     return AppVersion(sha=parts[0], date=parts[1])
+
+
+def read_bundled_version(path: Optional[Path]) -> Optional[AppVersion]:
+    """The exe has no git clone: the build wrote "<sha> <date>" into a file packed with it."""
+    try:
+        parts = path.read_text(encoding="utf-8").split() if path else []
+    except OSError as exc:
+        logger.info("Could not read the bundled app version: %s", exc)
+        return None
+    if len(parts) != 2:
+        return None
+    return AppVersion(sha=parts[0], date=parts[1])
+
+
+def current_version() -> Optional[AppVersion]:
+    if frozen.is_frozen():
+        return read_bundled_version(frozen.bundled_file(BUNDLED_VERSION_FILE))
+    return read_version(app_dir())
 
 
 def version_label(version: Optional[AppVersion]) -> str:
