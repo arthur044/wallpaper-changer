@@ -202,6 +202,27 @@ def test_refresh_helper_does_not_install_one_nobody_asked_for(monkeypatch, tmp_p
     assert not (data / lockscreen.HELPER_NAME).exists()
 
 
+def test_removing_the_task_removes_the_helper(monkeypatch, tmp_path):
+    data = _freeze(monkeypatch, tmp_path)
+    (data / lockscreen.HELPER_NAME).write_bytes(b"helper v2")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=1, stdout=b""))
+
+    assert lockscreen.uninstall_task() is True
+
+    assert not (data / lockscreen.HELPER_NAME).exists()
+
+
+def test_a_task_that_stays_keeps_its_helper(monkeypatch, tmp_path):
+    data = _freeze(monkeypatch, tmp_path)
+    (data / lockscreen.HELPER_NAME).write_bytes(b"helper v2")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0, stdout=b""))
+    monkeypatch.setattr(lockscreen, "_run_elevated", lambda exe, params: False)
+
+    assert lockscreen.uninstall_task() is False
+
+    assert (data / lockscreen.HELPER_NAME).exists()
+
+
 def test_refresh_helper_is_a_no_op_from_source(monkeypatch, tmp_path):
     data = tmp_path / "data"
     data.mkdir()

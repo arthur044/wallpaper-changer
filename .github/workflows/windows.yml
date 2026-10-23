@@ -18,6 +18,8 @@ on:
       - tests/**
       - scripts/build-exe.ps1
       - scripts/smoke-exe.ps1
+      - scripts/smoke-helper.ps1
+      - scripts/apply_lockscreen.py
       - .github/workflows/windows.yml
   pull_request:
     paths:
@@ -28,6 +30,8 @@ on:
       - tests/**
       - scripts/build-exe.ps1
       - scripts/smoke-exe.ps1
+      - scripts/smoke-helper.ps1
+      - scripts/apply_lockscreen.py
       - .github/workflows/windows.yml
   workflow_dispatch:
 
@@ -60,8 +64,9 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         # The wizard's Tk tests fail now and then on Tcl init ("tcl_findLibrary",
-        # the flake PLANNING.md §5.2 records); a rerun is enough.
-        run: python -m pytest -q --reruns 2
+        # the flake PLANNING.md §5.2 records); a rerun is enough. Only that one:
+        # any other failure stays a failure.
+        run: python -m pytest -q --reruns 2 --only-rerun tcl_findLibrary
 
       - name: Build the exe
         run: ./scripts/build-exe.ps1

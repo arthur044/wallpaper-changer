@@ -62,6 +62,16 @@ def refresh_helper() -> None:
         _sync_helper()
 
 
+def _remove_helper() -> None:
+    """The task is gone, so is the exe it ran. Exe build only: from source there is none."""
+    if not frozen.is_frozen():
+        return
+    try:
+        _installed_helper().unlink(missing_ok=True)
+    except OSError as exc:
+        logger.info("Could not remove the lock screen helper: %s", exc)
+
+
 def _launch_command() -> str:
     if frozen.is_frozen():
         if _sync_helper():
@@ -182,9 +192,11 @@ def uninstall_task() -> bool:
     subprocess.run(["schtasks", "/delete", "/tn", _TASK_NAME, "/f"], capture_output=True, creationflags=_NO_WINDOW)
     if not is_task_installed():
         logger.info("Lock screen scheduled task removed")
+        _remove_helper()
         return True
     if _run_elevated("schtasks.exe", f'/delete /tn "{_TASK_NAME}" /f') and not is_task_installed():
         logger.info("Lock screen scheduled task removed (elevated)")
+        _remove_helper()
         return True
     logger.warning("Lock screen scheduled task could not be removed")
     return False

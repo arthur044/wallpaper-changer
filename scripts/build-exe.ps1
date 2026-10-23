@@ -52,5 +52,8 @@ if ($LASTEXITCODE -ne 0) { throw "PyInstaller exited with $LASTEXITCODE" }
 
 $exe = "dist\SpotifyWallpaperEngine.exe"
 if (-not (Test-Path $exe)) { throw "$exe was not produced." }
+# Checked here, not in the app's smoke test: the task would run it on every
+# track change, and with --windowed a missing import is a dialog each time.
+& (Join-Path $PSScriptRoot "smoke-helper.ps1")
 Remove-Item "dist\apply-lockscreen.exe"  # inside the app now; dist holds only what ships
 Write-Host ("Built {0} ({1:N1} MB), version {2}" -f $exe, ((Get-Item $exe).Length / 1MB), $commit)

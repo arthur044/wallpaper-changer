@@ -80,3 +80,24 @@ def test_refresh_is_a_no_op_from_source(registry):
     autostart.refresh_autostart()
 
     assert registry[autostart._VALUE_NAME] == '"C:/py/pythonw.exe" "C:/clone/main.py"'
+
+
+def test_refresh_leaves_the_python_install_autostart_alone(monkeypatch, registry):
+    _freeze(monkeypatch)
+    registry[autostart._VALUE_NAME] = '"C:/py/pythonw.exe" "C:/clone/main.py"'
+
+    autostart.refresh_autostart()
+
+    assert registry[autostart._VALUE_NAME] == '"C:/py/pythonw.exe" "C:/clone/main.py"'
+
+
+def test_refresh_failing_to_write_does_not_stop_the_app(monkeypatch, registry):
+    _freeze(monkeypatch)
+    registry[autostart._VALUE_NAME] = '"C:/old/SpotifyWallpaperEngine.exe"'
+
+    def denied():
+        raise PermissionError("registry")
+
+    monkeypatch.setattr(autostart, "install_autostart", denied)
+
+    autostart.refresh_autostart()  # must not raise

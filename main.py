@@ -100,10 +100,6 @@ def main() -> int:
             logger.info("Setup cancelled and no client_id configured; nothing to run")
             return 1
 
-    # The exe only: autostart and the lock screen helper follow an updated exe.
-    refresh_autostart()
-    lockscreen.refresh_helper()
-
     # After the wizard, so --setup still works while the app is open. The wait
     # covers Restart, whose new instance starts before the old one exits.
     instance_lock = single_instance.acquire()
@@ -111,6 +107,10 @@ def main() -> int:
         logger.info("Another instance is already running; exiting")
         return 0
     try:
+        # The exe only, and only the instance that stays: a copy that exits right
+        # away (opened from Downloads or a zip) must not take over either one.
+        refresh_autostart()
+        lockscreen.refresh_helper()
         return _run_app(settings)
     finally:
         instance_lock.release()  # same (main) thread that took it
