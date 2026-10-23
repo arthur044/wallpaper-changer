@@ -1,3 +1,5 @@
+import time
+
 import pytest
 
 from src.config.settings import Settings
@@ -11,9 +13,22 @@ from src.onboarding.wizard import _TkWizard  # noqa: E402 - must come after the 
 _VALID = "0123456789abcdef0123456789abcdef"
 
 
+def _new_wizard(tries=5):
+    # On the Windows runners Tcl now and then fails to read its own init.tcl or
+    # tk.tcl while a new Tk root starts ("couldn't read file ...: No error"), and
+    # the next root in the same process starts fine (PLANNING.md §5.2).
+    for attempt in range(1, tries + 1):
+        try:
+            return _TkWizard(Settings(client_id=_VALID))
+        except tkinter.TclError:
+            if attempt == tries:
+                raise
+            time.sleep(0.2)
+
+
 @pytest.fixture
 def wizard():
-    w = _TkWizard(Settings(client_id=_VALID))
+    w = _new_wizard()
     yield w
     if not w._closed:
         try:

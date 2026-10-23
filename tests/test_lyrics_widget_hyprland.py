@@ -165,17 +165,21 @@ def test_offscreen_there_is_no_hyprland_unless_given(app):
 
 
 def test_the_rule_is_set_before_the_window_maps_with_its_saved_place(app):
+    # All read at once, nothing kept: in the full run (PySide6 6.11, Python 3.14)
+    # a QScreen wrapper held across later calls now and then goes stale
+    # ("Internal C++ object (QScreen) already deleted"), though the screen lives on.
     screen = QApplication.primaryScreen()
+    key, name, origin = screen_key(screen), screen.name(), screen.geometry().topLeft()
+    del screen
     x, y, _w, _h = _area()
-    settings = Settings(lyrics_widget_geometry={"monitor": screen_key(screen), "rect": [x + 30, y + 40, 400, 150]})
+    settings = Settings(lyrics_widget_geometry={"monitor": key, "rect": [x + 30, y + 40, 400, 150]})
     host, hyprland, _ = _host(settings)
 
     host.toggle_widget()
     QApplication.processEvents()
 
     assert host._window.windowTitle() == "Spotify Wallpaper Engine lyrics"
-    origin = screen.geometry().topLeft()
-    assert ("before_show", (x + 30, y + 40, 400, 150), screen.name(), (origin.x(), origin.y())) in hyprland.calls
+    assert ("before_show", (x + 30, y + 40, 400, 150), name, (origin.x(), origin.y())) in hyprland.calls
     host.toggle_widget()
 
 
