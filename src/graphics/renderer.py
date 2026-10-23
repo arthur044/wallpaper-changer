@@ -389,6 +389,40 @@ def _base_from_art(
         return _build_base_canvas(art.bytes, settings, layout, art.colors)
 
 
+def _load_cached_base(base_path: Path) -> Optional[Image.Image]:
+    """The cached base, or None when there is none or it can't be read: a file
+    damaged on disk (a crash mid-write left an empty one once) is deleted, so
+    the base is drawn again instead of the render failing on every track."""
+    if not base_path.exists():
+        return None
+    try:
+        # Closed before any unlink below: Windows can't delete an open file.
+        with Image.open(base_path) as stored:
+            return stored.convert("RGB")
+    except (OSError, SyntaxError) as exc:  # UnidentifiedImageError is an OSError; a bad PNG chunk, SyntaxError
+        logger.warning("Cached base %s is unreadable, drawing it again: %s", base_path.name, exc)
+        try:
+            base_path.unlink()
+        except OSError as unlink_exc:
+            logger.warning("Could not remove unreadable base %s: %s", base_path.name, unlink_exc)
+        return None
+
+
+def _save_png_atomically(image: Image.Image, path: Path) -> None:
+    """Written aside and moved in, as the art cache does: a crash never leaves
+    half a PNG at [path] that a later render would take for the whole one."""
+    temporary = path.with_name(path.name + ".tmp")
+    try:
+        image.save(temporary, format="PNG", compress_level=1)
+        os.replace(temporary, path)
+    except BaseException:
+        try:
+            temporary.unlink()
+        except OSError:
+            pass
+        raise
+
+
 def render_for_now_playing(
     now_playing: NowPlaying,
     settings: Settings,
@@ -399,14 +433,14 @@ def render_for_now_playing(
 ) -> Tuple[int, int, int]:
     """Renders and saves the wallpaper; returns the album's color for the
     lyrics widget (see sample_widget_tint)."""
-    if base_path.exists():
-        base_image = Image.open(base_path).convert("RGB")
+    base_image = _load_cached_base(base_path)
+    if base_image is not None:
         mark_used(base_path)
         logger.info("Reusing cached base art for album %s", now_playing.album_id)
     else:
         base_image = _base_from_art(now_playing, settings, layout, art_cache)
         # Fast compression: written once per album, and the cache is capped by size.
-        base_image.save(base_path, format="PNG", compress_level=1)
+        _save_png_atomically(base_image, base_path)
         prune_album_bases(base_path.parent, keep=base_path)
         logger.info("Rendered new base art for album %s", now_playing.album_id)
 
@@ -418,6 +452,6 @@ def render_for_now_playing(
     # Rewritten on every track change, to one of two alternating files, so speed
     # beats size: at level 6 a dithered mesh takes ~0.2 s (1080p) / ~0.7 s (4K)
     # to encode, at level 1 well under half. The cached base stays at the default.
-    final_image.save(output_path, format="PNG", compress_level=1)
+    _save_png_atomically(final_image, output_path)
     logger.info("Rendered wallpaper to %s", output_path)
     return tint
