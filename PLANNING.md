@@ -4,7 +4,7 @@ Documentação técnica do estado atual. Descreve **como o sistema funciona hoje
 foi construído. Uso e instalação estão no [README](README.md) e no
 [README do Android](android/README.md).
 
-Última revisão: 2026-09-30 · base: `main` @ `37fca7e` (PRs #1–#16 mergeados; **#17, #18 e #19 abertos**, descritos abaixo como "(#N, aberto)")
+Última revisão: 2026-10-01 · base: `main` @ `60bc314` (PRs #1–#20 mergeados)
 
 ---
 
@@ -109,7 +109,7 @@ do arquivo da base.
    `art_size_pct` × altura, centralizada.
 3. `base_cache_key` → `album_bases/<key>.png`. Se existe, reutiliza e atualiza o mtime. Senão
    obtém a arte, compõe a base, salva e poda o cache. A arte vem do `AlbumArtCache`
-   (`graphics/art_cache.py`, #19, aberto): a capa original e as cores do álbum ficam em
+   (`graphics/art_cache.py`, #19): a capa original e as cores do álbum ficam em
    `cache/album_art`, então mudar o estilo (chave nova) não baixa a capa nem roda o
    ColorThief de novo (ver "Cache da arte original" abaixo).
 4. Copia a base e desenha título e artista por cima (com cartão de vidro opcional). A cor do
@@ -140,7 +140,7 @@ elevado e escreve em `HKLM\...\PersonalizationCSP`. Todo `schtasks` usa `CREATE_
   Ao terminar, o `update_menu` do ícone é chamado de novo (o menu é refeito quando o clique
   retorna, muito antes de o UAC ser respondido), mas nunca no lugar do erro do próprio toggle.
 
-**Janela de configurações (#17, aberto; `src/settings_window/`):** os controles saíram do menu
+**Janela de configurações (#17; `src/settings_window/`):** os controles saíram do menu
 da bandeja (um menu fecha a cada clique) para uma janela Qt que fica aberta. Só desktop:
 exceção de paridade, porque o Android não tem bandeja.
 
@@ -257,6 +257,19 @@ o loop, e o serviço mostra o motivo numa notificação.
    `TrackNotDrawableException` (álbum sem imagem) marca a faixa como impossível de desenhar,
    para não tentar de novo a cada consulta.
 
+### 2.3b Desktop: exe do Windows (CI)
+
+```
+PR com código do desktop → windows.yml → pytest + PyInstaller + smoke test (sem publicar)
+push em main (desktop)   → windows.yml → mesmo build → pré-release `desktop` (substituída a cada push)
+```
+
+`scripts/build-exe.ps1` gera o exe de um arquivo só (`--onefile --windowed`) e grava `build_info.txt` (`<sha> <data>`) dentro dele: sem git, a bandeja lê a versão dali (`app_version.current_version`). `scripts/smoke-exe.ps1` abre o exe com um perfil descartável e um `client_id` falso, espera 25 s e falha se ele morrer ou se o log tiver `ModuleNotFoundError`, `ImportError` ou "SMTC watcher failed" (o `SmtcWatcher` engole o erro e só loga, então um módulo do `winsdk` faltando passaria batido). `scripts/smoke-helper.ps1` roda o `apply-lockscreen.exe` antes de ele ser empacotado: com `--windowed`, um import faltando seria uma caixa de erro a cada troca de faixa.
+
+No exe (`sys.frozen`): Restart e autostart rodam o próprio exe, sem `main.py`; o Restart passa `PYINSTALLER_RESET_ENVIRONMENT=1` para o novo exe não usar a pasta temporária do antigo, que some quando o antigo sai; o item "Check for updates" não aparece (`updater=None`).
+
+**Tela de bloqueio no exe:** a task roda elevada a cada troca de faixa, e um `--onefile` desempacota ~100 MB a cada execução. O build faz um segundo exe minúsculo, `apply-lockscreen.exe` (`scripts/apply_lockscreen.py`, só `winreg` e JSON), e o empacota dentro do app; `lockscreen._sync_helper` o copia para `%LOCALAPPDATA%\SpotifyWallpaperEngine\` e a task aponta para essa cópia, que não muda de lugar quando o usuário baixa um exe novo. A cada início, **só na instância que fica** (depois do mutex: uma cópia que sai logo, aberta de Downloads ou de um zip, não toma nada), `refresh_helper` atualiza a cópia se ela já existe, e `refresh_autostart` reaponta a chave `Run` para o exe em execução quando o autostart está ligado e o caminho mudou (um exe novo baixado em outra pasta). Não liga o autostart sozinho nem mexe no autostart da instalação com Python (`main.py`). Desligar a tela de bloqueio apaga a task e o helper.
+
 ### 2.4 Android: CI e atualização no app
 
 ```
@@ -284,7 +297,7 @@ build. Um `update.json` de outro pacote é recusado (`WrongPackage`).
 Só no Android (fora da regra de paridade). O botão "Compartilhar letra" fica no cartão de
 status da tela principal. A notificação não tem esse botão.
 
-**Quando o botão aparece (#18, aberto):** `shareTarget(status, onScreen)` (`:core`,
+**Quando o botão aparece (#18):** `shareTarget(status, onScreen)` (`:core`,
 `lyrics/ShareTarget.kt`) devolve a faixa a que o botão se refere, ou `null` (sem botão).
 `MainScreen` usa esse valor para mostrar o botão e para abrir a tela.
 
@@ -407,7 +420,7 @@ Com a música pausada, a posição congela e a letra fica parada na linha atual.
 | `%APPDATA%\SpotifyWallpaperEngine\config.json` | `Settings` (dataclass → JSON) | Criado com os padrões. Bandeja, assistente, janela de configurações e widget de letra (thread do Qt) regravam; `save_settings` grava um de cada vez (`_SAVE_LOCK`) |
 | `%LOCALAPPDATA%\...\track_index.json` | Índice faixa → álbum | Atômica (`.tmp` + `os.replace`), só quando muda |
 | `%LOCALAPPDATA%\...\cache\album_bases\<key>.png` | Base por álbum (sem texto) | Uma vez por chave, PNG `compress_level=1` |
-| `%LOCALAPPDATA%\...\cache\album_art\<id>.art`, `<id>.colors.json` | Capa original do álbum e suas cores (`{"version": 1, "dominant": [r,g,b], "accents": [[r,g,b],...]}`) (#19, aberto) | A capa, na primeira vez que o álbum é desenhado; as cores, quando calculadas. Teto de 60 MB, LRU por mtime, nunca apaga o álbum recém-gravado |
+| `%LOCALAPPDATA%\...\cache\album_art\<id>.art`, `<id>.colors.json` | Capa original do álbum e suas cores (`{"version": 1, "dominant": [r,g,b], "accents": [[r,g,b],...]}`) (#19) | A capa, na primeira vez que o álbum é desenhado; as cores, quando calculadas. Teto de 60 MB, LRU por mtime, nunca apaga o álbum recém-gravado |
 | `%LOCALAPPDATA%\...\cache\wallpaper_{a,b}.png` | Imagem final aplicada | Alternando, a cada faixa |
 | `%LOCALAPPDATA%\...\lockscreen_pending.json` | `{"path": ...}` para a task elevada | A cada render com `sync_lock_screen` |
 | Windows Credential Manager (`SpotifyWallpaperEngine` / `default`) | Token OAuth do spotipy (JSON) | `KeyringCacheHandler` |
@@ -424,13 +437,13 @@ Com a música pausada, a posição congela e a letra fica parada na linha atual.
 | `files/sync_state/track_index.json` | Índice faixa → álbum (DataStore) |
 | `files/live_wallpaper/frame.bin` | Último quadro em pixels crus (sem PNG, por custo). Só o mais novo; o quadro da outra tela do dobrável fica só em memória |
 | `cacheDir/album_bases/` | Bases por álbum, LRU com teto de 150 MB |
-| `cacheDir/album_art/<id>.art`, `<id>.colors` | Capa original do álbum e suas cores (#19, aberto). LRU por mtime com teto de 60 MB, nunca apaga o que acabou de gravar. Trocar a capa de um álbum apaga as cores antigas |
+| `cacheDir/album_art/<id>.art`, `<id>.colors` | Capa original do álbum e suas cores (#19). LRU por mtime com teto de 60 MB, nunca apaga o que acabou de gravar. Trocar a capa de um álbum apaga as cores antigas |
 | `cacheDir/updates/` | APK de atualização baixado (só um: a pasta é esvaziada antes; `.part` até o SHA-256 conferir) |
 | `cacheDir/share/letra-<ms>.jpg` | Imagem de compartilhar letra (só uma; nome novo a cada vez). Única pasta servida pelo `FileProvider` (`${applicationId}.share`, `res/xml/share_paths.xml`, não exportado, leitura concedida só ao app escolhido) |
 
 Backup automático do Android desligado (`allowBackup=false`). Letras nunca vão para o disco.
 
-**Cache da arte original (#19, aberto; desktop `AlbumArtCache`, Android `AlbumArtStore` em `:core`):**
+**Cache da arte original (#19; desktop `AlbumArtCache`, Android `AlbumArtStore` em `:core`):**
 
 - Um arquivo de capa e um de cores por álbum, nomeados pelo id do álbum (a capa de um álbum
   não muda). Vale para a capa original, antes de qualquer composição; a chave da base
@@ -556,6 +569,9 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | `pip` antes do fast-forward, com o `requirements.txt` lido do git | Se o pip falha, o código fica como estava e não há o que desfazer. A cópia vai para `%TEMP%`, então o arquivo não pode ter linhas relativas (`-r`, `-e .`) |
 | Só reinicia se mudou `main.py`, `requirements.txt` ou `src/` | Mudança só em `android/` ou docs entra sem derrubar o app |
 | Instância única por mutex nomeado (`Local\`) | Duas instâncias brigariam pelo wallpaper e pelo `config.json`. `Local\` mantém um motor por sessão de logon |
+| Exe do Windows na pré-release `desktop`, nunca `latest`, sem tag `r<N>` nem `debug-*` | O app Android lê `releases/latest` e as pré-releases `debug-*`; um exe ali quebraria a atualização dele. Uma só release, substituída a cada push, para não juntar um exe de ~100 MB por merge |
+| Exe da tela de bloqueio à parte (`apply-lockscreen.exe`), copiado para a pasta de dados | A task roda a cada faixa, elevada: desempacotar o app inteiro a cada vez custa segundos e ~100 MB de disco. A cópia fica num caminho fixo, então atualizar ou mover o exe não deixa a task apontando para um arquivo velho ou apagado |
+| Exe sem auto-update; sem assinatura de código | O updater é git, que o exe não tem. Auto-update pelo Release é um PR à parte (troca do exe em uso + SHA-256). Sem certificado, o SmartScreen avisa na primeira execução |
 | Tokens: Credential Manager / Keystore + Tink | Nunca em texto puro no disco. OAuth PKCE, sem client secret |
 | Arte só de `https` em `scdn.co`/`spotifycdn.com`, conferido também depois de redirects | Os bytes vão direto ao decodificador de imagem. Uma resposta da API forjada não pode apontá-lo para outro host. Nas 114 capas do índice do desktop, todas vinham de `i.scdn.co`. URL recusada é tratada como falha de download comum |
 | Client ID por usuário | Desde 15/05/2025 o Spotify só dá cota estendida a empresas grandes. Cada pessoa usa o próprio app em modo desenvolvimento (Premium, até 5 contas) |
@@ -591,21 +607,21 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | Widget: `/get` só com texto ainda consulta o `/search` atrás de uma versão sincronizada | Texto sem tempos não acompanha a música, então vale uma chamada a mais. O compartilhar do Android continua com o texto do `/get`, porque não precisa de tempos. O selo "Not synced" deixa claro que rolar sem acompanhar é esperado, não um defeito |
 | Buscar letra só com o widget ligado; uma resposta em memória | Mesma regra do Android: sem rede gasta à toa e sem texto protegido no disco |
 | `_SAVE_LOCK` em `save_settings` | A bandeja, a janela de configurações e a thread do Qt gravam o `config.json`. Sem o lock, duas escritas podiam se misturar no arquivo |
-| Janela de configurações no lugar do menu da bandeja (#17, aberto) | Um menu fecha a cada clique, então ajustar estilo, blur e glow em sequência era penoso. A janela fica aberta e o Qt já é dono da thread principal |
+| Janela de configurações no lugar do menu da bandeja (#17) | Um menu fecha a cada clique, então ajustar estilo, blur e glow em sequência era penoso. A janela fica aberta e o Qt já é dono da thread principal |
 | `StyleActions` e `AppCommands` sem Qt | A lógica de estilo e as ações do app são testadas sem janela; a `SettingsWindow` só liga botões a elas |
 | A janela relê o estado a cada 0,5 s, só visível | A bandeja, o widget de letra e o updater também mudam as settings e o estado. Ler de volta mostra o que realmente aconteceu (UAC recusado volta a desmarcado) em vez do que foi clicado, sem custo com a janela fechada |
 | Bandeja só com Settings, Pause, Re-authenticate (em erro) e Exit | Ficam na bandeja o que se quer sem abrir janela e o que salva o usuário quando o app está em erro |
 | SMTC aceita `spotify` e `spotifast` no id da sessão (#16) | O `spotifast.exe` é um cliente do Spotify cujo id não contém "spotify"; sem isso o widget de letra não via a faixa |
-| Guardar a capa original e as cores por álbum, em disco (#19, aberto) | Mudar o estilo muda a chave da base e antes baixava a capa e rodava o ColorThief de novo. Desktop, capa sintética 640×640: 358 ms da dominante + 235 ms dos acentos poupados por troca de estilo, fora o download. **Android não medido no A71** |
+| Guardar a capa original e as cores por álbum, em disco (#19) | Mudar o estilo muda a chave da base e antes baixava a capa e rodava o ColorThief de novo. Desktop, capa sintética 640×640: 358 ms da dominante + 235 ms dos acentos poupados por troca de estilo, fora o download. **Android não medido no A71** |
 | Acentos só quando `mesh`/`glow` pedem | O estilo `solid` só usa a dominante; a paleta de acentos custa ~235 ms (desktop) e não é usada |
 | `BASE_RENDER_VERSION` e a chave de cache não mudam com o #19 | Os pixels da base são os mesmos: só muda de onde vêm a capa e as cores |
-| "Compartilhar letra" também com a música pausada, pela faixa do wallpaper (#18, aberto) | Pausar vira `Idle`, mas o wallpaper continua mostrando a última faixa; a letra é a dessa faixa. Sync pausado, falha de desenho, deslogado e bloqueado ficam sem botão: o wallpaper não está sendo mantido |
+| "Compartilhar letra" também com a música pausada, pela faixa do wallpaper (#18) | Pausar vira `Idle`, mas o wallpaper continua mostrando a última faixa; a letra é a dessa faixa. Sync pausado, falha de desenho, deslogado e bloqueado ficam sem botão: o wallpaper não está sendo mantido |
 
 ---
 
 ## 5. Estado atual
 
-### 5.1 Pronto (em `main`) e em revisão
+### 5.1 Pronto (em `main`)
 
 | PR | Entrega |
 |---|---|
@@ -624,9 +640,10 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 | #15 | Desktop: o menu da tela de bloqueio se atualiza quando o toggle termina (o menu era refeito antes de o UAC ser respondido) |
 | #16 | Desktop: o SMTC reconhece o `spotifast.exe` além de `spotify`, então o widget de letra vê a faixa |
 | — | Nas duas plataformas: arte baixada só de `https` em `scdn.co`/`spotifycdn.com` (§4) |
-| #17 (aberto) | Desktop: janela de configurações e bandeja enxuta (§2.2). Testes automatizados passam; o teste manual da janela pelo usuário ainda não foi confirmado |
-| #18 (aberto) | Android: "Compartilhar letra" também com a música pausada (§2.5). Testado no A71 (debug) |
-| #19 (aberto) | Desktop + Android: cache em disco da capa original e das cores por álbum (§3.1, §3.2). Desktop medido; Android testado à mão no A71 pelo usuário (troca de estilo sem esperar o download) e não medido |
+| #17 | Desktop: janela de configurações e bandeja enxuta (§2.2). Testes automatizados passam; a janela ainda não foi testada manualmente pelo usuário (confirmado em 2026-10-01) |
+| #18 | Android: "Compartilhar letra" também com a música pausada (§2.5). Testado no A71 (debug) |
+| #19 | Desktop + Android: cache em disco da capa original e das cores por álbum (§3.1, §3.2). Desktop medido; Android testado à mão no A71 pelo usuário (troca de estilo sem esperar o download) e não medido |
+| #20 | Documentação: `PLANNING.md` reflete #15–#19 |
 
 ### 5.2 Limitações conhecidas
 
@@ -665,12 +682,12 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
   vira "tablet" e ganha canvas quadrado. Não medido; medir no A71.
 - **Zoom no Android < 12:** a densidade vem dos resources da window context, que podem ficar
   presos à configuração da criação. Não tratado.
-- **Cache da arte original (#19, aberto):** o custo no Android não foi medido no A71. Os 5 testes
+- **Cache da arte original (#19):** o custo no Android não foi medido no A71. Os 5 testes
   instrumentados novos de `WallpaperComposerTest` ainda não foram executados no aparelho
   (só compilam); precisam do celular desbloqueado e de `leaveApksInstalledAfterRun`. O cache só evita download e cálculo de cor; a base do estilo novo ainda
   é composta (0,5–2,4 s).
 - **Compartilhar letra (#9):**
-  - (#18, aberto) o botão aparece com a música pausada, pela faixa do wallpaper. **Limite:**
+  - (#18) o botão aparece com a música pausada, pela faixa do wallpaper. **Limite:**
     a faixa vem da memória; depois de reiniciar o app com a música já pausada não há
     `onScreen`, e o botão volta quando uma faixa voltar a tocar (`Showing`);
   - o LRCLIB é mantido pela comunidade: a letra pode faltar ou estar errada. A comparação
@@ -711,10 +728,14 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
 
 ### 5.3 Próximas prioridades
 
-1. **Mergear #17, #18 e #19** (abertos), depois do teste manual do usuário na janela de
-   configurações (#17) e da medição do cache de arte no A71 (#19).
+1. **Port do desktop para Linux (Omarchy/Hyprland), em andamento** (decidido em 2026-10-01).
+   Abertos: #21 (fase 1: a suíte roda no Linux, caminhos XDG) e #22 (fase 2, etapa 8:
+   `MprisWatcher`). Antes do merge do #21, a suíte precisa passar no Windows. O resto do
+   Linux entra neste documento depois do merge.
+2. **Medir o cache da arte original no A71** (#19) e rodar no aparelho os 5 testes
+   instrumentados novos de `WallpaperComposerTest` (§5.2).
 
-Decididos e entregues nesses PRs: "Compartilhar letra" com a música pausada (#18) e o cache
+Entregues em #18 e #19 (mergeados em 2026-09-30): "Compartilhar letra" com a música pausada (#18) e o cache
 em disco da arte original e das cores (#19).
 
 Descartados por decisão do usuário (2026-09-24): limite de ampliação da arte no desktop,

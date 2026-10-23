@@ -17,9 +17,10 @@ from src.settings_window.style_actions import StyleActions
 from src.settings_window.window import SettingsWindow
 from src.os_integration import lockscreen
 from src.os_integration import app_version
+from src.os_integration import frozen
 from src.os_integration import restart
 from src.os_integration import single_instance
-from src.os_integration.autostart import install_autostart, uninstall_autostart
+from src.os_integration.autostart import install_autostart, refresh_autostart, uninstall_autostart
 from src.onboarding.state import needs_onboarding, should_abort_after_wizard
 from src.onboarding.wizard import run_wizard
 from src.os_integration.session_lock import is_workstation_locked
@@ -106,6 +107,10 @@ def main() -> int:
         logger.info("Another instance is already running; exiting")
         return 0
     try:
+        # The exe only, and only the instance that stays: a copy that exits right
+        # away (opened from Downloads or a zip) must not take over either one.
+        refresh_autostart()
+        lockscreen.refresh_helper()
         return _run_app(settings)
     finally:
         instance_lock.release()  # same (main) thread that took it
@@ -204,8 +209,9 @@ def _run_app(settings) -> int:
         on_exit=on_exit,
         on_setup=on_setup,
         on_restart=on_restart,
-        version=app_version.version_label(app_version.read_version(app_version.app_dir())),
-        updater=Updater(app_version.app_dir()),
+        version=app_version.version_label(app_version.current_version()),
+        # The exe has no git clone to fast-forward: a new build is a new download.
+        updater=None if frozen.is_frozen() else Updater(app_version.app_dir()),
         on_open_settings=qt_host.open_settings,
     )
     tray_thread = qt_host.run_tray_in_thread(tray.run)

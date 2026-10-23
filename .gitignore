@@ -6,6 +6,9 @@ __pycache__/
 *.egg
 build/
 dist/
+# scripts/build-exe.ps1 output
+*.spec
+build_info.txt
 
 # Virtual environments
 .venv/
