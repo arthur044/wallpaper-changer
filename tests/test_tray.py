@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from src.config.settings import Settings
@@ -32,6 +34,7 @@ def _tray(**callbacks):
     return TrayApp(AppState(), Settings(), **defaults)
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="shows a real pystray icon, whose Linux backends need a tray this test can't count on")
 def test_pystray_setup_hook_is_not_shadowed_by_an_injected_callback():
     """Regression: storing the wizard callback as self._on_setup shadowed the
     _on_setup(self, icon) method that pystray invokes via run(setup=...),

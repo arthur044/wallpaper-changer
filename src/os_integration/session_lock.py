@@ -1,28 +1,35 @@
 import ctypes
+import functools
 from ctypes import wintypes
 from typing import Optional
 
 _DESKTOP_SWITCHDESKTOP = 0x0100
 _UOI_NAME = 2
 
-_user32 = ctypes.windll.user32
-_user32.OpenInputDesktop.restype = wintypes.HANDLE
-_user32.OpenInputDesktop.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-_user32.GetUserObjectInformationW.restype = wintypes.BOOL
-_user32.GetUserObjectInformationW.argtypes = [
-    wintypes.HANDLE,
-    ctypes.c_int,
-    wintypes.LPVOID,
-    wintypes.DWORD,
-    ctypes.POINTER(wintypes.DWORD),
-]
-_user32.CloseDesktop.restype = wintypes.BOOL
-_user32.CloseDesktop.argtypes = [wintypes.HANDLE]
+
+@functools.cache
+def _user32_api():
+    # On first use, not at import: user32 only exists on Windows.
+    user32 = ctypes.windll.user32
+    user32.OpenInputDesktop.restype = wintypes.HANDLE
+    user32.OpenInputDesktop.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    user32.GetUserObjectInformationW.restype = wintypes.BOOL
+    user32.GetUserObjectInformationW.argtypes = [
+        wintypes.HANDLE,
+        ctypes.c_int,
+        wintypes.LPVOID,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    user32.CloseDesktop.restype = wintypes.BOOL
+    user32.CloseDesktop.argtypes = [wintypes.HANDLE]
+    return user32
 
 
 def _get_input_desktop_name() -> Optional[str]:
     """None means the input desktop couldn't even be opened, which happens
     when the secure desktop (Winlogon / UAC prompt) owns the session."""
+    _user32 = _user32_api()
     handle = _user32.OpenInputDesktop(0, False, _DESKTOP_SWITCHDESKTOP)
     if not handle:
         return None

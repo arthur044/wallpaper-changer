@@ -1,9 +1,12 @@
 import ctypes
 import logging
-import winreg
+import sys
 from pathlib import Path
 
 from src.config.paths import cache_dir
+
+if sys.platform == "win32":
+    import winreg
 
 logger = logging.getLogger(__name__)
 

@@ -38,7 +38,8 @@ class _Key:
 @pytest.fixture
 def registry(monkeypatch):
     fake = _FakeRegistry({})
-    monkeypatch.setattr(autostart, "winreg", fake)
+    # raising=False: off Windows the module never imports winreg.
+    monkeypatch.setattr(autostart, "winreg", fake, raising=False)
     return fake.values
 
 

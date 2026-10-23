@@ -1,9 +1,11 @@
 import logging
 import sys
-import winreg
 from pathlib import Path
 
 from src.os_integration import frozen
+
+if sys.platform == "win32":
+    import winreg
 
 logger = logging.getLogger(__name__)
 
