@@ -38,8 +38,10 @@ class _Key:
 @pytest.fixture
 def registry(monkeypatch):
     fake = _FakeRegistry({})
-    # raising=False: off Windows the module never imports winreg.
+    # The Run key is Windows only: off Windows the module never imports winreg
+    # (hence raising=False) and refuses to write autostart through it.
     monkeypatch.setattr(autostart, "winreg", fake, raising=False)
+    monkeypatch.setattr(sys, "platform", "win32")
     return fake.values
 
 
