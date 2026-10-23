@@ -54,12 +54,14 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller==6.22.3
+          pip install -r requirements.txt pyinstaller==6.22.3 pytest-rerunfailures==16.7
 
       - name: Test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest -q
+        # The wizard's Tk tests fail now and then on Tcl init ("tcl_findLibrary",
+        # the flake PLANNING.md §5.2 records); a rerun is enough.
+        run: python -m pytest -q --reruns 2
 
       - name: Build the exe
         run: ./scripts/build-exe.ps1
