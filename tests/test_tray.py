@@ -11,6 +11,8 @@ from src.utils.app_state import AppState
 # tray's id can come back for a new one and Windows refuses the class with
 # "Class already exists" (1410), now and then. Keeping every tray alive for the
 # whole session keeps the ids unique. The app itself builds one tray per process.
+# The icon is kept on its own too: a test that swaps tray._icon for a fake would
+# otherwise free it, and its id with it.
 _ALIVE = []
 _build_tray = TrayApp.__init__
 
@@ -19,7 +21,7 @@ _build_tray = TrayApp.__init__
 def _keep_trays_alive(monkeypatch):
     def init(self, *args, **kwargs):
         _build_tray(self, *args, **kwargs)
-        _ALIVE.append(self)
+        _ALIVE.append((self, self._icon))
 
     monkeypatch.setattr(TrayApp, "__init__", init)
 

@@ -720,7 +720,10 @@ inputs = BASE_RENDER_VERSION | W | H | art_size_pct | corner_radius | shadow_blu
     aparelho, não há posição para seguir;
   - a dependência nova pesa ~211 MB instalada.
 - **Teste instável (já existia, também na `main` limpa):** `test_onboarding_wizard.py` falha
-  nesta máquina com o erro Tk "can't read text.tcl".
+  nesta máquina com o erro Tk "can't read text.tcl". No CI do Windows o Tcl às vezes não lê o
+  próprio `init.tcl`/`tk.tcl` ao abrir uma raiz Tk ("couldn't read file ...: No error",
+  `tcl_findLibrary`), e a raiz seguinte no mesmo processo abre. A fixture do teste tenta a raiz
+  até 5 vezes, e o `windows.yml` roda o arquivo até 3 vezes em processos novos.
 - **Lacunas de teste:** `SpotifyAuth` e `SyncController` sem testes (precisariam de
   Robolectric). Serviço, receiver e bloco só foram verificados manualmente no aparelho.
   `DesktopColorParityTest` precisa de capas reais fora do repositório, então a paridade de cor
