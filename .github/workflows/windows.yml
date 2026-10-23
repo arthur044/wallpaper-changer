@@ -90,12 +90,19 @@ jobs:
           $hash = (Get-FileHash dist\SpotifyWallpaperEngine.exe -Algorithm SHA256).Hash.ToLower()
           "$hash  SpotifyWallpaperEngine.exe" | Set-Content dist\SpotifyWallpaperEngine.exe.sha256 -Encoding ascii
 
+      # archive: false keeps the run's download the exe itself, not a zip of it.
+      # It takes one file per artifact, named after the file.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: SpotifyWallpaperEngine-exe
-          path: |
-            dist/SpotifyWallpaperEngine.exe
-            dist/SpotifyWallpaperEngine.exe.sha256
+          path: dist/SpotifyWallpaperEngine.exe
+          archive: false
+          retention-days: 14
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: dist/SpotifyWallpaperEngine.exe.sha256
+          archive: false
           retention-days: 14
           if-no-files-found: error
 
@@ -116,13 +123,18 @@ jobs:
 
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: SpotifyWallpaperEngine-exe
+          pattern: SpotifyWallpaperEngine.exe*
+          merge-multiple: true
           path: dist
 
       - name: Publish the pre-release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Checked before the old release goes: a missing file must not leave none.
+          for file in dist/SpotifyWallpaperEngine.exe dist/SpotifyWallpaperEngine.exe.sha256; do
+            [ -f "$file" ] || { echo "::error::$file was not downloaded"; ls -R dist; exit 1; }
+          done
           short="$(git rev-parse --short HEAD)"
           # Rotation, as debug.yml does: the tag moves to this commit.
           if gh release view desktop > /dev/null 2>&1; then
