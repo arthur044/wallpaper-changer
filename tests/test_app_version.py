@@ -1,3 +1,4 @@
+import sys
 import subprocess
 from pathlib import Path
 
@@ -63,3 +64,27 @@ def test_this_checkout_has_a_version():
     version = read_version(app_version.app_dir())
 
     assert version is not None and len(version.sha) >= 7
+
+
+def test_bundled_version_is_read_from_the_file_the_build_wrote(tmp_path):
+    info = tmp_path / "build_info.txt"
+    info.write_text("f93217c 2026-09-29\n", encoding="utf-8")
+
+    assert app_version.read_bundled_version(info) == AppVersion("f93217c", "2026-09-29")
+
+
+def test_bundled_version_missing_or_garbled_is_unknown(tmp_path):
+    garbled = tmp_path / "build_info.txt"
+    garbled.write_text("garbage", encoding="utf-8")
+
+    assert app_version.read_bundled_version(tmp_path / "nope.txt") is None
+    assert app_version.read_bundled_version(garbled) is None
+    assert app_version.read_bundled_version(None) is None
+
+
+def test_frozen_current_version_comes_from_the_bundle(monkeypatch, tmp_path):
+    (tmp_path / app_version.BUNDLED_VERSION_FILE).write_text("abc1234 2026-10-23", encoding="utf-8")
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
+
+    assert app_version.current_version() == AppVersion("abc1234", "2026-10-23")

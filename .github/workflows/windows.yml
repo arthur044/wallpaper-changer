@@ -1,0 +1,133 @@
+# Windows channel: tests the desktop code, builds the one-file exe and, on
+# main, publishes it as the pre-release "desktop" (replaced on every push, so
+# only the newest build exists). It is never marked "latest" and its tag is not
+# "r<N>" or "debug-*": the Android app reads releases/latest and those prefixes
+# (see android/ci/ and release.yml), and a Windows exe there would break it.
+#
+# The exe is not signed: SmartScreen warns on the first run.
+name: Windows exe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - main.py
+      - requirements.txt
+      - pytest.ini
+      - src/**
+      - tests/**
+      - scripts/build-exe.ps1
+      - scripts/smoke-exe.ps1
+      - scripts/smoke-helper.ps1
+      - scripts/apply_lockscreen.py
+      - .github/workflows/windows.yml
+  pull_request:
+    paths:
+      - main.py
+      - requirements.txt
+      - pytest.ini
+      - src/**
+      - tests/**
+      - scripts/build-exe.ps1
+      - scripts/smoke-exe.ps1
+      - scripts/smoke-helper.ps1
+      - scripts/apply_lockscreen.py
+      - .github/workflows/windows.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      # Actions pinned by commit: a moved tag must not reach the release job.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller==6.22.3
+
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q --ignore=tests/test_onboarding_wizard.py
+
+      # Tcl fails now and then to read its own init.tcl while the wizard's tests
+      # open one Tk root after another (the flake PLANNING.md §5.2 records; the
+      # message varies, and a pytest rerun does not help with a setup error).
+      # Each try is a new process. Only this file gets tries: any other failure
+      # stays a failure.
+      - name: Test the wizard (Tk)
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            python -m pytest -q tests/test_onboarding_wizard.py && exit 0
+            echo "wizard tests failed (try $attempt of 3)"
+          done
+          exit 1
+
+      - name: Build the exe
+        run: ./scripts/build-exe.ps1
+
+      - name: Smoke test the exe
+        run: ./scripts/smoke-exe.ps1
+
+      - name: Checksum
+        run: |
+          $hash = (Get-FileHash dist\SpotifyWallpaperEngine.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  SpotifyWallpaperEngine.exe" | Set-Content dist\SpotifyWallpaperEngine.exe.sha256 -Encoding ascii
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: SpotifyWallpaperEngine-exe
+          path: |
+            dist/SpotifyWallpaperEngine.exe
+            dist/SpotifyWallpaperEngine.exe.sha256
+          retention-days: 14
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    # A pull request, even from a branch of this repo, never publishes.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    # One release at a time, in push order; never cancel one halfway.
+    concurrency:
+      group: windows-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: SpotifyWallpaperEngine-exe
+          path: dist
+
+      - name: Publish the pre-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          short="$(git rev-parse --short HEAD)"
+          # Rotation, as debug.yml does: the tag moves to this commit.
+          if gh release view desktop > /dev/null 2>&1; then
+            gh release delete desktop --yes --cleanup-tag
+          fi
+          gh release create desktop dist/SpotifyWallpaperEngine.exe dist/SpotifyWallpaperEngine.exe.sha256 \
+            --target "$GITHUB_SHA" --title "Windows exe ($short)" --prerelease --latest=false \
+            --notes "$(git log -1 --format=%B)"
