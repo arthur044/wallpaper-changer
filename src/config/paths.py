@@ -24,11 +24,16 @@ def _app_dir(root: Path) -> Path:
     return path
 
 
+def xdg_config_home() -> Path:
+    """$XDG_CONFIG_HOME, or ~/.config when it is unset or relative."""
+    return _xdg_root("XDG_CONFIG_HOME", ".config")
+
+
 def config_dir() -> Path:
     """config.json. %APPDATA% on Windows, $XDG_CONFIG_HOME (~/.config) elsewhere."""
     if sys.platform == "win32":
         return _app_dir(_windows_root("APPDATA"))
-    return _app_dir(_xdg_root("XDG_CONFIG_HOME", ".config"))
+    return _app_dir(xdg_config_home())
 
 
 def data_dir() -> Path:

@@ -1,4 +1,5 @@
 import logging
+import sys
 import threading
 from typing import Callable, Optional
 
@@ -6,6 +7,7 @@ from spotipy import Spotify
 
 from src.config.settings import Settings
 from src.onboarding import steps
+from src.os_integration import lockscreen
 from src.onboarding.state import (
     OnboardingStep,
     is_valid_client_id,
@@ -56,6 +58,10 @@ _STEP_BODIES = {
         "pela janela de configurações (clique no ícone da bandeja)."
     ),
 }
+
+
+def autostart_label() -> str:
+    return "Iniciar junto com o Windows" if sys.platform == "win32" else "Iniciar com a sessão"
 
 
 def run_wizard(settings: Settings) -> bool:
@@ -188,9 +194,10 @@ class _TkWizard:
 
     def _render_options(self) -> None:
         self._paragraph(_STEP_BODIES[OnboardingStep.OPTIONS])
-        self._ttk.Checkbutton(
-            self._body, text="Iniciar junto com o Windows", variable=self._autostart_var
-        ).pack(anchor="w")
+        self._ttk.Checkbutton(self._body, text=autostart_label(), variable=self._autostart_var).pack(anchor="w")
+        if lockscreen.follows_the_wallpaper():
+            # Omarchy's lock screen already shows the wallpaper: nothing to offer.
+            return
         self._ttk.Checkbutton(
             self._body,
             text="Sincronizar também a tela de bloqueio (pede permissão do Windows uma vez)",
