@@ -1,5 +1,8 @@
+import functools
 import logging
 import os
+import subprocess
+import sys
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
@@ -215,16 +218,39 @@ def _build_base_canvas(
 
 
 def _load_font(size: int, bold: bool) -> ImageFont.ImageFont:
-    fonts_dir = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
-    candidates = ["segoeuib.ttf"] if bold else ["segoeui.ttf"]
-    for name in candidates:
-        font_path = fonts_dir / name
-        if font_path.exists():
-            try:
-                return ImageFont.truetype(str(font_path), size)
-            except OSError:
-                continue
-    return ImageFont.load_default()
+    for font_path in _font_files(bold):
+        try:
+            return ImageFont.truetype(str(font_path), size)
+        except OSError:
+            continue
+    # Pillow's own scalable font at the asked size, not its tiny fixed bitmap.
+    return ImageFont.load_default(size)
+
+
+@functools.lru_cache(maxsize=None)
+def _font_files(bold: bool) -> Tuple[Path, ...]:
+    """Segoe UI on Windows. Elsewhere it isn't there, and the text came out in
+    Pillow's bitmap font, a few pixels tall at any size: fontconfig's pick for
+    sans-serif instead (Liberation Sans on Omarchy). Asked once per weight."""
+    if sys.platform == "win32":
+        fonts_dir = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
+        return (fonts_dir / ("segoeuib.ttf" if bold else "segoeui.ttf"),)
+    return tuple(path for path in (_fontconfig_match("sans-serif:bold" if bold else "sans-serif"),) if path)
+
+
+def _fontconfig_match(pattern: str) -> Optional[Path]:
+    try:
+        result = subprocess.run(
+            ["fc-match", "--format=%{file}", pattern], capture_output=True, text=True, timeout=5
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("fc-match could not run (%s); using Pillow's default font", exc)
+        return None
+    path = Path(result.stdout.strip()) if result.returncode == 0 and result.stdout.strip() else None
+    if path is None or not path.is_file():
+        logger.warning("fc-match found no font for %r; using Pillow's default font", pattern)
+        return None
+    return path
 
 
 def _text_color_for_background(rgb: Tuple[int, int, int]) -> Tuple[int, int, int]:
