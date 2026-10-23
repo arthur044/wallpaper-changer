@@ -1,6 +1,7 @@
 import dataclasses
 import io
 
+import pytest
 from PIL import Image, ImageDraw, ImageFont, ImageStat
 
 from src.config.settings import Settings
@@ -460,3 +461,48 @@ def test_a_stronger_blur_smooths_the_background_more(tmp_path, monkeypatch):
         return ImageStat.Stat(image.crop((0, 0, 60, 30))).stddev[0]
 
     assert spread(5) > spread(26) > spread(100)
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [b"", b"not a png at all", _png_bytes(Image.new("RGB", (400, 300), (30, 60, 90)))[:200]],
+    ids=["empty", "not-an-image", "truncated"],
+)
+def test_an_unreadable_cached_base_is_drawn_again_not_a_failure(tmp_path, monkeypatch, stored):
+    # Regression: a crash mid-write left an empty base, and every render of the
+    # album failed with "cannot identify image file" until it was deleted by hand.
+    monkeypatch.setattr(
+        "src.graphics.renderer.download_art", lambda url: _png_bytes(Image.new("RGB", (64, 64), (200, 40, 40)))
+    )
+    base_path = tmp_path / "base.png"
+    base_path.write_bytes(stored)
+
+    render_for_now_playing(_now_playing(), Settings(show_track_info=False), _LAYOUT, base_path, tmp_path / "out.png")
+
+    with Image.open(base_path) as rebuilt:
+        assert rebuilt.size == _LAYOUT.canvas_size
+    with Image.open(tmp_path / "out.png") as result:
+        assert result.convert("RGB").getpixel((200, 90)) == (200, 40, 40)
+
+
+@pytest.mark.parametrize("cached_base", [False, True], ids=["new-base", "cached-base"])
+def test_a_failed_save_leaves_no_partial_base_or_wallpaper(tmp_path, monkeypatch, cached_base):
+    art = _png_bytes(Image.new("RGB", (64, 64), (200, 40, 40)))
+    monkeypatch.setattr("src.graphics.renderer.download_art", lambda url: art)
+    if cached_base:
+        Image.new("RGB", _LAYOUT.canvas_size, (30, 60, 90)).save(tmp_path / "base.png")
+    real_save = Image.Image.save
+
+    def save_then_crash(self, fp, *args, **kwargs):
+        # Half a file on disk, then the crash; in-memory buffers are left alone.
+        real_save(self, fp, *args, **kwargs)
+        if not isinstance(fp, io.BytesIO):
+            raise OSError("disk went away")
+
+    monkeypatch.setattr(Image.Image, "save", save_then_crash)
+
+    with pytest.raises(OSError):
+        render_for_now_playing(_now_playing(), Settings(), _LAYOUT, tmp_path / "base.png", tmp_path / "out.png")
+
+    expected = ["base.png"] if cached_base else []
+    assert sorted(p.name for p in tmp_path.iterdir()) == expected, "no partial file, final or .tmp, may be left"

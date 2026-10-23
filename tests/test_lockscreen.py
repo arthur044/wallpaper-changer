@@ -1,5 +1,6 @@
 import json
 import subprocess
+import sys
 from types import SimpleNamespace
 
 import pytest
@@ -160,6 +161,89 @@ def _split_launch_command():
     command = lockscreen._launch_command()
     exe_end = command.index('"', 1) + 1
     return command[:exe_end], command[exe_end + 1 :]
+
+
+def _freeze(monkeypatch, tmp_path, with_helper=True):
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    if with_helper:
+        (bundle / lockscreen.HELPER_NAME).write_bytes(b"helper v2")
+    data = tmp_path / "data"
+    data.mkdir()
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(bundle), raising=False)
+    monkeypatch.setattr(sys, "executable", "C:/app/SpotifyWallpaperEngine.exe")
+    monkeypatch.setattr(lockscreen, "data_dir", lambda: data)
+    return data
+
+
+def test_frozen_task_runs_the_helper_copied_to_the_data_folder(monkeypatch, tmp_path):
+    data = _freeze(monkeypatch, tmp_path)
+
+    exe, args = _split_launch_command()
+
+    # Not the app exe (it would unpack ~100 MB per track) and not a path that moves with it.
+    assert exe == f'"{data / lockscreen.HELPER_NAME}"'
+    assert args == ""
+    assert (data / lockscreen.HELPER_NAME).read_bytes() == b"helper v2"
+
+
+def test_frozen_task_without_a_bundled_helper_runs_the_exe(monkeypatch, tmp_path):
+    _freeze(monkeypatch, tmp_path, with_helper=False)
+
+    exe, args = _split_launch_command()
+
+    assert exe == '"C:/app/SpotifyWallpaperEngine.exe"'
+    assert args == "--apply-lockscreen"
+
+
+def test_refresh_helper_replaces_the_copy_of_an_older_build(monkeypatch, tmp_path):
+    data = _freeze(monkeypatch, tmp_path)
+    (data / lockscreen.HELPER_NAME).write_bytes(b"helper v1")
+
+    lockscreen.refresh_helper()
+
+    assert (data / lockscreen.HELPER_NAME).read_bytes() == b"helper v2"
+
+
+def test_refresh_helper_does_not_install_one_nobody_asked_for(monkeypatch, tmp_path):
+    data = _freeze(monkeypatch, tmp_path)
+
+    lockscreen.refresh_helper()
+
+    assert not (data / lockscreen.HELPER_NAME).exists()
+
+
+def test_removing_the_task_removes_the_helper(monkeypatch, tmp_path):
+    data = _freeze(monkeypatch, tmp_path)
+    (data / lockscreen.HELPER_NAME).write_bytes(b"helper v2")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=1, stdout=b""))
+
+    assert lockscreen.uninstall_task() is True
+
+    assert not (data / lockscreen.HELPER_NAME).exists()
+
+
+def test_a_task_that_stays_keeps_its_helper(monkeypatch, tmp_path):
+    data = _freeze(monkeypatch, tmp_path)
+    (data / lockscreen.HELPER_NAME).write_bytes(b"helper v2")
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0, stdout=b""))
+    monkeypatch.setattr(lockscreen, "_run_elevated", lambda exe, params: False)
+
+    assert lockscreen.uninstall_task() is False
+
+    assert (data / lockscreen.HELPER_NAME).exists()
+
+
+def test_refresh_helper_is_a_no_op_from_source(monkeypatch, tmp_path):
+    data = tmp_path / "data"
+    data.mkdir()
+    (data / lockscreen.HELPER_NAME).write_bytes(b"old")
+    monkeypatch.setattr(lockscreen, "data_dir", lambda: data)
+
+    lockscreen.refresh_helper()
+
+    assert (data / lockscreen.HELPER_NAME).read_bytes() == b"old"
 
 
 def test_ensure_task_keeps_a_task_that_runs_this_folder(monkeypatch):

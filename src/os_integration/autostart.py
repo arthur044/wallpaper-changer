@@ -3,6 +3,8 @@ import os
 import sys
 from pathlib import Path
 
+from src.os_integration import frozen
+
 if sys.platform == "win32":
     import winreg
 
@@ -17,6 +19,8 @@ def _main_script() -> Path:
 
 
 def _launch_command() -> str:
+    if frozen.is_frozen():
+        return f'"{sys.executable}"'
     pythonw = Path(sys.executable).with_name("pythonw.exe")
     interpreter = str(pythonw) if pythonw.exists() else sys.executable
     return f'"{interpreter}" "{_main_script()}"'
@@ -116,3 +120,23 @@ def is_autostart_installed() -> bool:
             return True
     except FileNotFoundError:
         return False
+
+
+def refresh_autostart() -> None:
+    """At startup of the exe: the Run key keeps the path it was written with, and
+    an updated exe is another file (a new download, a new folder). When autostart
+    is on and points at another exe, it follows the exe that is running. An
+    autostart of the Python install (main.py) is left alone."""
+    if not frozen.is_frozen():
+        return
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_READ) as key:
+            registered, _ = winreg.QueryValueEx(key, _VALUE_NAME)
+        registered = str(registered)
+        if "main.py" in registered.lower() or registered.lower() == _launch_command().lower():
+            return
+        install_autostart()
+    except FileNotFoundError:
+        return  # autostart is off: not ours to turn on
+    except OSError as exc:
+        logger.warning("Could not re-point the autostart to this exe: %s", exc)
