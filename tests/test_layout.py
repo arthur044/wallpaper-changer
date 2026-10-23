@@ -1,9 +1,17 @@
 import subprocess
 import sys
 
+import pytest
+
 from src.config.settings import Settings
 from src.graphics import layout as layout_module
 from src.os_integration import hyprland
+
+
+@pytest.fixture(autouse=True)
+def _fresh_failure_log(monkeypatch):
+    # Whether the last detection failed is module state: every test starts clean.
+    monkeypatch.setattr(layout_module, "_DETECTION_FAILING", False)
 
 
 def test_compute_layout_centers_art(monkeypatch):
@@ -65,7 +73,6 @@ def test_without_hyprland_the_fallback_is_used(monkeypatch):
 
 def test_a_detection_that_keeps_failing_is_an_error_once_until_it_works(monkeypatch, caplog):
     monkeypatch.setattr(sys, "platform", "linux")
-    monkeypatch.setattr(layout_module, "_DETECTION_FAILING", False)
     answers = iter([FileNotFoundError("hyprctl"), FileNotFoundError("hyprctl"), "ok", FileNotFoundError("hyprctl")])
 
     def run(args, **kwargs):

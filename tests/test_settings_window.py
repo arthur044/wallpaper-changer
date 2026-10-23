@@ -3,9 +3,10 @@ import os
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 import pytest
-from PySide6.QtWidgets import QApplication, QPushButton
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
 from src.config.settings import Settings
+from src.os_integration import lockscreen
 from src.settings_window.commands import AppCommands
 from src.settings_window.style_actions import StyleActions
 from src.settings_window.window import SettingsWindow
@@ -155,7 +156,24 @@ def test_the_lyrics_controls_drive_the_widget_and_show_its_state(app):
     assert all(b.isChecked() for b in (window._lyrics_show, window._lyrics_locked, window._lyrics_on_top))
 
 
-def test_the_lock_screen_box_shows_what_happened_not_what_was_clicked(app):
+@pytest.fixture
+def windows(monkeypatch):
+    # The lock screen toggle (schtasks, UAC) exists on Windows only.
+    monkeypatch.setattr(lockscreen.sys, "platform", "win32")
+
+
+def test_off_windows_the_lock_screen_box_explains_instead_of_offering_a_toggle(app, monkeypatch):
+    monkeypatch.setattr(lockscreen.sys, "platform", "linux")
+    window, _s, _sv, _r, _l, fake_app = _window(app)
+
+    window.refresh()
+
+    assert window._lock_sync is None
+    assert any("already shows the wallpaper" in label.text() for label in window.findChildren(QLabel))
+    assert "lock" not in fake_app.calls
+
+
+def test_the_lock_screen_box_shows_what_happened_not_what_was_clicked(app, windows):
     # The UAC prompt was declined: the app did nothing, so the box goes back off.
     window, settings, _sv, _r, _l, fake_app = _window(app)
 
@@ -165,7 +183,7 @@ def test_the_lock_screen_box_shows_what_happened_not_what_was_clicked(app):
     assert settings.sync_lock_screen is False and not window._lock_sync.isChecked()
 
 
-def test_the_lock_screen_box_is_disabled_while_the_change_is_pending(app):
+def test_the_lock_screen_box_is_disabled_while_the_change_is_pending(app, windows):
     window, _s, _sv, _r, _l, fake_app = _window(app)
     fake_app.lock_busy = True
 
@@ -174,7 +192,7 @@ def test_the_lock_screen_box_is_disabled_while_the_change_is_pending(app):
     assert not window._lock_sync.isEnabled()
 
 
-def test_a_lock_screen_change_finished_later_shows_up_on_the_next_refresh(app):
+def test_a_lock_screen_change_finished_later_shows_up_on_the_next_refresh(app, windows):
     window, settings, _sv, _r, _l, fake_app = _window(app)
     window._lock_sync.click()  # the UAC prompt is open: nothing has changed yet
 

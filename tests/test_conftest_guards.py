@@ -9,6 +9,13 @@ import pytest
 from src.os_integration import lockscreen
 
 
+@pytest.fixture(autouse=True)
+def _windows(monkeypatch):
+    # The schtasks path only runs on Windows; elsewhere every call is a no-op
+    # (see the tests at the end of test_lockscreen.py).
+    monkeypatch.setattr(lockscreen.sys, "platform", "win32")
+
+
 def test_uninstall_without_fakes_is_stopped_before_touching_the_task():
     with pytest.raises(AssertionError, match="real schtasks"):
         lockscreen.uninstall_task()

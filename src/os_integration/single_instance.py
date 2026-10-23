@@ -1,6 +1,10 @@
 import ctypes
 import logging
+import os
+import sys
+import time
 from ctypes import wintypes
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -54,6 +58,68 @@ class _Kernel32:
         self._k32.CloseHandle(handle)
 
 
+class _Flock:
+    """The same four calls as _Kernel32, with an flock on a file in
+    $XDG_RUNTIME_DIR (per user, per boot) off Windows. The kernel drops an
+    flock when its holder dies, as Windows hands over an abandoned mutex.
+    The file is opened close-on-exec (Python's default), so the instance a
+    Restart launches doesn't inherit the old one's lock."""
+
+    _RETRY_S = 0.1
+
+    def __init__(self, directory: Optional[Path] = None) -> None:
+        self._directory = directory
+
+    def _lock_path(self, name: str) -> Path:
+        directory = self._directory
+        if directory is None:
+            runtime = os.environ.get("XDG_RUNTIME_DIR")
+            if runtime and os.path.isabs(runtime):
+                directory = Path(runtime)
+            else:
+                from src.config.paths import state_dir
+
+                directory = state_dir()
+        # "Local\SpotifyWallpaperEngine" -> SpotifyWallpaperEngine.lock
+        return directory / (name.rsplit("\\", 1)[-1] + ".lock")
+
+    def create_mutex(self, name: str) -> int:
+        try:
+            fd = os.open(self._lock_path(name), os.O_RDWR | os.O_CREAT, 0o600)
+        except OSError as exc:
+            logger.warning("Could not open the single-instance lock file: %s", exc)
+            return 0
+        if fd == 0:  # 0 reads as "no handle" to acquire(); stdin was closed
+            moved = os.dup(fd)
+            os.close(fd)
+            fd = moved
+        return fd
+
+    def wait(self, handle: int, timeout_ms: int) -> int:
+        import fcntl
+
+        deadline = time.monotonic() + timeout_ms / 1000
+        while True:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return WAIT_OBJECT_0
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    return WAIT_TIMEOUT
+                time.sleep(self._RETRY_S)
+            except OSError as exc:
+                logger.warning("flock on the single-instance lock failed: %s", exc)
+                return WAIT_FAILED
+
+    def release(self, handle: int) -> None:
+        import fcntl
+
+        fcntl.flock(handle, fcntl.LOCK_UN)
+
+    def close(self, handle: int) -> None:
+        os.close(handle)
+
+
 class InstanceLock:
     """Held for the life of the app. A mutex belongs to the thread that took
     it, so release() has to run on that same thread (main)."""
@@ -72,7 +138,8 @@ class InstanceLock:
 
 def acquire(name: str = MUTEX_NAME, timeout_s: float = RESTART_WAIT_S, api=None) -> Optional[InstanceLock]:
     """The lock, or None when another instance still holds it after timeout_s."""
-    api = api if api is not None else _Kernel32()
+    if api is None:
+        api = _Kernel32() if sys.platform == "win32" else _Flock()
     handle = api.create_mutex(name)
     if not handle:
         logger.warning("Could not create the single-instance mutex; running unguarded")

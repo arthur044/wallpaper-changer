@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QGroupBox,
     QHBoxLayout,
+    QLabel,
     QPushButton,
     QRadioButton,
     QVBoxLayout,
@@ -14,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.config.settings import Settings
+from src.os_integration import lockscreen
 from src.settings_window.commands import AppCommands, LyricsWidgetControls
 from src.settings_window.style_actions import StyleActions
 
@@ -81,6 +83,12 @@ class SettingsWindow(QWidget):
     def _build_lock_screen_box(self) -> QGroupBox:
         box = QGroupBox("Lock screen")
         layout = QVBoxLayout(box)
+        if lockscreen.follows_the_wallpaper():
+            note = QLabel("Omarchy's lock screen already shows the wallpaper: there is nothing to turn on.")
+            note.setWordWrap(True)
+            layout.addWidget(note)
+            self._lock_sync = None
+            return box
         # Turning it on or off asks Windows for permission (UAC) and can be
         # declined, so the box shows what happened, not what was clicked.
         self._lock_sync = self._toggle(layout, "Sync the lock screen with the wallpaper", self._commands.toggle_lock_sync)
@@ -165,8 +173,9 @@ class SettingsWindow(QWidget):
         self._glass.setChecked(s.text_card == "glass")
         self._smooth.setChecked(s.smooth_transition)
         self._show_blur(s.blur_strength)
-        self._lock_sync.setChecked(s.sync_lock_screen)
-        self._lock_sync.setEnabled(not c.lock_sync_busy())
+        if self._lock_sync is not None:
+            self._lock_sync.setChecked(s.sync_lock_screen)
+            self._lock_sync.setEnabled(not c.lock_sync_busy())
         self._lyrics_show.setChecked(self._lyrics.is_widget_visible())
         self._lyrics_locked.setChecked(self._lyrics.is_locked())
         self._lyrics_on_top.setChecked(self._lyrics.is_on_top())
