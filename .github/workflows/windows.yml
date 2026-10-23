@@ -58,16 +58,26 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller==6.22.3 pytest-rerunfailures==16.7
+          pip install -r requirements.txt pyinstaller==6.22.3
 
       - name: Test
         env:
           QT_QPA_PLATFORM: offscreen
-        # The wizard's Tk tests fail now and then when Tcl cannot read its own
-        # init.tcl (the flake PLANNING.md §5.2 records; the message varies:
-        # "tcl_findLibrary", "Can't find a usable init.tcl"); a rerun is enough.
-        # Only TclError: any other failure stays a failure.
-        run: python -m pytest -q --reruns 2 --only-rerun _tkinter.TclError
+        run: python -m pytest -q --ignore=tests/test_onboarding_wizard.py
+
+      # Tcl fails now and then to read its own init.tcl while the wizard's tests
+      # open one Tk root after another (the flake PLANNING.md §5.2 records; the
+      # message varies, and a pytest rerun does not help with a setup error).
+      # Each try is a new process. Only this file gets tries: any other failure
+      # stays a failure.
+      - name: Test the wizard (Tk)
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            python -m pytest -q tests/test_onboarding_wizard.py && exit 0
+            echo "wizard tests failed (try $attempt of 3)"
+          done
+          exit 1
 
       - name: Build the exe
         run: ./scripts/build-exe.ps1
