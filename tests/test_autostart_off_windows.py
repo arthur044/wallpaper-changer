@@ -8,6 +8,10 @@ from src.config.settings import Settings
 from src.onboarding import steps
 from src.os_integration import autostart
 
+# The entry holds real paths, and a Windows path has "\", which the systemd
+# check refuses: patching sys.platform can't turn those into Linux paths.
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="XDG autostart: Linux paths only")
+
 
 @pytest.fixture(autouse=True)
 def _linux(monkeypatch, tmp_path):
