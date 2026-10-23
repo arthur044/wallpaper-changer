@@ -25,7 +25,13 @@ Tem também uma **versão Android** em [`android/`](android/README.md), que faz 
 - Python 3.11+
 - Um app Spotify registrado em [developer.spotify.com](https://developer.spotify.com/dashboard) (fluxo PKCE, sem client secret) com redirect URI `http://127.0.0.1:8888/callback`
 
-## Instalação
+## Instalação pelo exe (sem Python)
+
+Cada merge em código do desktop na `main` publica o `SpotifyWallpaperEngine.exe` na pré-release [`desktop`](../../releases/tag/desktop), com o `.sha256` ao lado (`certutil -hashfile SpotifyWallpaperEngine.exe SHA256` para conferir). Baixe, execute e siga o assistente. O exe não é assinado: o SmartScreen avisa na primeira vez (*Mais informações › Executar assim mesmo*).
+
+O exe não tem clone git, então **não tem "Check for updates"**: para atualizar, baixe o exe novo. Configuração, cache e logs ficam nos mesmos lugares da versão com Python. Build local: `scripts\build-exe.ps1` (precisa de `pip install pyinstaller==6.22.3`).
+
+## Instalação com Python
 
 ```
 python -m venv .venv
